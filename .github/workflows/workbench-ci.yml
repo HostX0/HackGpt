@@ -117,6 +117,70 @@ jobs:
       - name: Fresh-checkout loopback smoke
         run: python -m workbench.tests.fresh_install_smoke
 
+  validation-summary:
+    if: always()
+    needs: [native-tests, browser-e2e, fresh-install]
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    env:
+      NATIVE_RESULT: ${{ needs.native-tests.result }}
+      BROWSER_RESULT: ${{ needs.browser-e2e.result }}
+      FRESH_RESULT: ${{ needs.fresh-install.result }}
+    steps:
+      - name: Write revision-bound CI validation summary
+        shell: bash
+        run: |
+          mkdir -p _validation
+          python - <<'PY'
+          import json, os
+          results = {
+              "native_python_matrix": os.environ["NATIVE_RESULT"],
+              "real_browser_loopback_e2e": os.environ["BROWSER_RESULT"],
+              "fresh_checkout_os_matrix": os.environ["FRESH_RESULT"],
+          }
+          passed = all(value == "success" for value in results.values())
+          document = {
+              "schema": "hackgpt.ci-validation/v1",
+              "checked_out_revision": os.environ["GITHUB_SHA"],
+              "workflow": "Evidence Workbench",
+              "event": os.environ["GITHUB_EVENT_NAME"],
+              "results": results,
+              "validated_scope": {
+                  "native_python": ["3.11", "3.12", "3.13"],
+                  "browser": "system Chromium-compatible browser on ubuntu-latest",
+                  "responsive_widths_px": [1440, 768, 390],
+                  "fresh_checkout_platforms": ["ubuntu-latest", "macos-latest", "windows-latest"],
+                  "external_assessment_target": False,
+                  "live_model_inference": False,
+                  "third_party_scanner_execution": False,
+              },
+              "all_required_jobs_passed": passed,
+              "limitations": [
+                  "This is GitHub Actions validation evidence, not a cryptographic release signature.",
+                  "Browser coverage is the documented hosted Chromium path, not a multi-browser certification.",
+                  "Fresh-checkout smoke is not a signed installer or packaged third-party scanner attestation.",
+              ],
+          }
+          with open("_validation/ci-validation.json", "w", encoding="utf-8") as handle:
+              json.dump(document, handle, indent=2, sort_keys=True)
+              handle.write("\n")
+          print(json.dumps(document, sort_keys=True))
+          PY
+      - name: Upload aggregate validation evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: workbench-validation-${{ github.sha }}
+          path: _validation/ci-validation.json
+          if-no-files-found: error
+          retention-days: 7
+      - name: Require all bounded validation jobs
+        shell: bash
+        run: |
+          test "$NATIVE_RESULT" = success
+          test "$BROWSER_RESULT" = success
+          test "$FRESH_RESULT" = success
+
   # Tests contact only owned loopback fixtures. They do not use external assessment
   # targets, real credentials, model downloads, cloud inference, paid services,
   # third-party scanner binaries or the legacy installer.
