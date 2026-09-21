@@ -42,7 +42,7 @@ These gates determine whether a review milestone is genuinely complete. They are
 - Fresh-install smoke tests pass on the documented platforms with pinned dependencies/tool licenses and an SBOM.
 - Threat model, sample reports, regression lab catalog and release notes clearly separate implemented, experimental and unsupported coverage.
 
-**Current state at feature head `0e65f26d`: Gate A passes the declared evidence-core criteria in the dedicated workbench test boundary.** Gate B advanced materially in Contribution 07: terminal snapshots are no longer published before sealing, terminal SQLite publication is atomic, persistence failure is explicitly marked memory-only/non-durable, restart recovery publishes an explicit interrupted durable record, and DNS waiting now honors cancellation. Gate B is **still not complete** because cancellation has not yet been exercised across every connect/TLS/response/model phase and custom injected readers are not a production hard-deadline guarantee. Gate D has conservative comparison/bundle foundations and live GUI controls, but remediation-to-comparable-recheck linkage is still incomplete. Gates C and E remain materially incomplete, so the project is **not** eligible for an early “only polish remains” stop. Hosted Evidence Workbench CI for `0e65f26d` was still pending when this roadmap entry was written; do not infer a pass from local targeted tests.
+**Current state at feature head `1c85853a`: Gates A and D pass their declared bounded criteria in the dedicated workbench test boundary.** Gate A remains evidence-first: intact final reports, visible incomplete coverage, candidate-only scanner imports and synthetic denied-control/canary proof. Gate D now has conservative four-state comparison, checksummed safe reviewer bundles, and explicit recheck bindings that carry prior evidence/remediation hashes while preserving changed scope and failed/unmapped coverage; the binding deliberately records `remediation_applied=unknown` rather than inventing closure. Hosted Evidence Workbench CI run `35561727602` passed on Python 3.11–3.13 for this head; its Python 3.13 job ran **221 Python tests** and **23 JavaScript contract tests** successfully. Gate B advanced materially in Contribution 07 but is **still not complete** because cancellation has not yet been exercised across every connect/TLS/response/model phase and test-only injected readers are not a production hard-deadline guarantee. Gates C and E remain materially incomplete, so the project is **not** eligible for an early “only polish remains” stop.
 
 ## 1. Complete the reliability boundary
 
@@ -97,9 +97,11 @@ Acceptance: adversarial responses cannot change target, permissions, shell comma
 
 ## 7. Retesting and change-aware reports
 
-Use stable fingerprints plus comparable coverage to distinguish still-present, new, not-reproduced, not-retested and regression. Comparison is already exposed through the local API/GUI. Next, link remediation evidence to the exact comparable recheck and make coverage changes impossible to hide. Do not produce an unsupported overall safety score.
+Implemented Gate D foundations now distinguish `still_present`, `new`, `not_reproduced` and `not_retested`; comparison is exposed through the local API/GUI; reviewer bundles carry checksums and safe minimized proof; and each prior finding now gets a recheck binding with previous/current run IDs, previous finding/evidence references, a remediation-guidance digest, exact mapped coverage status and explicit scope comparability. Failed/unmapped checks and changed target/environment remain `not_retested`; `not_reproduced` is never renamed fixed; whether remediation was actually applied remains `unknown` absent separate evidence.
 
-Acceptance: Gate D; failed scanner or changed scope cannot falsely close a finding.
+Next work beyond the bounded Gate D criteria: add optional operator-authored remediation activity records with provenance and reviewer signatures/attestation only after a threat model and key-management design. Do not weaken the existing conservative state machine to make dashboards look greener.
+
+Acceptance: Gate D passes at `1c85853a`; failed scanner or changed scope cannot falsely close a finding.
 
 ## 8. Interface and accessibility
 
