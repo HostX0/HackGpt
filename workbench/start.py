@@ -7,6 +7,7 @@ the retained older entry points and third-party embedding do not take this lock.
 from __future__ import annotations
 
 import argparse
+import faulthandler
 import json
 import os
 from pathlib import Path
@@ -121,6 +122,12 @@ def main(argv=None):
         parser.error('--check-install cannot be combined with --open-browser')
     previous_umask = os.umask(0o077)
     lock = state = server = None
+    trace_startup = os.environ.get("HACKGPT_STARTUP_TRACE") == "1"
+    if trace_startup:
+        # CI-only diagnostic: preserve the bounded readiness assertion while making
+        # a genuinely stuck child explain where it is blocked. Production startup
+        # is unchanged unless the explicit diagnostic environment flag is set.
+        faulthandler.dump_traceback_later(10, repeat=True, file=sys.stderr)
     try:
         lock = WorkspaceLock(args.data_dir)
         result = check_local_install(lock.directory, args.port)
@@ -172,6 +179,8 @@ def main(argv=None):
             state.worker.join(timeout=10)
         if lock is not None:
             lock.close()
+        if trace_startup:
+            faulthandler.cancel_dump_traceback_later()
         os.umask(previous_umask)
 
 
