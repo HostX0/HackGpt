@@ -71,8 +71,8 @@ def main():
             status, _, raw = call(server, "/api/adapters")
             assert status == 200, status
             adapters = json.loads(raw)["adapters"]
-            ids = {item["adapter_id"] for item in adapters}
-            assert {"native-project-metadata/1", "native-web-headers/1"}.issubset(ids)
+            ids = {item["adapter"]["id"] for item in adapters}
+            assert {"native-project-metadata", "native-web-headers"}.issubset(ids)
 
             status, _, raw = call(server, "/api/runs", INPUT)
             assert status == 202, (status, raw)
