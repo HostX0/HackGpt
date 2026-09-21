@@ -42,7 +42,7 @@ These gates determine whether a review milestone is genuinely complete. They are
 - Fresh-install smoke tests pass on the documented platforms with pinned dependencies/tool licenses and an SBOM.
 - Threat model, sample reports, regression lab catalog and release notes clearly separate implemented, experimental and unsupported coverage.
 
-**Current state after Contribution 09: Gates A and D pass their declared bounded criteria in the dedicated workbench test boundary.** Gate A remains evidence-first and Gate D remains conservatively retest-aware. Gate B is **still not complete** because cancellation has not yet been exercised across every connect/TLS/response/model phase and injected readers are not a production hard-deadline guarantee. Gate C now has a closed `hackgpt.execution-declaration/v1` authority contract plus bounded native project-metadata and one-request web-header adapters; vulnerable/corrected synthetic logic fixtures pass, but runner/orchestration integration, production-path web fixture coverage and third-party scanner pinning/licensing remain before Gate C is declared complete. Gate E remains materially incomplete. The project is therefore **not** eligible for an early “only polish remains” stop.
+**Current state after Contribution 10: Gates A and D pass their declared bounded criteria in the dedicated workbench test boundary.** Gate A remains evidence-first and Gate D remains conservatively retest-aware. Gate B is **still not complete** because cancellation has not yet been exercised across every connect/TLS/response/model phase and injected readers are not a production hard-deadline guarantee. Gate C now has a closed `hackgpt.execution-declaration/v1` authority contract, bounded native project-metadata and one-request web-header adapters, plus a finite `ExecutionRegistry` with an independent operator authority ceiling; vulnerable/corrected synthetic logic fixtures pass, but durable assessment-lifecycle/API/GUI integration, production-path web fixture coverage and third-party scanner pinning/licensing remain before Gate C is declared complete. Gate E remains materially incomplete. The project is therefore **not** eligible for an early “only polish remains” stop.
 
 ## 1. Complete the reliability boundary
 
@@ -59,10 +59,10 @@ Acceptance: Gate B.
 
 ## 2. Stable adapter and finding contracts
 
-Implemented foundations: `hackgpt.adapter-result/v1`, deterministic fingerprints, candidate-only import authority, privacy-minimizing offline parsers for Semgrep JSON, Trivy JSON and Nuclei JSONL, malformed/truncated/oversized input tests, explicit coverage caveats, and the closed `hackgpt.execution-declaration/v1` authority contract. The current native project/web adapters declare and enforce no-subprocess/no-write boundaries plus explicit object/request/time budgets. See [ADAPTERS.md](ADAPTERS.md).
+Implemented foundations: `hackgpt.adapter-result/v1`, deterministic fingerprints, candidate-only import authority, privacy-minimizing offline parsers for Semgrep JSON, Trivy JSON and Nuclei JSONL, malformed/truncated/oversized input tests, explicit coverage caveats, the closed `hackgpt.execution-declaration/v1` authority contract, and a finite `ExecutionRegistry` with operator-owned filesystem/network/effect ceilings. The current native project/web adapters declare and enforce no-subprocess/no-write boundaries plus explicit object/request/time budgets. See [ADAPTERS.md](ADAPTERS.md).
 
 Next work:
-- Integrate declarations through a small workbench-controlled execution registry/orchestrator instead of direct ad-hoc construction.
+- Wire the finite execution registry into a durable assessment lifecycle/API/GUI with explicit per-adapter progress, cancellation and budget accounting; do not expose arbitrary local paths through an unauthenticated surface.
 - Pin/review each external scanner version, license and packaging boundary before launch support.
 - Add production-path owned fixtures for the network adapter and parser/runner pairs for third-party tools.
 - Keep severity separate from confidence, proof state, exploitability assumptions and business impact.
@@ -96,7 +96,9 @@ Acceptance: role/isolation vulnerable/fixed fixtures pass, denied controls are i
 
 ## 6. Bounded model-independent orchestration
 
-Expand the finite action registry only after each adapter has deterministic validation and independent scope enforcement. Renew approval when target/effect/scope changes. Record public decision/action traces and budgets. Treat model/tool/retrieved text as untrusted data, never authority.
+The current `ExecutionRegistry` is finite and policy-gated: reviewed adapter IDs map to code-owned constructors, unknown command/dynamic fields fail closed, and operator filesystem/network/effect ceilings are checked before adapter I/O. It is an internal execution boundary, not yet a durable assessment scheduler or public execution API.
+
+Next work: connect approved registry actions to the durable assessment lifecycle with explicit progress, cancellation and budget accounting. Expand the registry only after each adapter has deterministic validation and independent scope enforcement. Renew approval when target/effect/scope changes. Record public decision/action traces and budgets. Treat model/tool/retrieved text as untrusted data, never authority.
 
 Acceptance: adversarial responses cannot change target, permissions, shell commands, budgets or evidence state. Local/cloud/provider routing never changes tool authority.
 
