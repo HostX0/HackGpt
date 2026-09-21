@@ -8,6 +8,7 @@ let starting = false;
 let testingModel = false;
 let modelCheckEpoch = 0;
 let discoveryEpoch = 0;
+let historyRuns = [];
 const fragment = new URLSearchParams(location.hash.slice(1));
 if (fragment.has('token')) {
   token = fragment.get('token');
@@ -150,8 +151,6 @@ $('detect').addEventListener('click', async () => {
     if (epoch !== discoveryEpoch || choice !== cloudChoice()) return;
     $('model-list').replaceChildren();
     result.models.forEach((name) => { const option = element('option'); option.value = name; $('model-list').append(option); });
-    // Never silently replace a user's selected model, even if it disappeared.
-    // Selection is always explicit, including the first cloud model.
     $('model-help').textContent = result.note;
     $('model-state').textContent = human(result.state) + (result.blocked_models ? ' · ' + result.blocked_models + ' remote model(s) filtered.' : '');
   } catch (error) { notice(error.message, true); }
@@ -176,6 +175,7 @@ $('scan-form').addEventListener('submit', async (event) => {
 async function selectRun(id) {
   if (polling) clearTimeout(polling);
   selectedRun = id;
+  $('compare-content').textContent = 'Select a finalized earlier run after viewing the current report.';
   await poll(id);
 }
 async function poll(id) {
@@ -190,6 +190,20 @@ async function poll(id) {
     notice(error.message + ' Reconnect before assuming the run has stopped.', true);
   }
 }
+function updateRetestOptions() {
+  const select = $('compare-run');
+  const oldValue = select.value;
+  select.replaceChildren();
+  const first = element('option', 'Select earlier run'); first.value = ''; select.append(first);
+  historyRuns.filter((run) => run.id !== selectedRun).forEach((run) => {
+    const option = element('option', new Date(run.started_at).toLocaleString() + ' · ' + run.target + ' · ' + human(run.verdict));
+    option.value = run.id; select.append(option);
+  });
+  if (historyRuns.some((run) => run.id === oldValue && run.id !== selectedRun)) select.value = oldValue;
+  else select.value = '';
+  select.disabled = running || !selectedRun || select.children.length <= 1;
+  $('compare').disabled = select.disabled || !select.value;
+}
 function render(report) {
   running = report.status === 'running';
   $('start').disabled = running; $('cancel').disabled = !running;
@@ -199,7 +213,8 @@ function render(report) {
   $('test-model').disabled = running || !$('use-ai').checked;
   $('allow-cloud').disabled = running || !$('use-ai').checked;
   document.querySelectorAll('.history-item').forEach((node) => { node.disabled = running; });
-  $('export-json').disabled = running || !report.integrity; $('export-md').disabled = running || !report.integrity;
+  const exportable = !running && !!report.integrity;
+  $('export-json').disabled = !exportable; $('export-md').disabled = !exportable; $('export-bundle').disabled = !exportable;
   $('count-findings').textContent = report.findings.length;
   $('count-verified').textContent = report.findings.filter((f) => f.verification === 'verified_in_lab').length;
   $('count-checks').textContent = report.checks.filter((c) => c.status === 'completed').length;
@@ -225,19 +240,41 @@ function render(report) {
   $('coverage-content').textContent = JSON.stringify({checks: report.checks, limitations: report.limitations}, null, 2);
   $('ai-content').textContent = JSON.stringify(report.ai, null, 2);
   $('integrity').textContent = report.integrity ? 'Finalized report SHA-256 (unsigned): ' + report.integrity.report_sha256 : 'Report in progress. Integrity digest will be calculated at completion.';
+  updateRetestOptions();
   if (report.persistence_error) notice(report.persistence_error, true);
 }
 async function loadHistory() {
   const result = await api('/api/runs');
+  historyRuns = result.runs;
   $('history-list').replaceChildren();
-  if (!result.runs.length) return $('history-list').append(element('p', 'No saved assessments yet. Completed, partial and failed runs will appear here.', 'muted'));
+  if (!result.runs.length) {
+    updateRetestOptions();
+    return $('history-list').append(element('p', 'No saved assessments yet. Completed, partial and failed runs will appear here.', 'muted'));
+  }
   result.runs.forEach((run) => {
     const button = element('button', undefined, 'history-item'); button.type = 'button';
     button.append(element('strong', run.target), element('span', human(run.verdict)), element('time', new Date(run.started_at).toLocaleString()));
     button.disabled = running;
     button.addEventListener('click', () => selectRun(run.id)); $('history-list').append(button);
   });
+  updateRetestOptions();
 }
+$('compare-run').addEventListener('change', () => { $('compare').disabled = running || !selectedRun || !$('compare-run').value; });
+$('compare').addEventListener('click', async () => {
+  const previous = $('compare-run').value;
+  if (!previous || !selectedRun || previous === selectedRun || running) return;
+  $('compare').disabled = true;
+  $('compare-content').textContent = 'Comparing finalized evidence and comparable coverage…';
+  try {
+    const result = await api('/api/runs/' + previous + '/compare/' + selectedRun);
+    $('compare-content').textContent = JSON.stringify(result, null, 2);
+  } catch (error) {
+    $('compare-content').textContent = 'Comparison unavailable.';
+    notice(error.message, true);
+  } finally {
+    $('compare').disabled = running || !$('compare-run').value;
+  }
+});
 $('refresh').addEventListener('click', () => loadHistory().catch((error) => notice(error.message, true)));
 $('cancel').addEventListener('click', async () => {
   try { const result = await api('/api/runs/' + selectedRun + '/cancel', {}); notice(result.note); $('cancel').disabled = true; }
@@ -253,4 +290,5 @@ async function download(extension) {
 }
 $('export-json').addEventListener('click', () => download('json'));
 $('export-md').addEventListener('click', () => download('md'));
+$('export-bundle').addEventListener('click', () => download('bundle.zip'));
 if (token) unlock();

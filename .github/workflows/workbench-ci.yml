@@ -42,7 +42,7 @@ jobs:
         shell: bash
         run: |
           set -o pipefail
-          node --test workbench/tests/test_ollama_ui.cjs 2>&1 | tee _review/javascript-tests.txt
+          node --test workbench/tests/test_ollama_ui.cjs workbench/tests/test_reviewer_ui.cjs 2>&1 | tee _review/javascript-tests.txt
       - name: Prepare revision-bound source review bundle
         if: success() && matrix.python == '3.13'
         shell: bash
