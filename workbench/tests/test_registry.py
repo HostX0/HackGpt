@@ -17,12 +17,16 @@ class _StepCancel:
 
 
 class ExecutionRegistryTests(unittest.TestCase):
-    def test_describe_returns_only_reviewed_native_adapters(self):
+    def test_describe_returns_only_reviewed_adapters(self):
         declarations = ExecutionRegistry().describe()
         self.assertEqual({item["adapter"]["id"] for item in declarations}, {
-            "native-project-metadata", "native-web-headers",
+            "native-project-metadata", "native-web-headers", "semgrep-project-local",
         })
         self.assertTrue(all("command" not in item for item in declarations))
+        semgrep = next(item for item in declarations if item["adapter"]["id"] == "semgrep-project-local")
+        self.assertEqual(semgrep["launcher"], "fixed_container")
+        self.assertEqual(semgrep["network"], "none")
+        self.assertFalse(semgrep["writes"])
 
     def test_unknown_adapter_and_dynamic_execution_fields_fail_closed(self):
         registry = ExecutionRegistry()
@@ -33,17 +37,26 @@ class ExecutionRegistryTests(unittest.TestCase):
                 registry.execute("native-project-metadata", {
                     "root": directory, "asset_key": "fixture", "command": "anything"
                 })
+            with self.assertRaises(ValueError):
+                registry.plan("semgrep-project-local", {
+                    "root": directory, "asset_key": "fixture", "command": "anything"
+                })
 
-    def test_filesystem_policy_blocks_project_adapter_but_not_web(self):
+    def test_filesystem_policy_blocks_project_adapters_but_not_web(self):
         registry = ExecutionRegistry(RegistryPolicy(allow_filesystem=False, allow_network=True))
         self.assertEqual([item["adapter"]["id"] for item in registry.describe()], ["native-web-headers"])
         with tempfile.TemporaryDirectory() as directory:
             with self.assertRaises(PermissionError):
                 registry.execute("native-project-metadata", {"root": directory, "asset_key": "fixture"})
+            with self.assertRaises(PermissionError):
+                registry.plan("semgrep-project-local", {"root": directory, "asset_key": "fixture"})
 
-    def test_network_policy_blocks_web_adapter_before_reader(self):
+    def test_network_policy_blocks_web_but_offline_semgrep_remains_describable(self):
         calls = []
         registry = ExecutionRegistry(RegistryPolicy(allow_filesystem=True, allow_network=False))
+        ids = {item["adapter"]["id"] for item in registry.describe()}
+        self.assertIn("semgrep-project-local", ids)
+        self.assertNotIn("native-web-headers", ids)
         with self.assertRaises(PermissionError):
             registry.execute(
                 "native-web-headers",
@@ -51,6 +64,21 @@ class ExecutionRegistryTests(unittest.TestCase):
                 web_reader=lambda target: calls.append(target),
             )
         self.assertEqual(calls, [])
+
+    def test_semgrep_plan_is_sanitized_and_does_not_probe_docker(self):
+        with tempfile.TemporaryDirectory() as directory:
+            plan = ExecutionRegistry().plan("semgrep-project-local", {
+                "root": directory,
+                "asset_key": "fixture",
+                "max_files": 20,
+                "timeout_seconds": 30,
+            })
+        summary = plan["request_summary"]
+        self.assertEqual(plan["declaration"]["launcher"], "fixed_container")
+        self.assertEqual(plan["declaration"]["network"], "none")
+        self.assertFalse(summary["full_path_included"])
+        self.assertEqual(summary["tool"], "semgrep-ce")
+        self.assertEqual(summary["max_files"], 20)
 
     def test_project_execution_remains_candidate_and_secret_safe(self):
         with tempfile.TemporaryDirectory() as directory:
