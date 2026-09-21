@@ -42,7 +42,7 @@ These gates determine whether a review milestone is genuinely complete. They are
 - Fresh-install smoke tests pass on the documented platforms with pinned dependencies/tool licenses and an SBOM.
 - Threat model, sample reports, regression lab catalog and release notes clearly separate implemented, experimental and unsupported coverage.
 
-**Current state:** Gate A is partially implemented; Gate D now has standalone conservative retest/bundle foundations but still needs UI/API integration and full-suite CI evidence. Gates B, C and E remain incomplete. Therefore the project is not eligible for an early “only polish remains” stop.
+**Current state at feature head `96db2e76`: Gate A passes the declared evidence-core criteria in the dedicated workbench test boundary.** Final reports are integrity-gated, non-success coverage states remain visible, imported parser findings are candidate-only, and the synthetic proof uses a denied control/fresh canary without being attributed to an external target. Hosted Evidence Workbench CI passed on Python 3.11–3.13 for this head. Gate D has conservative comparison/bundle foundations and live GUI controls, but remediation-to-comparable-recheck linkage is still incomplete. Gates B, C and E remain materially incomplete, so the project is **not** eligible for an early “only polish remains” stop.
 
 ## 1. Complete the reliability boundary
 
@@ -56,13 +56,15 @@ Acceptance: Gate B.
 
 ## 2. Stable adapter and finding contracts
 
-- Version request/result schemas, adapter/tool/version identifiers and deterministic fingerprints.
-- Typed adapter protocol declares network/filesystem permissions, effect level, scope capability and coverage units.
-- Parse scanner fixtures offline before implementing execution.
-- Normalize severity separately from confidence, proof state, exploitability assumptions and business impact.
-- Imported adapters can create candidates/observations only; independent verification remains a separate authority.
+Implemented foundations: `hackgpt.adapter-result/v1`, deterministic fingerprints, candidate-only import authority, privacy-minimizing offline parsers for Semgrep JSON, Trivy JSON and Nuclei JSONL, malformed/truncated/oversized input tests, and explicit coverage caveats. See [ADAPTERS.md](ADAPTERS.md).
 
-Acceptance: malformed/truncated fixtures cannot invent verified findings; contract tests pass across supported Python versions.
+Next work:
+- Define the typed **execution** protocol with declared network/filesystem permissions, effect level, scope capability and coverage units.
+- Pin/review each executable scanner version, license and packaging boundary before launch support.
+- Keep severity separate from confidence, proof state, exploitability assumptions and business impact.
+- Preserve adapter-specific minimization tests as richer outputs are added.
+
+Acceptance: malformed/truncated fixtures cannot invent verified findings; contract tests pass across supported Python versions; execution authority remains independent of parser/model output.
 
 ## 3. Project-code checks first
 
@@ -78,9 +80,11 @@ Acceptance: isolated tests prove no unintended external target and enforce effec
 
 ## 5. Authenticated test contexts
 
-Support operator-provided designated test accounts/roles with secure local storage, redaction, expiry and an access-control matrix. Use customer-designated synthetic/test records and inert canaries for proof. Never use unrelated live customer rows as report samples.
+The execution-neutral `access_matrix.py` foundation now compares explicit role/resource expectations against normalized allowed/denied/error/skipped outcomes, rejects credential/body fields, keeps missing cases incomplete and forces unexpected allows through the candidate-only adapter boundary. It does **not** authenticate or send requests.
 
-Acceptance: role/isolation vulnerable/fixed fixtures pass and secrets are absent from logs, prompts and exports.
+Next work: support operator-provided designated test accounts/roles with secure local storage, redaction, expiry and a scoped runner that feeds this matrix. Use customer-designated synthetic/test records and inert canaries for proof. Never use unrelated live customer rows as report samples.
+
+Acceptance: role/isolation vulnerable/fixed fixtures pass, denied controls are independently demonstrated and secrets are absent from logs, prompts and exports.
 
 ## 6. Bounded model-independent orchestration
 
@@ -90,13 +94,13 @@ Acceptance: adversarial responses cannot change target, permissions, shell comma
 
 ## 7. Retesting and change-aware reports
 
-Use stable fingerprints plus comparable coverage to distinguish still-present, new, not-reproduced, not-retested and regression. Add evidence-linked remediation/recheck. Do not produce an unsupported overall safety score.
+Use stable fingerprints plus comparable coverage to distinguish still-present, new, not-reproduced, not-retested and regression. Comparison is already exposed through the local API/GUI. Next, link remediation evidence to the exact comparable recheck and make coverage changes impossible to hide. Do not produce an unsupported overall safety score.
 
 Acceptance: Gate D; failed scanner or changed scope cannot falsely close a finding.
 
 ## 8. Interface and accessibility
 
-Refine typography/touch targets, keyboard navigation, accessible live statuses, localization-ready strings, filters, per-tool progress, scope/effect preview, retest diff and evidence drill-down. Add real browser-to-server E2E where environment permits; keep DOM/mock transport tests labeled separately.
+Retest comparison and evidence-bundle download are now surfaced in the current GUI. Continue with typography/touch targets, keyboard navigation, accessible live statuses, localization-ready strings, filters, per-tool progress, scope/effect preview and evidence drill-down. Add real browser-to-server E2E where environment permits; keep DOM/mock transport tests labeled separately.
 
 Acceptance: keyboard-only flows, responsive documented layouts, readable errors and actual-render screenshots.
 
