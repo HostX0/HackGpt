@@ -18,6 +18,8 @@ This catalog maps owned/synthetic fixtures to the security property they validat
 | Persistence failure fixture | Final result is not falsely durable | Simulated storage failure marks terminal result memory-only and blocks review export/comparison | Successful transaction publishes sealed durable report | Temporary SQLite |
 | Restart recovery fixture | Running job cannot become completed after crash | Stale active checkpoint recovers to interrupted/inconclusive | Clean terminal transaction retires checkpoint | Temporary SQLite |
 | Retest comparison fixtures | Missing finding is not automatically fixed | Failed/skipped/unmapped or changed scope remains not_retested | Comparable completed recheck may yield not_reproduced; existing finding remains still_present | Offline report fixtures |
+| Browser-to-loopback E2E fixture | Actual rendered UI, session-token handling, responsive layout, keyboard reachability, accessibility naming and synthetic assessment flow | Token leakage, horizontal overflow, unnamed focusable controls, unreachable enabled controls, runtime exceptions or lost synthetic-only wording fail the job | Actual Chromium UI unlocks against the real loopback server and completes the owned synthetic controlled-verification flow | Real system Chromium to owned 127.0.0.1 server only |
+| Fresh-checkout platform smoke | Isolated checkout can start and complete its bounded no-AI evidence workflow on documented hosted OS runners | Startup/API/adapter discovery/persistence/export/integrity failure fails the OS job | Owned synthetic verification finalizes durably and exports intact evidence | Real loopback server on GitHub-hosted Ubuntu, macOS and Windows; no external assessment target |
 
 ## Lab evidence rules
 
@@ -27,9 +29,11 @@ This catalog maps owned/synthetic fixtures to the security property they validat
 4. Ordinary customer rows, real credentials and reusable secrets are prohibited from regression fixtures.
 5. Scanner parser fixtures do not imply the corresponding binary was executed.
 6. Protocol doubles do not count as live local/cloud model inference.
-7. DOM/fetch doubles do not count as browser-to-server E2E.
-8. Timing tests must assert bounded behavior rather than requiring a race-sensitive server-side event to have happened.
+7. DOM/fetch doubles remain distinct from the real browser-to-loopback E2E job.
+8. The browser E2E job is a Chromium/Ubuntu CI check, not a multi-browser or assistive-technology certification.
+9. Fresh-checkout platform smoke proves the isolated no-AI workbench path on the tested hosted OS images; it is not a signed installer/package attestation.
+10. Timing tests must assert bounded behavior rather than requiring a race-sensitive server-side event to have happened.
 
 ## Missing release-lab evidence
 
-Gate E still requires a documented real browser-to-loopback E2E/accessibility run, fresh-install smoke tests on documented operating systems, and a real-model compatibility check distinct from protocol doubles. Future third-party runners require pinned/licensed runner fixtures before they can be represented as executable capabilities.
+Gate E still requires a live compatible model check distinct from protocol doubles and release-grade packaging/signing evidence. The real browser-to-loopback E2E/accessibility job and fresh-checkout smoke jobs on GitHub-hosted Ubuntu, macOS and Windows now exist and passed on feature head `dfa25ac302d1bfbcf12819da606b93ba0610b69e` in Evidence Workbench run `35580926585`. Future third-party runners still require pinned/licensed runner fixtures before they can be represented as executable capabilities.
