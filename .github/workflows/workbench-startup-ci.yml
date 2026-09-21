@@ -1,0 +1,33 @@
+name: Workbench Startup
+
+on:
+  pull_request:
+    paths: ['workbench/**', '.github/workflows/workbench-startup-ci.yml']
+  push:
+    branches: [main]
+    paths: ['workbench/**', '.github/workflows/workbench-startup-ci.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: workbench-startup-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  startup:
+    name: Startup (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 5
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Additive launcher, duplicate-start, storage-fault and owned-assessment regressions
+        run: python -m unittest workbench.tests.test_startup -v
