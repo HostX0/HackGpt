@@ -16,14 +16,11 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  package-and-attest:
+  build-package:
     runs-on: ubuntu-latest
-    timeout-minutes: 8
-    permissions:
-      contents: read
-      id-token: write
-      attestations: write
-      artifact-metadata: write
+    timeout-minutes: 6
+    outputs:
+      package-basename: ${{ steps.package.outputs.package_basename }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -35,7 +32,7 @@ jobs:
         run: |
           set -euo pipefail
           PACKAGE_BASENAME="hackgpt-evidence-workbench-${GITHUB_SHA}"
-          mkdir -p _release/stage "$RUNNER_TEMP/workbench-package-smoke"
+          mkdir -p _release/stage
           git archive --format=tar --prefix="${PACKAGE_BASENAME}/" HEAD workbench LICENSE | tar -xf - -C _release/stage
           python -m workbench.release_evidence --output-dir "_release/stage/${PACKAGE_BASENAME}/release-evidence"
           PACKAGE_BASENAME="$PACKAGE_BASENAME" python - <<'PY'
@@ -66,27 +63,78 @@ jobs:
           gzip -n -9 "_release/${PACKAGE_BASENAME}.tar"
           sha256sum "_release/${PACKAGE_BASENAME}.tar.gz" | tee _release/SHA256SUMS
           cp "_release/stage/${PACKAGE_BASENAME}/PACKAGE-MANIFEST.json" _release/PACKAGE-MANIFEST.json
-          echo "package_path=_release/${PACKAGE_BASENAME}.tar.gz" >> "$GITHUB_OUTPUT"
+          cp "_release/stage/${PACKAGE_BASENAME}/release-evidence/sbom.cdx.json" _release/sbom.cdx.json
           echo "package_basename=${PACKAGE_BASENAME}" >> "$GITHUB_OUTPUT"
-      - name: Smoke the exact packaged source archive
+      - name: Upload exact package candidate
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: workbench-release-candidate-${{ github.sha }}
+          path: |
+            _release/${{ steps.package.outputs.package_basename }}.tar.gz
+            _release/SHA256SUMS
+            _release/PACKAGE-MANIFEST.json
+            _release/sbom.cdx.json
+          if-no-files-found: error
+          retention-days: 1
+
+  package-smoke:
+    needs: build-package
+    timeout-minutes: 8
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Download exact package candidate
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: workbench-release-candidate-${{ github.sha }}
+          path: _candidate
+      - name: Smoke exact package on this platform
         shell: bash
         run: |
           set -euo pipefail
-          tar -xzf "${{ steps.package.outputs.package_path }}" -C "$RUNNER_TEMP/workbench-package-smoke"
-          cd "$RUNNER_TEMP/workbench-package-smoke/${{ steps.package.outputs.package_basename }}"
-          python -m compileall -q workbench
-          python -m workbench.tests.fresh_install_smoke
+          mkdir -p _package_smoke
+          python -m workbench.tests.package_smoke _candidate 2>&1 | tee "_package_smoke/${RUNNER_OS}.json"
+      - name: Upload package smoke evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: workbench-package-smoke-${{ matrix.os }}-${{ github.sha }}
+          path: _package_smoke/
+          if-no-files-found: error
+          retention-days: 7
+
+  attest-package:
+    needs: [build-package, package-smoke]
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+      artifact-metadata: write
+    steps:
+      - name: Download cross-platform-smoked package candidate
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: workbench-release-candidate-${{ github.sha }}
+          path: _release
       - name: Generate signed build provenance attestation
         id: provenance
         uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4
         with:
-          subject-path: ${{ steps.package.outputs.package_path }}
+          subject-path: _release/${{ needs.build-package.outputs.package-basename }}.tar.gz
       - name: Generate signed SBOM attestation
         id: sbom_attestation
         uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4
         with:
-          subject-path: ${{ steps.package.outputs.package_path }}
-          sbom-path: _release/stage/${{ steps.package.outputs.package_basename }}/release-evidence/sbom.cdx.json
+          subject-path: _release/${{ needs.build-package.outputs.package-basename }}.tar.gz
+          sbom-path: _release/sbom.cdx.json
       - name: Preserve and verify attestation evidence
         env:
           GH_TOKEN: ${{ github.token }}
@@ -107,15 +155,17 @@ jobs:
             "sbom_attestation_id=$SBOM_ID" \
             "sbom_attestation_url=$SBOM_URL" \
             > _release/ATTESTATIONS.txt
-          gh attestation verify "${{ steps.package.outputs.package_path }}" --repo "$GITHUB_REPOSITORY" | tee _release/attestation-verification.txt
-      - name: Upload attested release package and evidence
+          gh attestation verify "_release/${{ needs.build-package.outputs.package-basename }}.tar.gz" \
+            --repo "$GITHUB_REPOSITORY" 2>&1 | tee _release/attestation-verification.txt
+      - name: Upload attested portable release evidence
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: workbench-release-package-${{ github.sha }}
           path: |
-            _release/${{ steps.package.outputs.package_basename }}.tar.gz
+            _release/${{ needs.build-package.outputs.package-basename }}.tar.gz
             _release/SHA256SUMS
             _release/PACKAGE-MANIFEST.json
+            _release/sbom.cdx.json
             _release/provenance.sigstore.json
             _release/sbom-attestation.sigstore.json
             _release/ATTESTATIONS.txt
@@ -123,7 +173,8 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
-# This workflow builds and tests a portable source archive only. It does not publish a
-# release, container, package registry entry, website or scanner image. GitHub/Sigstore
-# attestations bind the generated archive digest to this workflow/revision; they are
-# provenance evidence, not a security certification or a statement of universal coverage.
+# The portable source archive is built once, then the exact SHA-256-addressed bytes are
+# extracted and smoke-tested on GitHub-hosted Ubuntu, macOS and Windows before signing.
+# The workflow does not publish a release, registry object, website or scanner image.
+# GitHub/Sigstore attestations provide build provenance/SBOM bindings, not a security
+# certification, code-signing identity for a native installer or universal coverage claim.
