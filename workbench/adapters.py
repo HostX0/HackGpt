@@ -85,8 +85,13 @@ def _envelope(adapter_id: str, version: str, status: str, coverage: dict[str, An
     return payload
 
 
-def parse_semgrep_json(raw: str | bytes, *, version: str, asset_key: str) -> dict[str, Any]:
-    """Parse Semgrep JSON while omitting source snippets and metavariable contents."""
+def parse_semgrep_json(raw: str | bytes, *, version: str, asset_key: str, adapter_id: str = "semgrep-json") -> dict[str, Any]:
+    """Parse Semgrep JSON while omitting source snippets and metavariable contents.
+
+    ``adapter_id`` remains ``semgrep-json`` for passive imports. A reviewed execution
+    adapter may supply its own fixed identity so execution receipts bind to the runner
+    that actually produced the output without changing the parser's minimization rules.
+    """
     text = _decode(raw)
     try:
         document = json.loads(text)
@@ -137,7 +142,7 @@ def parse_semgrep_json(raw: str | bytes, *, version: str, asset_key: str) -> dic
         "objects_total": len(scanned) if scanned else None,
         "notes": ["Semgrep JSON parser omits source snippets and metavariable values."],
     }
-    return normalize_adapter_result(_envelope("semgrep-json", version, status, coverage, findings, error), asset_key=asset_key)
+    return normalize_adapter_result(_envelope(adapter_id, version, status, coverage, findings, error), asset_key=asset_key)
 
 
 def parse_trivy_json(raw: str | bytes, *, version: str, asset_key: str) -> dict[str, Any]:
