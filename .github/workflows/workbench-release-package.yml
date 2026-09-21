@@ -65,6 +65,7 @@ jobs:
             -cf "_release/${PACKAGE_BASENAME}.tar" -C _release/stage "$PACKAGE_BASENAME"
           gzip -n -9 "_release/${PACKAGE_BASENAME}.tar"
           sha256sum "_release/${PACKAGE_BASENAME}.tar.gz" | tee _release/SHA256SUMS
+          cp "_release/stage/${PACKAGE_BASENAME}/PACKAGE-MANIFEST.json" _release/PACKAGE-MANIFEST.json
           echo "package_path=_release/${PACKAGE_BASENAME}.tar.gz" >> "$GITHUB_OUTPUT"
           echo "package_basename=${PACKAGE_BASENAME}" >> "$GITHUB_OUTPUT"
       - name: Smoke the exact packaged source archive
@@ -121,10 +122,6 @@ jobs:
             _release/attestation-verification.txt
           if-no-files-found: error
           retention-days: 7
-      - name: Record package manifest beside uploaded evidence
-        shell: bash
-        run: |
-          cp "_release/stage/${{ steps.package.outputs.package_basename }}/PACKAGE-MANIFEST.json" _release/PACKAGE-MANIFEST.json
 
 # This workflow builds and tests a portable source archive only. It does not publish a
 # release, container, package registry entry, website or scanner image. GitHub/Sigstore
