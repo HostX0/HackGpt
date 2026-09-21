@@ -11,6 +11,7 @@ import json
 import os
 import re
 import socket
+import time
 from typing import Any
 
 MAX_RESPONSE_BYTES = 262144
@@ -59,6 +60,7 @@ class LocalRuntime:
         self._attempts = 0
         self._last_metadata = None
         self._catalog_cloud_names = set()
+        self._deadline_at = None
         if not isinstance(model, str) or (model and not valid_model_name(model)):
             raise OllamaError("invalid_model", "Invalid Ollama model name.", "Select an exact installed model from Detect.")
         if "cloud" in model.lower() and not self.allow_cloud:
@@ -75,6 +77,21 @@ class LocalRuntime:
     def endpoint(self) -> str:
         return f"http://127.0.0.1:{self.port}"
 
+    def set_deadline(self, expires_at: float) -> None:
+        """Attach the assessment's monotonic absolute deadline to every later request."""
+        if isinstance(expires_at, bool) or not isinstance(expires_at, (int, float)):
+            raise OllamaError("invalid_deadline", "Invalid assessment deadline.", "Restart the assessment.")
+        self._deadline_at = float(expires_at)
+        self._operation_timeout(90)
+
+    def _operation_timeout(self, cap: float) -> float:
+        if self._deadline_at is None:
+            return float(cap)
+        remaining = self._deadline_at - time.monotonic()
+        if remaining <= 0:
+            raise OllamaError("deadline_exceeded", "Assessment wall-clock deadline exceeded before the model operation.", "Start a new assessment if additional approved time is required.")
+        return max(0.001, min(float(cap), remaining))
+
     def request(self, route: str, data: dict[str, Any] | None = None) -> dict[str, Any]:
         methods = {"/api/tags": "GET", "/api/show": "POST", "/api/chat": "POST"}
         if route not in methods or (data is None) != (methods[route] == "GET"):
@@ -84,9 +101,9 @@ class LocalRuntime:
         body = json.dumps(data, allow_nan=False).encode("utf-8") if data is not None else None
         if body is not None and len(body) > MAX_REQUEST_BYTES:
             raise OllamaError("request_too_large", "AI context exceeds the request budget.", "Reduce the evidence summary before retrying.")
+        timeout = self._operation_timeout(90 if route == "/api/chat" else 3)
         # http.client neither reads proxy environment variables nor follows redirects.
-        # Socket timeouts are per blocking operation, not an end-to-end deadline.
-        conn = http.client.HTTPConnection("127.0.0.1", self.port, timeout=90 if route == "/api/chat" else 3)
+        conn = http.client.HTTPConnection("127.0.0.1", self.port, timeout=timeout)
         try:
             conn.request(methods[route], route, body=body,
                          headers={"Content-Type": "application/json", "Connection": "close"})
@@ -111,6 +128,9 @@ class LocalRuntime:
         except OllamaError:
             raise
         except (TimeoutError, socket.timeout) as exc:
+            deadline_hit = self._deadline_at is not None and time.monotonic() >= self._deadline_at
+            if deadline_hit:
+                raise OllamaError("deadline_exceeded", "Assessment wall-clock deadline expired during the model operation.", "Start a new assessment if additional approved time is required.") from exc
             raise OllamaError("timeout", "Ollama did not respond within the socket timeout.", "Check local load or select a smaller installed model.", retryable=True) from exc
         except (json.JSONDecodeError, UnicodeDecodeError, RecursionError, http.client.HTTPException) as exc:
             raise OllamaError("invalid_response", "Ollama returned a malformed response.", "Check that the configured port belongs to Ollama.") from exc
@@ -219,6 +239,7 @@ class LocalRuntime:
                 "output_tokens_reported": total("output_tokens"),
                 "calls": [dict(call) for call in self._calls],
                 "billing_cost": None,
+                "assessment_deadline_attached": self._deadline_at is not None,
                 "note": "Usage is daemon-reported, may be missing and excludes unreported failed calls. Not a bill."}
 
     def chat(self, messages: list[dict[str, Any]], **extra: Any) -> dict[str, Any]:
@@ -238,9 +259,6 @@ class LocalRuntime:
         metadata = self.inspect_model(require_tools=bool(tools))
         schema_strategy = "server_schema" if "format" in extra else "not_requested"
         if metadata["execution_location"] == "cloud_reported" and "format" in extra:
-            # Ollama Cloud does not currently support server-constrained structured output.
-            # Keep the same output contract, request it in the prompt and validate locally.
-            # Never treat prompted JSON as guaranteed constrained decoding.
             schema = extra.pop("format")
             instruction = "Return only one JSON value matching this contract, without Markdown: " + json.dumps(schema, allow_nan=False)
             messages = [dict(message) for message in messages]
@@ -254,31 +272,33 @@ class LocalRuntime:
         data = {"model": self.model, "stream": False, "messages": messages,
                 "options": {"temperature": 0, "num_predict": 768, "num_ctx": 4096},
                 "keep_alive": "2m", **extra}
-        # Count a dispatch attempt only after local byte validation, not metadata queries.
         if len(json.dumps(data, allow_nan=False).encode("utf-8")) > MAX_REQUEST_BYTES:
             raise OllamaError("request_too_large", "AI context exceeds the request budget.", "Reduce the evidence summary.")
         self._attempts += 1
         response = self.request("/api/chat", data)
+
         def reported_count(key):
             count = response.get(key)
             return count if type(count) is int and 0 <= count <= 10**12 else None
+
         self._calls.append({"prompt_tokens": reported_count("prompt_eval_count"),
                             "output_tokens": reported_count("eval_count"),
                             "schema_strategy": schema_strategy,
                             "done": response.get("done") is True})
         if remote_metadata(response):
+            if self._last_metadata is None:
+                self._last_metadata = {}
             self._last_metadata["execution_location"] = "cloud_reported"
         if remote_metadata(response) and not self.allow_cloud:
             raise OllamaError("remote_execution_reported", "Ollama reported remote inference; output rejected.", "Stop using this daemon and verify its cloud/egress policy. Rejection cannot undo an already-sent prompt.")
         if response.get("done") is not True:
             raise OllamaError("incomplete_response", "Ollama did not finish its response.", "Retry explicitly after checking local capacity.", retryable=True)
         if response.get("done_reason") == "length":
-            raise OllamaError("output_truncated", "Ollama reached the output budget.", "Reduce context or select a more suitable local model.")
+            raise OllamaError("output_truncated", "Ollama reached the output budget.", "Reduce context or select a more suitable model.")
         message = response.get("message")
         if (not isinstance(message, dict) or message.get("role", "assistant") != "assistant"
                 or not isinstance(message.get("content", ""), str)):
             raise OllamaError("invalid_response", "Invalid assistant message.", "Check model compatibility.")
-        # Do not retain thinking traces, images or arbitrary daemon metadata.
         result = {"role": "assistant", "content": message.get("content", "")}
         if "tool_calls" in message:
             calls = message["tool_calls"]

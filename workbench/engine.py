@@ -9,10 +9,12 @@ import html
 import http.client
 import ipaddress
 import json
+import queue
 import re
 import socket
 import ssl
 import threading
+import time
 import uuid
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -22,6 +24,7 @@ from . import __version__
 from .lab import CanaryLab
 
 LIMITATION = "No finding is not a security guarantee. A failed or skipped verification does not prove that exploitation is impossible."
+DEFAULT_ASSESSMENT_DEADLINE_SECONDS = 45
 
 
 def now():
@@ -64,6 +67,28 @@ def verify_integrity(report):
         if not isinstance(finding, dict) or finding.get("evidence_sha256") != digest(finding.get("evidence")):
             return False
     return True
+
+
+class DeadlineExceeded(TimeoutError):
+    pass
+
+
+class Deadline:
+    """Monotonic wall-clock budget shared by bounded native/model operations."""
+
+    def __init__(self, seconds):
+        if isinstance(seconds, bool) or not isinstance(seconds, (int, float)) or not 0 < seconds <= 300:
+            raise ValueError("deadline must be from 0 to 300 seconds")
+        self.seconds = float(seconds)
+        self.expires_at = time.monotonic() + self.seconds
+
+    def remaining(self, cap=None):
+        value = self.expires_at - time.monotonic()
+        if value <= 0:
+            raise DeadlineExceeded("Assessment wall-clock deadline exceeded")
+        if cap is not None:
+            value = min(value, float(cap))
+        return max(value, 0.001)
 
 
 @dataclass(frozen=True)
@@ -135,10 +160,34 @@ def validate_url(url):
     return parsed
 
 
-def public_addresses(host, port, resolver=None):
+def _resolve_bounded(resolver, host, port, deadline):
+    if deadline is None:
+        return resolver(host, port, type=socket.SOCK_STREAM)
+    result_queue = queue.Queue(maxsize=1)
+
+    def worker():
+        try:
+            result_queue.put((True, resolver(host, port, type=socket.SOCK_STREAM)), block=False)
+        except BaseException as exc:  # transfer resolver failure to the calling assessment thread
+            try:
+                result_queue.put((False, exc), block=False)
+            except queue.Full:
+                pass
+
+    threading.Thread(target=worker, name="hackgpt-bounded-resolver", daemon=True).start()
+    try:
+        ok, value = result_queue.get(timeout=deadline.remaining())
+    except queue.Empty as exc:
+        raise DeadlineExceeded("DNS resolution exceeded the assessment deadline") from exc
+    if not ok:
+        raise value
+    return value
+
+
+def public_addresses(host, port, resolver=None, deadline=None):
     """Resolve once and reject *all* mixed/private results before opening a socket."""
     resolver = resolver or socket.getaddrinfo
-    results = resolver(host, port, type=socket.SOCK_STREAM)
+    results = _resolve_bounded(resolver, host, port, deadline)
     addresses = []
     for result in results:
         raw = result[4][0]
@@ -153,19 +202,26 @@ def public_addresses(host, port, resolver=None):
     return addresses
 
 
-def inspect_remote(url):
+def inspect_remote(url, deadline=None):
     """One HEAD request, no redirects/proxies/body capture; socket pinned after DNS."""
     parsed = validate_url(url)
     host = parsed.hostname.encode("idna").decode("ascii")
     port = parsed.port if parsed.port is not None else (443 if parsed.scheme == "https" else 80)
-    address = public_addresses(host, port)[0]
-    sock = socket.create_connection((address, port), timeout=8)
-    connection = http.client.HTTPConnection(host, port, timeout=8)
+    address = public_addresses(host, port, deadline=deadline)[0]
+    timeout = deadline.remaining(8) if deadline is not None else 8
+    sock = socket.create_connection((address, port), timeout=timeout)
+    connection = http.client.HTTPConnection(host, port, timeout=timeout)
     try:
         if parsed.scheme == "https":
+            if deadline is not None:
+                sock.settimeout(deadline.remaining(8))
             sock = ssl.create_default_context().wrap_socket(sock, server_hostname=host)
+        if deadline is not None:
+            sock.settimeout(deadline.remaining(8))
         connection.sock = sock
         connection.request("HEAD", parsed.path or "/", headers={"User-Agent": "HackGPT-Workbench/" + __version__, "Connection": "close"})
+        if deadline is not None:
+            sock.settimeout(deadline.remaining(8))
         response = connection.getresponse()
         headers = {}
         allowed = {"content-type", "content-security-policy", "x-frame-options", "strict-transport-security", "x-content-type-options", "referrer-policy"}
@@ -178,7 +234,7 @@ def inspect_remote(url):
         sock.close()
 
 
-def new_report(scope):
+def new_report(scope, deadline_seconds=DEFAULT_ASSESSMENT_DEADLINE_SECONDS):
     return {
         "schema_version": "1.0", "engine_version": __version__, "id": uuid.uuid4().hex,
         "started_at": now(), "finished_at": None, "status": "running", "mode": scope.mode,
@@ -186,6 +242,8 @@ def new_report(scope):
         "environment": "synthetic_lab" if scope.lab else "authorized_public_web",
         "authorization": scope.authorization, "verification_approved": scope.approved,
         "findings": [], "checks": [], "events": [], "verdict": "pending",
+        "execution_budget": {"wall_clock_seconds": float(deadline_seconds), "native_http_requests": 3,
+                             "enforcement": "native network/model socket operations plus assessment checkpoints"},
         "ai": {"status": "not_requested", "interpretation": None,
                "provider": "ollama" if scope.use_ai else None,
                "model": scope.model if scope.use_ai else None,
@@ -201,13 +259,14 @@ class Cancelled(Exception):
 
 
 class Assessment:
-    def __init__(self, scope, cancel=None, notify=None, remote_reader=None, ai_client=None):
+    def __init__(self, scope, cancel=None, notify=None, remote_reader=None, ai_client=None, deadline_seconds=DEFAULT_ASSESSMENT_DEADLINE_SECONDS):
         self.scope = scope
         self.cancel = cancel or threading.Event()
         self.notify = notify or (lambda report: None)
-        self.remote_reader = remote_reader or inspect_remote
+        self.remote_reader = remote_reader
         self.ai_client = ai_client
-        self.report = new_report(scope)
+        self.deadline = Deadline(deadline_seconds)
+        self.report = new_report(scope, deadline_seconds)
         self.requests_used = 0
         self.executed = set()
 
@@ -221,6 +280,7 @@ class Assessment:
     def checkpoint(self):
         if self.cancel.is_set():
             raise Cancelled()
+        self.deadline.remaining()
 
     def budget(self, amount):
         self.checkpoint()
@@ -243,7 +303,11 @@ class Assessment:
         if lab:
             status, headers, _ = lab.request("/", "HEAD")
             result = {"status": status, "headers": headers, "method": "HEAD", "redirect_followed": False, "resolved_ip": "127.0.0.1 (owned ephemeral fixture)"}
+        elif self.remote_reader is None:
+            result = inspect_remote(self.scope.target, deadline=self.deadline)
         else:
+            # Test/custom readers are outside the production socket deadline wrapper;
+            # the checkpoint immediately after them still enforces the wall-clock result.
             result = self.remote_reader(self.scope.target)
         self.checkpoint()
         status = result["status"]
@@ -283,7 +347,7 @@ class Assessment:
     def run(self, fixed_lab=False):
         lab = None
         try:
-            self.emit("scope_approved", "Scope and authorization recorded", {"mode": self.scope.mode, "max_http_requests": 3})
+            self.emit("scope_approved", "Scope and authorization recorded", {"mode": self.scope.mode, "max_http_requests": 3, "wall_clock_seconds": self.deadline.seconds})
             self.checkpoint()
             if self.scope.lab:
                 lab = CanaryLab(fixed=fixed_lab).__enter__()
@@ -302,6 +366,9 @@ class Assessment:
                     if self.ai_client is None:
                         from .ollama import Ollama
                         self.ai_client = Ollama(self.scope.model, allow_cloud=self.scope.allow_cloud)
+                    from .ollama_runtime import LocalRuntime
+                    if isinstance(self.ai_client, LocalRuntime):
+                        self.ai_client.set_deadline(self.deadline.expires_at)
                     if self.scope.mode == "verify" and self.scope.lab:
                         decisions = self.ai_client.plan(lambda name, arguments: self.execute_action(name, arguments, lab), self.report, self.checkpoint)
                         self.report["ai"]["decisions"] = decisions
@@ -312,7 +379,7 @@ class Assessment:
                     self.checkpoint()
                     self.report["ai"]["status"] = "completed"
                     self.emit("ai_completed", "AI commentary stored separately from deterministic findings")
-                except Cancelled:
+                except (Cancelled, DeadlineExceeded):
                     raise
                 except Exception as exc:
                     self.report["ai"]["status"] = "unavailable"
@@ -340,6 +407,13 @@ class Assessment:
             if self.report["ai"]["status"] == "running":
                 self.report["ai"]["status"] = "cancelled"
             self.emit("cancelled", "Cancellation honored; in-flight bounded I/O may finish before this checkpoint")
+        except DeadlineExceeded:
+            self.report["status"], self.report["verdict"] = "timed_out", "inconclusive"
+            if self.report["ai"]["status"] == "running":
+                self.report["ai"]["status"] = "unavailable"
+                self.report["ai"]["error_type"] = "DeadlineExceeded"
+            self.report["checks"].append({"tool": "assessment_deadline", "status": "error", "reason": "Wall-clock deadline exceeded"})
+            self.emit("deadline_exceeded", "Assessment wall-clock deadline exceeded; no completion assumed")
         except Exception as exc:
             self.report["status"], self.report["verdict"] = "error", "inconclusive"
             self.report["checks"].append({"tool": "assessment", "status": "error", "reason": type(exc).__name__})
