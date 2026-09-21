@@ -42,7 +42,7 @@ These gates determine whether a review milestone is genuinely complete. They are
 - Fresh-install smoke tests pass on the documented platforms with pinned dependencies/tool licenses and an SBOM.
 - Threat model, sample reports, regression lab catalog and release notes clearly separate implemented, experimental and unsupported coverage.
 
-**Current state after Contribution 10: Gates A and D pass their declared bounded criteria in the dedicated workbench test boundary.** Gate A remains evidence-first and Gate D remains conservatively retest-aware. Gate B is **still not complete** because cancellation has not yet been exercised across every connect/TLS/response/model phase and injected readers are not a production hard-deadline guarantee. Gate C now has a closed `hackgpt.execution-declaration/v1` authority contract, bounded native project-metadata and one-request web-header adapters, plus a finite `ExecutionRegistry` with an independent operator authority ceiling; vulnerable/corrected synthetic logic fixtures pass, but durable assessment-lifecycle/API/GUI integration, production-path web fixture coverage and third-party scanner pinning/licensing remain before Gate C is declared complete. Gate E remains materially incomplete. The project is therefore **not** eligible for an early “only polish remains” stop.
+**Current state after Contribution 11: Gates A and D pass their declared bounded criteria in the dedicated workbench test boundary.** Gate A remains evidence-first and Gate D remains conservatively retest-aware. Gate B is **still not complete** because cancellation has not yet been exercised across every connect/TLS/response/model phase. Gate C now has a closed `hackgpt.execution-declaration/v1` authority contract, bounded native project-metadata and one-request web-header adapters, a finite `ExecutionRegistry` with an independent operator authority ceiling, vulnerable/corrected synthetic logic fixtures, and an owned loopback fixture that exercises the web adapter's actual production HTTP-reader path; durable assessment-lifecycle/API/GUI integration and third-party scanner pinning/licensing/runner integration remain before Gate C is declared complete. Gate E remains materially incomplete. The project is therefore **not** eligible for an early “only polish remains” stop.
 
 ## 1. Complete the reliability boundary
 
@@ -64,7 +64,7 @@ Implemented foundations: `hackgpt.adapter-result/v1`, deterministic fingerprints
 Next work:
 - Wire the finite execution registry into a durable assessment lifecycle/API/GUI with explicit per-adapter progress, cancellation and budget accounting; do not expose arbitrary local paths through an unauthenticated surface.
 - Pin/review each external scanner version, license and packaging boundary before launch support.
-- Add production-path owned fixtures for the network adapter and parser/runner pairs for third-party tools.
+- The bounded web adapter now has an owned production HTTP-reader-path fixture. Add equivalent parser/runner integration fixtures for each reviewed third-party tool; this test does not substitute for real public DNS/routing or TLS-cancellation coverage.
 - Keep severity separate from confidence, proof state, exploitability assumptions and business impact.
 - Preserve adapter-specific minimization tests as richer outputs are added.
 
@@ -82,7 +82,7 @@ Acceptance: vulnerable and corrected fixtures, pinned versions, offline behavior
 
 A first bounded native web execution adapter now exists: one explicit URL, one HEAD request, no redirects, no response body, no filesystem/subprocess/write authority, and candidate-only hardening-header observations. Its vulnerable/corrected logic fixtures pass. This does not yet constitute ZAP/Nuclei execution or broad application coverage.
 
-Next work: add production-path owned network fixtures, then reviewed ZAP/Nuclei-style integrations with target/path allowlists, request budgets and safe profiles. Do not equate a hostname with permission for a CDN/shared IP. Disable uncontrolled callbacks/out-of-band behavior by default. Process runners consume typed configs, never model-generated shell strings.
+The native web adapter now also passes an owned loopback fixture through its actual production HTTP-reader path (with only the test resolver/connect boundary redirected locally). Next work: add reviewed ZAP/Nuclei-style integrations with target/path allowlists, request budgets and safe profiles. Do not equate a hostname with permission for a CDN/shared IP. Disable uncontrolled callbacks/out-of-band behavior by default. Process runners consume typed configs, never model-generated shell strings.
 
 Acceptance: isolated tests prove no unintended external target and enforce effect/network boundaries outside the model.
 
