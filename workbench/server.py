@@ -13,8 +13,10 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 from . import __version__
+from .bundle import build_bundle
 from .engine import Assessment, Scope, markdown, verify_integrity
 from .ollama import Ollama, OllamaError
+from .retest import compare_reports
 
 
 class Busy(Exception):
@@ -94,7 +96,6 @@ class State:
         try:
             self.store.save(report)
         except Exception:
-            # Do not silently report durable success. The evidence remains available in memory.
             report["persistence_error"] = "Report could not be saved. Export it before closing the workbench."
             from .engine import seal
             seal(report)
@@ -146,7 +147,7 @@ class Handler(BaseHTTPRequestHandler):
         self.connection.settimeout(10)
 
     def log_message(self, *_):
-        pass  # Never log tokens, assessment targets or request bodies.
+        pass
 
     def reply(self, status, value, kind="application/json; charset=utf-8", attachment=None):
         body = value if isinstance(value, bytes) else json.dumps(value).encode()
@@ -196,15 +197,32 @@ class Handler(BaseHTTPRequestHandler):
                 filename, kind = static[self.path]
                 return self.reply(200, (Path(__file__).parent / "static" / filename).read_bytes(), kind)
             if self.path == "/api/health":
-                return self.reply(200, {"version": __version__, "local_only": True, "local_only_scope": "server_binding", "ai_processing_policies": ["local_only", "cloud_allowed"], "third_party_adapters": "not_integrated", "active_run": self.server.state.active})
+                return self.reply(200, {"version": __version__, "local_only": True, "local_only_scope": "server_binding", "ai_processing_policies": ["local_only", "cloud_allowed"], "third_party_adapters": "not_integrated", "review_features": ["coverage_aware_retest", "evidence_bundle"], "active_run": self.server.state.active})
             if self.path == "/api/models":
                 try:
                     return self.reply(200, Ollama("").diagnostics())
                 except OllamaError as exc:
-                    return self.reply(200, {"available": False, "models": [], "state": exc.code,
-                                            "note": str(exc) + " " + exc.next_step, **exc.public()})
+                    return self.reply(200, {"available": False, "models": [], "state": exc.code, "note": str(exc) + " " + exc.next_step, **exc.public()})
             if self.path == "/api/runs":
                 return self.reply(200, {"runs": self.server.state.store.recent()})
+            compare_match = re.fullmatch(r"/api/runs/([a-f0-9]{32})/compare/([a-f0-9]{32})", self.path)
+            if compare_match:
+                previous = self.server.state.get(compare_match[1])
+                current = self.server.state.get(compare_match[2])
+                if previous is None or current is None:
+                    return self.reply(404, {"error": "Run not found"})
+                if not verify_integrity(previous) or not verify_integrity(current):
+                    return self.reply(409, {"error": "Only finalized, intact reports can be compared"})
+                return self.reply(200, compare_reports(previous, current))
+            bundle_match = re.fullmatch(r"/api/runs/([a-f0-9]{32})/export\.bundle\.zip", self.path)
+            if bundle_match:
+                report = self.server.state.get(bundle_match[1])
+                if report is None:
+                    return self.reply(404, {"error": "Run not found"})
+                if report["status"] == "running" or not verify_integrity(report):
+                    return self.reply(409, {"error": "Only finalized, intact reports can be exported"})
+                raw = build_bundle(report, markdown(report))
+                return self.reply(200, raw, "application/zip", "hackgpt-" + bundle_match[1] + "-evidence.zip")
             match = re.fullmatch(r"/api/runs/([a-f0-9]{32})(?:/export\.(json|md))?", self.path)
             if match:
                 report = self.server.state.get(match[1])
@@ -235,21 +253,14 @@ class Handler(BaseHTTPRequestHandler):
                 raise ValueError("Send a JSON object no larger than 16 KiB")
             data = json.loads(self.rfile.read(length))
             if self.path == "/api/models/discover":
-                if (not isinstance(data, dict) or set(data) - {"allow_cloud"}
-                        or type(data.get("allow_cloud", False)) is not bool):
+                if (not isinstance(data, dict) or set(data) - {"allow_cloud"} or type(data.get("allow_cloud", False)) is not bool):
                     raise ValueError("Send only optional boolean allow_cloud")
                 return self.reply(200, Ollama("", allow_cloud=data.get("allow_cloud", False)).diagnostics())
             if self.path in ("/api/models/check", "/api/models/self-test"):
-                if (not isinstance(data, dict) or set(data) - {"model", "require_tools", "allow_cloud"}
-                        or not isinstance(data.get("model"), str) or not data["model"]
-                        or not isinstance(data.get("require_tools", False), bool)
-                        or type(data.get("allow_cloud", False)) is not bool):
+                if (not isinstance(data, dict) or set(data) - {"model", "require_tools", "allow_cloud"} or not isinstance(data.get("model"), str) or not data["model"] or not isinstance(data.get("require_tools", False), bool) or type(data.get("allow_cloud", False)) is not bool):
                     raise ValueError("Send an exact model name and optional boolean require_tools")
                 client = Ollama(data["model"], allow_cloud=data.get("allow_cloud", False))
-                if self.path == "/api/models/self-test":
-                    result = client.self_test(require_tools=data.get("require_tools", False))
-                else:
-                    result = client.inspect_model(require_tools=data.get("require_tools", False))
+                result = client.self_test(require_tools=data.get("require_tools", False)) if self.path == "/api/models/self-test" else client.inspect_model(require_tools=data.get("require_tools", False))
                 return self.reply(200, result)
             if self.path == "/api/runs":
                 run_id = self.server.state.start(data)
