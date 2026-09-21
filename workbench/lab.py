@@ -5,8 +5,21 @@ import json
 import secrets
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from socketserver import TCPServer
 
 from .evidence_safety import summarize_records
+
+
+class _LoopbackHTTPServer(ThreadingHTTPServer):
+    """HTTP server that keeps loopback startup independent of reverse DNS."""
+
+    def server_bind(self):
+        # HTTPServer.server_bind() calls socket.getfqdn(), which can block on
+        # hosted/offline systems even though this fixture binds only 127.0.0.1.
+        TCPServer.server_bind(self)
+        host, port = self.server_address[:2]
+        self.server_name = str(host)
+        self.server_port = int(port)
 
 
 class CanaryLab:
@@ -45,7 +58,7 @@ class CanaryLab:
             def log_message(self, *_):
                 pass
 
-        self.server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        self.server = _LoopbackHTTPServer(("127.0.0.1", 0), Handler)
         self.server.daemon_threads = True
         self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
 

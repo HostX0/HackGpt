@@ -1,7 +1,9 @@
 import json
 import unittest
+from unittest import mock
 
 from workbench.engine import Assessment, Scope, verify_integrity
+from workbench.lab import CanaryLab
 
 
 def scope(fixed=False):
@@ -10,6 +12,13 @@ def scope(fixed=False):
 
 
 class SyntheticDataProofTests(unittest.TestCase):
+    def test_canary_lab_loopback_bind_does_not_require_reverse_dns(self):
+        with mock.patch("socket.getfqdn", side_effect=AssertionError("reverse DNS should not run")):
+            with CanaryLab() as lab:
+                status, _, body = lab.request("/record")
+        self.assertEqual(status, 200)
+        self.assertEqual(body, lab.marker)
+
     def test_verified_lab_proof_contains_safe_data_summary(self):
         report = Assessment(scope()).run()
         finding = next(item for item in report["findings"] if item["verification"] == "verified_in_lab")
