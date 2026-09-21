@@ -42,14 +42,17 @@ These gates determine whether a review milestone is genuinely complete. They are
 - Fresh-install smoke tests pass on the documented platforms with pinned dependencies/tool licenses and an SBOM.
 - Threat model, sample reports, regression lab catalog and release notes clearly separate implemented, experimental and unsupported coverage.
 
-**Current state at feature head `96db2e76`: Gate A passes the declared evidence-core criteria in the dedicated workbench test boundary.** Final reports are integrity-gated, non-success coverage states remain visible, imported parser findings are candidate-only, and the synthetic proof uses a denied control/fresh canary without being attributed to an external target. Hosted Evidence Workbench CI passed on Python 3.11–3.13 for this head. Gate D has conservative comparison/bundle foundations and live GUI controls, but remediation-to-comparable-recheck linkage is still incomplete. Gates B, C and E remain materially incomplete, so the project is **not** eligible for an early “only polish remains” stop.
+**Current state at feature head `0e65f26d`: Gate A passes the declared evidence-core criteria in the dedicated workbench test boundary.** Gate B advanced materially in Contribution 07: terminal snapshots are no longer published before sealing, terminal SQLite publication is atomic, persistence failure is explicitly marked memory-only/non-durable, restart recovery publishes an explicit interrupted durable record, and DNS waiting now honors cancellation. Gate B is **still not complete** because cancellation has not yet been exercised across every connect/TLS/response/model phase and custom injected readers are not a production hard-deadline guarantee. Gate D has conservative comparison/bundle foundations and live GUI controls, but remediation-to-comparable-recheck linkage is still incomplete. Gates C and E remain materially incomplete, so the project is **not** eligible for an early “only polish remains” stop. Hosted Evidence Workbench CI for `0e65f26d` was still pending when this roadmap entry was written; do not infer a pass from local targeted tests.
 
 ## 1. Complete the reliability boundary
 
-- Enforce a genuine end-to-end deadline, including resolver and slow-read behavior; add adversarial loopback tests.
+Implemented foundations now include a shared monotonic deadline for native resolver/connect/TLS/response and Ollama runtime calls, cancellable bounded DNS waiting, no terminal unsealed publication from `Assessment`, active SQLite checkpoints, restart recovery to explicit `interrupted`, and atomic durable terminal publication with explicit `not_durable` memory-only fallback.
+
+Next work:
+- Exercise cancellation during connect, TLS, slow response and model operations with adversarial owned loopback fixtures; close any phase-specific gaps instead of assuming socket timeout equals cancellation.
 - Normalize rejection of special/multicast/tunnel IP ranges across supported Python versions; retain DNS pinning and no redirects.
-- Make terminal status publication atomic with sealing/persistence; add restart/interruption recovery for active jobs.
-- Test cancellation during every phase, storage failures, model timeouts and concurrent API activity.
+- Test concurrent API activity and additional SQLite/storage failure modes, including checkpoint gaps followed by restart.
+- Decide and document how test-only injected readers participate in deadline enforcement without weakening production boundaries.
 - Add structured validation errors and coverage accounting that distinguish failed, unsupported, excluded and executed tests.
 
 Acceptance: Gate B.
