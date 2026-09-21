@@ -101,12 +101,18 @@ class SemgrepRunnerTests(unittest.TestCase):
         self.assertIn("--read-only", command)
         self.assertIn("--cap-drop ALL", joined)
         self.assertIn("--security-opt no-new-privileges", joined)
+        self.assertIn("--user", command)
         self.assertIn(SEMGREP_IMAGE, command)
         self.assertNotIn("--privileged", command)
         mounts = [command[index + 1] for index, value in enumerate(command[:-1]) if value == "-v"]
         self.assertTrue(any(value.endswith(":/src:ro") for value in mounts))
         self.assertTrue(any(value.endswith(":/rules/workbench.yml:ro") for value in mounts))
         self.assertIn("SEMGREP_SEND_METRICS=off", command)
+        self.assertIn("SEMGREP_ENABLE_VERSION_CHECK=0", command)
+        self.assertIn("SEMGREP_VERSION_CACHE_PATH=/tmp/semgrep_version", command)
+        self.assertIn("SEMGREP_LOG_FILE=/tmp/semgrep.log", command)
+        self.assertIn("XDG_CACHE_HOME=/tmp/.cache", command)
+        self.assertIn("--disable-version-check", command)
         self.assertEqual(command[-1], "/src")
 
     def test_runner_rebinds_parser_to_execution_identity_and_discards_source(self):
