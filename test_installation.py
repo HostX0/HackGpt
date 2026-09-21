@@ -39,6 +39,7 @@ CORE_IMPORTS = {
     "PyJWT": "jwt",
     "bcrypt": "bcrypt",
     "ldap3": "ldap3",
+    "psutil": "psutil",
     "numpy": "numpy",
     "pandas": "pandas",
     "matplotlib": "matplotlib",
@@ -168,6 +169,19 @@ def test_external_api_configuration():
     return True, []
 
 
+def _subprocess_detail(result, fallback="legacy import failed"):
+    """Return bounded diagnostics without allowing stderr warnings to hide stdout errors."""
+    parts = []
+    stdout = (result.stdout or "").strip()
+    stderr = (result.stderr or "").strip()
+    if stdout:
+        parts.append("stdout:\n{0}".format(stdout))
+    if stderr:
+        parts.append("stderr:\n{0}".format(stderr))
+    detail = "\n".join(parts) or fallback
+    return detail[-2000:]
+
+
 def run_basic_functionality_test(project_root=PROJECT_ROOT):
     """Import the legacy public entry points in an isolated subprocess."""
     print("\nTesting legacy entry-point imports...")
@@ -188,8 +202,7 @@ def run_basic_functionality_test(project_root=PROJECT_ROOT):
         return False, ["legacy import smoke: {0}".format(exc)]
 
     if result.returncode != 0:
-        detail = (result.stderr or result.stdout or "legacy import failed").strip()
-        return False, [detail[-1000:]]
+        return False, [_subprocess_detail(result)]
 
     print("  OK HackGPT, AIEngine and ToolManager import successfully.")
     return True, []

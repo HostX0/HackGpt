@@ -29,6 +29,10 @@ def test_dependency_aliases_use_real_import_names():
     assert imported == ["speech_recognition", "cvsslib"]
 
 
+def test_runtime_dependency_table_includes_performance_monitor_requirement():
+    assert ti.CORE_IMPORTS["psutil"] == "psutil"
+
+
 def test_system_tools_only_fail_required_tools():
     availability = {
         "nmap": "/usr/bin/nmap",
@@ -106,4 +110,18 @@ def test_basic_import_smoke_reports_subprocess_failure(tmp_path):
         passed, issues = ti.run_basic_functionality_test(project_root=Path(tmp_path))
 
     assert not passed
-    assert issues == ["missing dependency"]
+    assert issues == ["stderr:\nmissing dependency"]
+
+
+def test_basic_import_smoke_preserves_stdout_error_when_stderr_has_optional_warnings(tmp_path):
+    result = mock.Mock(
+        returncode=1,
+        stdout="Missing HackGPT modules: No module named 'psutil'\n",
+        stderr="WARNING:root:optional backend unavailable\n",
+    )
+    with mock.patch.object(ti.subprocess, "run", return_value=result):
+        passed, issues = ti.run_basic_functionality_test(project_root=Path(tmp_path))
+
+    assert not passed
+    assert "No module named 'psutil'" in issues[0]
+    assert "optional backend unavailable" in issues[0]
