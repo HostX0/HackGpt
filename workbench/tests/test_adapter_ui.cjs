@@ -89,6 +89,21 @@ test('approve binds digest then execute resends the planned typed request', asyn
   assert.match(h.nodes['adapter-status'].textContent, /durable receipt/);
 });
 
+test('Semgrep adapter uses only reviewed bounded fields and explains offline container policy', async () => {
+  const h = harness(async () => planned());
+  h.nodes['adapter-kind'].value = 'semgrep';
+  h.nodes['adapter-asset'].value = 'project-src';
+  h.nodes['adapter-target'].value = '/tmp/source';
+  await h.trigger('adapter-kind', 'change');
+  await h.trigger('adapter-plan');
+  assert.deepEqual(h.requests[0].body, {adapter_id: 'semgrep-project-local', request: {
+    root: '/tmp/source', asset_key: 'project-src', max_files: 250, max_depth: 12,
+    timeout_seconds: 90, max_target_bytes: 500000,
+  }});
+  assert.match(h.nodes['adapter-target-help'].textContent, /network-disabled container/);
+  assert.match(h.nodes['adapter-target-help'].textContent, /never auto-pulls/);
+});
+
 test('web adapter request uses only exact target asset key and timeout', async () => {
   const h = harness(async () => planned());
   h.nodes['adapter-kind'].value = 'web';
