@@ -14,6 +14,10 @@ from .execution_contracts import ExecutionDeclaration
 
 EXECUTION_RECEIPT_SCHEMA = "hackgpt.execution-receipt/v1"
 _MAX_SUMMARY_BYTES = 8192
+_FORBIDDEN_SUMMARY_KEYS = {
+    "password", "passwd", "token", "cookie", "authorization", "secret", "credential",
+    "credentials", "command", "argv", "environment",
+}
 
 
 def _bounded_json(value: Any, name: str, maximum: int = _MAX_SUMMARY_BYTES) -> Any:
@@ -24,6 +28,19 @@ def _bounded_json(value: Any, name: str, maximum: int = _MAX_SUMMARY_BYTES) -> A
     if len(raw) > maximum:
         raise ValueError(f"{name} is too large")
     return value
+
+
+def _contains_forbidden_key(value: Any) -> bool:
+    """Reject sensitive/execution field names at any nesting depth."""
+    if isinstance(value, dict):
+        for key, item in value.items():
+            if str(key).strip().lower() in _FORBIDDEN_SUMMARY_KEYS:
+                return True
+            if _contains_forbidden_key(item):
+                return True
+    elif isinstance(value, list):
+        return any(_contains_forbidden_key(item) for item in value)
+    return False
 
 
 def _nonnegative_int(value: Any, name: str) -> int:
@@ -46,8 +63,7 @@ def normalize_execution_receipt(payload: Any) -> dict[str, Any]:
     summary = _bounded_json(copy.deepcopy(payload.get("request_summary")), "request summary")
     if not isinstance(summary, dict):
         raise ValueError("request summary must be an object")
-    forbidden = {"password", "token", "cookie", "authorization", "secret", "command", "argv", "environment"}
-    if any(str(key).lower() in forbidden for key in summary):
+    if _contains_forbidden_key(summary):
         raise ValueError("request summary contains a forbidden sensitive/execution field")
 
     usage = payload.get("usage")
