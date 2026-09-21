@@ -266,3 +266,34 @@ Feature commit: `57dfcfede62e87b2485f5238533ca2c63e81ce2d`.
 ### Safety/product interpretation
 
 This slice increases execution structure without adding exploit authority. The project adapter cannot read secrets; the web adapter sends one HEAD request and cannot read bodies or follow redirects. Neither adapter accepts model-generated shell commands or marks its own findings verified.
+
+## 2026-09-21 — Contribution 10: Closed execution registry and operator authority ceiling
+
+### Implemented
+
+Feature commit: `3fe6e73fe071edb5886fcb74b6db477a5c7c7eb9`.
+
+- Added `ExecutionRegistry`, a finite in-process registry for reviewed native adapters. Adapter IDs map to code-owned constructors; there is no dynamic import/module path, arbitrary command, executable name or generic keyword forwarding surface.
+- Added `RegistryPolicy`, an operator-owned authority ceiling independent of model output. It can deny filesystem or network authority and cap the maximum effect level before adapter I/O starts.
+- Requests are adapter-specific closed objects. Unknown fields such as `command` are rejected rather than forwarded to a runner. Project execution accepts only root/asset and bounded scan limits; web execution accepts only target/asset and a bounded timeout.
+- A pre-set cancellation event prevents adapter I/O. Result authority remains unchanged: registry-executed observations still pass through the candidate-only adapter result contract.
+- `describe()` exposes only declarations currently permitted by the operator policy, giving later UI/API layers a safe capability preview without granting execution.
+
+### Validation actually performed
+
+- Layered the two new registry files onto the exact source used for the preceding native-adapter validation. `python -m compileall -q workbench` passed.
+- The complete local workbench suite passed **259 Python tests** in 21.966 seconds on the available Python 3.13 environment after adding 8 registry tests. JavaScript syntax passed and the existing **23 DOM/fetch contract tests** passed; these are not browser E2E.
+- Hosted **Evidence Workbench** run `35565442843` ran against feature head `3fe6e73fe071edb5886fcb74b6db477a5c7c7eb9`; all Python **3.11, 3.12 and 3.13** matrix jobs completed successfully. The Python 3.13 job ran **259 Python tests in 27.568s** and all **23 JavaScript tests** passed. Its checkout was GitHub's pull-request merge revision `e518069a031d4ad74b1948e22639096d882a41eb`, while workflow metadata records the feature head; both identities are retained explicitly.
+- Registry tests cover unknown adapter/command rejection, network/filesystem policy denial before I/O, pre-cancel behavior, candidate-only project/web results and secret-value non-retention.
+- No external target, third-party scanner binary, live model, credential, customer data or paid service was used.
+
+### Release-gate impact and remaining blockers
+
+- Gate C advances again: execution declarations now flow through a common finite registry with an independent operator authority ceiling instead of being constructed ad hoc.
+- **Gate C remains incomplete.** The registry is not yet connected to a durable assessment execution lifecycle/API/GUI with per-adapter progress and budgets; the bounded web adapter still lacks owned production-socket-path fixture coverage; external scanner runners still require pinned versions, licenses, least-privilege packaging and parser/runner integration.
+- Gate B remains incomplete for cancellation during every connect/TLS/slow-response/model phase and additional failure/concurrency paths. Gate E remains incomplete for live-model, browser E2E/accessibility, fresh-install/package/SBOM and release-quality evidence.
+- Gates A and D remain passing within their declared bounded definitions. The sprint is not eligible for early completion.
+
+### Safety/product interpretation
+
+This registry narrows execution authority; it does not add exploit behavior. It cannot accept a model-generated shell command, dynamically load a scanner, expand target scope, read project secret contents or turn a candidate observation into verified proof.
