@@ -43,6 +43,9 @@ jobs:
         run: |
           set -o pipefail
           node --test workbench/tests/test_ollama_ui.cjs workbench/tests/test_reviewer_ui.cjs 2>&1 | tee _review/javascript-tests.txt
+      - name: Generate bounded release-review evidence
+        if: success() && matrix.python == '3.13'
+        run: python -m workbench.release_evidence --output-dir _review/release-evidence
       - name: Prepare revision-bound source review bundle
         if: success() && matrix.python == '3.13'
         shell: bash
@@ -50,7 +53,7 @@ jobs:
           git archive --format=tar HEAD workbench .github/workflows/workbench-ci.yml LICENSE > _review/workbench-source.tar
           git rev-parse HEAD > _review/REVISION.txt
           (cd _review && sha256sum workbench-source.tar > SHA256SUMS)
-          printf '%s\n' 'Review source for the exact checked-out revision, not a binary release or security certification.' 'This job passed compile, Python loopback/unit tests, JavaScript syntax and DOM/fetch-double tests.' 'No live Ollama inference, cloud request, external target, GPU test or browser E2E was performed.' 'See the other matrix jobs independently; this archive is produced by Python 3.13 only.' 'No root .env, reports, credentials, untracked runtime files or legacy installer are included.' > _review/VALIDATION.txt
+          printf '%s\n' 'Review source for the exact checked-out revision, not a binary release or security certification.' 'This job passed compile, Python loopback/unit tests, JavaScript syntax, DOM/fetch-double tests and release-evidence generation.' 'The release-evidence directory contains a scoped machine-readable manifest, CycloneDX SBOM and a report generated from the owned synthetic authorization lab.' 'No live Ollama inference, cloud request, external target, GPU test or browser E2E was performed.' 'See the other matrix jobs independently; this archive is produced by Python 3.13 only.' 'No root .env, reports, credentials, untracked runtime files or legacy installer are included.' > _review/VALIDATION.txt
       - name: Upload successful review bundle
         if: success() && matrix.python == '3.13'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
