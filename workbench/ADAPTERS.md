@@ -1,13 +1,14 @@
 # Scanner and execution adapter boundary
 
-The workbench now has four separate implemented boundaries:
+The workbench now has five separate implemented boundaries:
 
 - an offline parse/review boundary for selected third-party scanner result formats;
 - a typed native execution boundary with a metadata-only project adapter and a one-request web-header adapter;
+- a reviewed third-party execution boundary with one pinned, offline Semgrep CE project runner;
 - a versioned planning/receipt boundary that records sanitized scope previews, declared authority and bounded observed usage without granting verification authority; and
 - a durable plan/approval/execution lifecycle that persists minimized authority records, binds approval to an exact request digest, and exposes the reviewed flow through the authenticated loopback API and GUI.
 
-The workbench still does **not** launch Semgrep, Trivy, Nuclei, ZAP, Nmap or another third-party scanner. The native adapters below are deliberately narrow and cannot turn their own observations into independently verified findings.
+Only the Semgrep CE runner described below is executable as a third-party scanner in this milestone. Trivy and Nuclei remain parser-only, and ZAP/Nmap are not execution adapters. All normalized scanner observations remain `candidate` until a separate workbench-controlled verification step proves something in an approved test context.
 
 ## Why parsing comes before execution
 
@@ -57,6 +58,25 @@ Two native adapters currently implement this declaration:
 
 Both adapters feed `hackgpt.adapter-result/v1`, so their observations remain `candidate`. Filename presence or a missing header is not exploit proof. Tests use vulnerable/corrected synthetic fixtures and also exercise fail-closed input/authority boundaries.
 
+## Reviewed third-party runner: Semgrep CE
+
+`semgrep-project-local/1.177.0-r1` is the first reviewed third-party execution adapter. Its boundary is intentionally narrower than a generic process runner:
+
+- Semgrep CE is pinned to version **1.177.0** and an exact Linux/amd64 container manifest digest recorded in `tooling/semgrep-1.177.0.json`.
+- The engine license is recorded as `LGPL-2.1-or-later`; the upstream source/release references and source archive checksum are retained in the pin metadata.
+- The runner **never pulls** an image. The exact image must already be present. CI pulls that exact reviewed digest before the owned integration fixture starts; assessment execution itself uses Docker `--pull never`.
+- The container network is `none`; the container root filesystem is read-only; Linux capabilities are dropped; `no-new-privileges` is set; PID, memory and CPU limits are declared; project source and the repository-authored rules file are mounted read-only.
+- The process runs with the calling Linux operator UID/GID rather than container root, so host file permissions remain authoritative.
+- Semgrep metrics and version checks are disabled. Cache/log/home paths are confined to the bounded ephemeral `/tmp` tmpfs, so offline startup does not wait on a version service or require writes to the read-only root filesystem.
+- The reviewed ruleset is repository-authored; no Semgrep registry/rule download is used during execution.
+- A bounded preflight enforces project file/depth limits before launch. The runner has one overall deadline, cancellation cleanup, bounded stdout/stderr capture and no generic shell-string surface.
+- The rules config is mounted at `/workbench.yml` so Semgrep's local-config path rewriting cannot make rule IDs depend on an internal mount-directory prefix. This keeps evidence/rule identifiers stable across deployments.
+- The existing Semgrep parser strips source snippets and metavariable contents from normalized results and forces findings to `candidate`.
+
+Hosted Evidence Workbench run `35586469998` on feature head `c23414f3eb5fc34a0e66d2668ed0165a8d139b09` passed the dedicated `semgrep-container` job against two **owned** fixtures: a deliberately vulnerable Python project containing the repository-authored `dynamic-eval` test case and a corrected project using `json.loads`. The vulnerable fixture produced the expected candidate rule, the corrected fixture produced no finding, and the same run also passed the native Python matrix, real browser E2E and cross-platform checkout validation. The scanner job contacts no assessment target and uses no customer source.
+
+This pass is **not** a claim that Semgrep covers every language/rule or that an empty Semgrep result proves the project secure. It validates the pinned runner/parser/sandbox path for the reviewed ruleset and owned fixture only.
+
 ## Planning, durable approval and execution receipts
 
 `ExecutionRegistry.plan()` validates one reviewed typed request against the operator-owned authority ceiling **without executing adapter I/O**. The preview is intentionally minimized:
@@ -83,20 +103,11 @@ Current native adapter accounting includes:
 
 A receipt is review metadata, not a security verdict. It does not prove that every possible object was covered, it does not attest OS-level egress, and it does not upgrade candidate findings.
 
-## Remaining Gate C work
+## Gate C status
 
-Gate C is **materially advanced but is not declared complete**. Durable plan/approval/execution/receipt wiring now exists in storage, authenticated API and GUI for the two reviewed native adapters. The remaining gate blocker is reviewed third-party runner packaging/integration. Each third-party scanner additionally requires:
+**Gate C passes the declared bounded milestone at `c23414f3eb5fc34a0e66d2668ed0165a8d139b09` in Evidence Workbench run `35586469998`.** The gate now has versioned fail-closed adapter contracts, two bounded native execution adapters, a finite operator-controlled registry, exact request-digest approval, durable lifecycle/receipts, and one reviewed pinned/licensed third-party Semgrep runner with an independently enforced least-privilege container boundary and vulnerable/corrected owned integration fixtures.
 
-- a pinned/reviewed binary or image, checksum and license notice;
-- typed fixed arguments rather than model-generated shell strings;
-- independently enforced file/network/target/path/effect/request boundaries;
-- cancellation and hard deadline behavior;
-- vulnerable and corrected owned integration fixtures;
-- exact coverage/error accounting;
-- secret-safe logs and exports; and
-- cross-version regression tests for each parser/runner pair.
-
-Do not call a parser an executable scanner adapter and do not call a host process read-only merely because its intended command is read-only. A real runner must have an independently enforced sandbox/mount/network boundary before that claim is made.
+Gate C passing does **not** mean every scanner in the parser layer is executable. Trivy and Nuclei remain parser-only; ZAP and Nmap execution are not implemented. Each future runner still requires its own pinned version/license/checksum, typed fixed arguments, independent filesystem/network/target/effect limits, cancellation/deadline behavior, owned vulnerable/corrected fixtures, coverage/error accounting, secret-safe logs/exports, release/SBOM metadata and parser/runner regression tests before it can be advertised as executable.
 
 The model may later select from approved adapter actions, but model output never becomes execution authority.
 
