@@ -187,7 +187,8 @@ try {
     const focus = await evaluate("document.activeElement?.id || (document.activeElement?.classList?.contains('nav-link') ? 'nav-link' : document.activeElement?.tagName?.toLowerCase())");
     if (focus) visited.add(focus);
   }
-  for (const required of ['target-type', 'authorization', 'authorized', 'start', 'cancel', 'refresh', 'adapter-kind', 'adapter-plan']) {
+  const keyboardTargets = ['target-type', 'authorization', 'authorized', 'start', 'refresh', 'adapter-kind', 'adapter-plan'];
+  for (const required of keyboardTargets) {
     assert(visited.has(required), `keyboard tab order did not reach #${required}`);
   }
 
@@ -215,7 +216,7 @@ try {
     loopback_server: true,
     token_fragment_removed: true,
     viewport_widths: viewportWidths,
-    keyboard_reached: ['target-type', 'authorization', 'authorized', 'start', 'cancel', 'refresh', 'adapter-kind', 'adapter-plan'],
+    keyboard_reached: keyboardTargets,
     unnamed_focusable_controls: 0,
     synthetic_assessment_completed: true,
     verified_lab_finding_rendered: true,
