@@ -234,12 +234,16 @@ class Handler(BaseHTTPRequestHandler):
             if not 0 < length <= 16384 or self.headers.get("Content-Type", "").split(";")[0] != "application/json":
                 raise ValueError("Send a JSON object no larger than 16 KiB")
             data = json.loads(self.rfile.read(length))
-            if self.path == "/api/models/check":
+            if self.path in ("/api/models/check", "/api/models/self-test"):
                 if (not isinstance(data, dict) or set(data) - {"model", "require_tools"}
                         or not isinstance(data.get("model"), str) or not data["model"]
                         or not isinstance(data.get("require_tools", False), bool)):
                     raise ValueError("Send an exact model name and optional boolean require_tools")
-                result = Ollama(data["model"]).inspect_model(require_tools=data.get("require_tools", False))
+                client = Ollama(data["model"])
+                if self.path == "/api/models/self-test":
+                    result = client.self_test(require_tools=data.get("require_tools", False))
+                else:
+                    result = client.inspect_model(require_tools=data.get("require_tools", False))
                 return self.reply(200, result)
             if self.path == "/api/runs":
                 run_id = self.server.state.start(data)
