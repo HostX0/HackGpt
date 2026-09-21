@@ -42,20 +42,22 @@ These gates determine whether a review milestone is genuinely complete. They are
 - Fresh-install smoke tests pass on the documented platforms with pinned dependencies/tool licenses and an SBOM.
 - Threat model, sample reports, regression lab catalog and release notes clearly separate implemented, experimental and unsupported coverage.
 
-**Current state after Contribution 11: Gates A and D pass their declared bounded criteria in the dedicated workbench test boundary.** Gate A remains evidence-first and Gate D remains conservatively retest-aware. Gate B is **still not complete** because cancellation has not yet been exercised across every connect/TLS/response/model phase. Gate C now has a closed `hackgpt.execution-declaration/v1` authority contract, bounded native project-metadata and one-request web-header adapters, a finite `ExecutionRegistry` with an independent operator authority ceiling, vulnerable/corrected synthetic logic fixtures, and an owned loopback fixture that exercises the web adapter's actual production HTTP-reader path; durable assessment-lifecycle/API/GUI integration and third-party scanner pinning/licensing/runner integration remain before Gate C is declared complete. Gate E remains materially incomplete. The project is therefore **not** eligible for an early “only polish remains” stop.
+**Current state after Contribution 11: Gates A, B and D pass their declared bounded criteria in the dedicated workbench test boundary.** Gate A remains evidence-first and Gate D remains conservatively retest-aware. Gate B now has a shared wall-clock deadline and tested cancellation/deadline behavior across DNS resolution, pending TCP connect, TLS handshake, slow HTTP response and model transport, plus atomic-or-explicitly-non-durable terminal publication and restart recovery to `interrupted`. Gate C now has a closed `hackgpt.execution-declaration/v1` authority contract, bounded native project-metadata and one-request web-header adapters, a finite `ExecutionRegistry` with an independent operator authority ceiling, vulnerable/corrected synthetic logic fixtures, an owned loopback web transport fixture, and cooperative cancellation inside the project metadata walk; durable assessment-lifecycle/API/GUI integration and third-party scanner pinning/licensing/runner integration remain before Gate C is declared complete. Gate E remains materially incomplete. The project is therefore **not** eligible for an early “only polish remains” stop.
 
 ## 1. Complete the reliability boundary
 
 Implemented foundations now include a shared monotonic deadline for native resolver/connect/TLS/response and Ollama runtime calls, cancellable bounded DNS waiting, no terminal unsealed publication from `Assessment`, active SQLite checkpoints, restart recovery to explicit `interrupted`, and atomic durable terminal publication with explicit `not_durable` memory-only fallback.
 
-Next work:
-- Exercise cancellation during connect, TLS, slow response and model operations with adversarial owned loopback fixtures; close any phase-specific gaps instead of assuming socket timeout equals cancellation.
+The production passive-web path now uses a cancellation-aware nonblocking TCP connector. Owned adversarial fixtures exercise pending-connect cancellation/deadline, TLS-handshake cancellation/deadline, slow-response cancellation/deadline and slow model cancellation/deadline; bounded DNS cancellation/deadline and durable publication/recovery were already covered. The first timing-sensitive CI assertion was corrected because a successful cancellation may legitimately occur before the owned HTTP fixture parses a HEAD request; the corrected test asserts bounded cancellation and no unintended GET/body path instead.
+
+Next work beyond the bounded Gate B criteria:
 - Normalize rejection of special/multicast/tunnel IP ranges across supported Python versions; retain DNS pinning and no redirects.
 - Test concurrent API activity and additional SQLite/storage failure modes, including checkpoint gaps followed by restart.
 - Decide and document how test-only injected readers participate in deadline enforcement without weakening production boundaries.
-- Add structured validation errors and coverage accounting that distinguish failed, unsupported, excluded and executed tests.
+- Add structured validation errors and richer coverage accounting that distinguish failed, unsupported, excluded and executed tests.
+- Keep project-filesystem cancellation explicitly cooperative at metadata boundaries; do not describe blocking filesystem syscalls as instantly interruptible.
 
-Acceptance: Gate B.
+Acceptance: **Gate B passes** at feature head `4e71682a0a44c6cbd650c8aa1cf921d50e0766fa` in Evidence Workbench run `35568876285` on Python 3.11, 3.12 and 3.13. The later feature head `62fd8fa0f43b2652b8263cca7a8dc8fa9807919f` also passed the full matrix in run `35569076171`, including cooperative project-adapter cancellation tests.
 
 ## 2. Stable adapter and finding contracts
 
@@ -72,7 +74,7 @@ Acceptance: malformed/truncated fixtures cannot invent verified findings; contra
 
 ## 3. Project-code checks first
 
-The first native project execution adapter is now implemented as a metadata-only boundary: it inventories bounded filenames without reading content, following symlinks, using subprocesses/network, or writing to the project. Vulnerable/corrected filename fixtures pass, but this is not a replacement for Semgrep/Trivy code/dependency/secret analysis.
+The first native project execution adapter is now implemented as a metadata-only boundary: it inventories bounded filenames without reading content, following symlinks, using subprocesses/network, or writing to the project. Vulnerable/corrected filename fixtures pass. Cancellation is propagated by the finite registry into cooperative checkpoints before and during the metadata walk; this does not claim that an already-blocked filesystem syscall can be preempted instantly. The adapter is still not a replacement for Semgrep/Trivy code/dependency/secret analysis.
 
 Next work: integrate narrowly configured local code/dependency/secret checks after reviewing tool/rule licenses. Mount source read-only, redact secrets by default and disclose exact files/languages/rules covered. Do not send source, credentials or raw secrets to inference by default. Any external processing needs adapter-specific minimization and disclosure rather than a generic cloud checkbox.
 
