@@ -17,6 +17,7 @@ from pathlib import Path
 
 from . import __version__
 from .adapter_lifecycle import AdapterLifecycle
+from .adapter_report import build_adapter_report
 from .registry import ExecutionRegistry, RegistryPolicy
 from .server import Handler, LocalServer, State
 
@@ -116,10 +117,23 @@ class WorkbenchHandler(Handler):
                 record = self.server.adapter_lifecycle.plan(data["adapter_id"], data["request"])
                 return self.reply(201, _public_record(record))
 
-            match = re.fullmatch(r"/api/adapter-runs/([a-f0-9]{32})/(approve|execute|cancel)", self.path)
+            match = re.fullmatch(r"/api/adapter-runs/([a-f0-9]{32})/(approve|execute|cancel|report)", self.path)
             if not match:
                 return self.reply(404, {"error": "Not found"})
             lifecycle_id, action = match.groups()
+
+            if action == "report":
+                if data:
+                    raise ValueError("Adapter report import takes an empty JSON object")
+                record = self.server.adapter_lifecycle.get(lifecycle_id)
+                if record is None:
+                    return self.reply(404, {"error": "Adapter lifecycle record not found"})
+                report = build_adapter_report(record)
+                existing = self.server.state.store.get(report["id"])
+                if existing is None:
+                    self.server.state.store.finalize(report)
+                    return self.reply(201, {"id": report["id"], "created": True})
+                return self.reply(200, {"id": existing["id"], "created": False})
 
             if action == "approve":
                 if set(data) != {"plan_sha256"} or not isinstance(data.get("plan_sha256"), str):

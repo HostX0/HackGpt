@@ -89,6 +89,48 @@ class AdapterApiTests(unittest.TestCase):
         self.assertNotIn(str(project).encode(), database)
         self.assertNotIn(b"customer-secret-value", database)
 
+    def test_completed_receipt_becomes_idempotent_candidate_only_report(self):
+        project = Path(self.tmp.name) / "project-report"
+        project.mkdir()
+        (project / ".env").write_text("SECRET_VALUE_SHOULD_NOT_BE_READ", encoding="utf-8")
+        request = {"root": str(project), "asset_key": "asset-report", "max_files": 20, "max_depth": 4, "timeout_seconds": 5}
+        status, planned = self.call("POST", "/api/adapters/plan", {"adapter_id": "native-project-metadata", "request": request})
+        self.assertEqual(status, 201)
+        status, _ = self.call("POST", f"/api/adapter-runs/{planned['id']}/approve", {"plan_sha256": planned["plan_sha256"]})
+        self.assertEqual(status, 200)
+        status, completed = self.call("POST", f"/api/adapter-runs/{planned['id']}/execute", {"adapter_id": "native-project-metadata", "request": request})
+        self.assertEqual(status, 200)
+        self.assertEqual(completed["status"], "completed")
+
+        status, linked = self.call("POST", f"/api/adapter-runs/{planned['id']}/report", {})
+        self.assertEqual(status, 201)
+        self.assertTrue(linked["created"])
+        status, report = self.call("GET", f"/api/runs/{linked['id']}")
+        self.assertEqual(status, 200)
+        self.assertEqual(report["environment"], "reviewed_adapter_receipt")
+        self.assertEqual(report["provenance"]["lifecycle_id"], planned["id"])
+        self.assertEqual(report["checks"][0]["plan_sha256"], planned["plan_sha256"])
+        self.assertTrue(report["findings"])
+        self.assertTrue(all(item["verification"] == "candidate" for item in report["findings"]))
+        self.assertEqual(report["ai"]["status"], "not_requested")
+        self.assertNotIn(str(project), json.dumps(report))
+        self.assertNotIn("SECRET_VALUE_SHOULD_NOT_BE_READ", json.dumps(report))
+
+        status, linked_again = self.call("POST", f"/api/adapter-runs/{planned['id']}/report", {})
+        self.assertEqual(status, 200)
+        self.assertFalse(linked_again["created"])
+        self.assertEqual(linked_again["id"], linked["id"])
+
+    def test_report_bridge_rejects_noncompleted_lifecycle(self):
+        project = Path(self.tmp.name) / "project-planned"
+        project.mkdir()
+        request = {"root": str(project), "asset_key": "asset-planned", "max_files": 10, "max_depth": 3, "timeout_seconds": 5}
+        status, planned = self.call("POST", "/api/adapters/plan", {"adapter_id": "native-project-metadata", "request": request})
+        self.assertEqual(status, 201)
+        status, payload = self.call("POST", f"/api/adapter-runs/{planned['id']}/report", {})
+        self.assertEqual(status, 400)
+        self.assertIn("completed", payload["error"])
+
     def test_changed_request_is_rejected_after_approval(self):
         project = Path(self.tmp.name) / "project-a"
         project.mkdir()

@@ -62,6 +62,7 @@
     byId('adapter-approve').disabled = true;
     byId('adapter-execute').disabled = true;
     byId('adapter-cancel').disabled = true;
+    byId('adapter-report').disabled = true;
     byId('adapter-reset').disabled = true;
     byId('adapter-preview').textContent = 'No reviewed adapter plan yet.';
     setStatus('Plan first. Execution remains disabled until the exact minimized authority preview is approved.');
@@ -141,7 +142,8 @@
     try {
       const record = await request('/api/adapter-runs/' + plan.id + '/execute', {adapter_id: plan.adapterId, request: plan.request});
       show(record);
-      setStatus('Execution completed with a durable receipt. Receipt authority is review metadata, not independent verification.');
+      byId('adapter-report').disabled = false;
+      setStatus('Execution completed with a durable receipt. Add it to the report workspace for review/export; findings remain candidate observations.');
     } catch (error) {
       try {
         const record = await request('/api/adapter-runs/' + plan.id);
@@ -152,6 +154,18 @@
       executing = false;
       byId('adapter-cancel').disabled = true;
       byId('adapter-reset').disabled = false;
+    }
+  });
+
+  byId('adapter-report').addEventListener('click', async () => {
+    if (!plan || executing) return;
+    byId('adapter-report').disabled = true;
+    try {
+      const result = await request('/api/adapter-runs/' + plan.id + '/report', {});
+      setStatus((result.created ? 'Candidate observations added to report ' : 'Adapter receipt is already linked to report ') + result.id + '. Use Run history to review or export it.');
+    } catch (error) {
+      byId('adapter-report').disabled = false;
+      setStatus(error.message, true);
     }
   });
 
