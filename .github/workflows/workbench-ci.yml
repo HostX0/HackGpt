@@ -56,13 +56,71 @@ jobs:
           git archive --format=tar HEAD workbench .github/workflows/workbench-ci.yml LICENSE > _review/workbench-source.tar
           git rev-parse HEAD > _review/REVISION.txt
           (cd _review && sha256sum workbench-source.tar > SHA256SUMS)
-          printf '%s\n' 'Review source for the exact checked-out revision, not a binary release or security certification.' 'This matrix job passed compile, Python loopback/unit tests, JavaScript syntax, DOM/fetch-double tests and release-evidence generation.' 'Separate jobs in this workflow exercise a real system browser against the loopback UI and run checkout smoke tests on Ubuntu, macOS and Windows; this artifact alone does not attest those jobs passed.' 'The release-evidence directory contains a scoped machine-readable manifest, CycloneDX SBOM and a report generated from the owned synthetic authorization lab.' 'No live Ollama inference, cloud request, external assessment target or GPU test was performed.' 'No root .env, reports, credentials, untracked runtime files or legacy installer are included.' > _review/VALIDATION.txt
+          printf '%s\n' 'Review source for the exact checked-out revision, not a binary release or security certification.' 'This matrix job passed compile, Python loopback/unit tests, JavaScript syntax, DOM/fetch-double tests and release-evidence generation.' 'Separate jobs in this workflow exercise a real system browser against the loopback UI, run checkout smoke tests on Ubuntu, macOS and Windows, and execute the pinned Semgrep CE image only against owned synthetic vulnerable/fixed fixtures.' 'The release-evidence directory contains a scoped machine-readable manifest, CycloneDX SBOM and a report generated from the owned synthetic authorization lab.' 'No live Ollama inference, cloud model request or external assessment target was used.' 'No root .env, reports, credentials, untracked runtime files or legacy installer are included.' > _review/VALIDATION.txt
       - name: Upload successful review bundle
         if: success() && matrix.python == '3.13'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: workbench-review-${{ github.sha }}
           path: _review/
+          if-no-files-found: error
+          retention-days: 7
+
+  semgrep-container:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      SEMGREP_IMAGE: semgrep/semgrep@sha256:d1825c2c72110b5bfbf0602ff68f7f117322597a7c33037a79dba9f897f5f1f0
+      HACKGPT_RUN_REAL_SEMGREP: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Pull exact reviewed Semgrep CE image before assessment execution
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker pull "$SEMGREP_IMAGE"
+          docker image inspect "$SEMGREP_IMAGE" >/dev/null
+      - name: Run pinned offline Semgrep adapter on owned vulnerable and fixed fixtures
+        shell: bash
+        run: |
+          set -o pipefail
+          mkdir -p _semgrep_review
+          python -m unittest discover -s workbench/tests -p 'test_semgrep_runner.py' -v 2>&1 | tee _semgrep_review/semgrep-runner-tests.txt
+      - name: Record pinned scanner validation boundary
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json, os
+          document = {
+              "schema": "hackgpt.scanner-validation/v1",
+              "checked_out_revision": os.environ["GITHUB_SHA"],
+              "adapter": "semgrep-project-local",
+              "tool": "semgrep-ce",
+              "tool_version": "1.177.0",
+              "image": os.environ["SEMGREP_IMAGE"],
+              "container_network": "none",
+              "source_mount": "read-only",
+              "automatic_pull_during_adapter_execution": False,
+              "rules": "repository-authored",
+              "owned_vulnerable_fixture": True,
+              "owned_fixed_fixture": True,
+              "external_assessment_target": False,
+              "customer_data": False,
+          }
+          with open("_semgrep_review/scanner-validation.json", "w", encoding="utf-8") as handle:
+              json.dump(document, handle, indent=2, sort_keys=True)
+              handle.write("\n")
+          print(json.dumps(document, sort_keys=True))
+          PY
+      - name: Upload pinned scanner validation evidence
+        if: success()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: workbench-semgrep-${{ github.sha }}
+          path: _semgrep_review/
           if-no-files-found: error
           retention-days: 7
 
@@ -119,11 +177,12 @@ jobs:
 
   validation-summary:
     if: always()
-    needs: [native-tests, browser-e2e, fresh-install]
+    needs: [native-tests, semgrep-container, browser-e2e, fresh-install]
     runs-on: ubuntu-latest
     timeout-minutes: 3
     env:
       NATIVE_RESULT: ${{ needs.native-tests.result }}
+      SEMGREP_RESULT: ${{ needs.semgrep-container.result }}
       BROWSER_RESULT: ${{ needs.browser-e2e.result }}
       FRESH_RESULT: ${{ needs.fresh-install.result }}
     steps:
@@ -135,6 +194,7 @@ jobs:
           import json, os
           results = {
               "native_python_matrix": os.environ["NATIVE_RESULT"],
+              "pinned_semgrep_owned_fixture": os.environ["SEMGREP_RESULT"],
               "real_browser_loopback_e2e": os.environ["BROWSER_RESULT"],
               "fresh_checkout_os_matrix": os.environ["FRESH_RESULT"],
           }
@@ -150,15 +210,18 @@ jobs:
                   "browser": "system Chromium-compatible browser on ubuntu-latest",
                   "responsive_widths_px": [1440, 768, 390],
                   "fresh_checkout_platforms": ["ubuntu-latest", "macos-latest", "windows-latest"],
+                  "third_party_scanner_execution": "Semgrep CE 1.177.0 pinned container on owned synthetic project fixtures only",
+                  "scanner_container_network": "none",
                   "external_assessment_target": False,
                   "live_model_inference": False,
-                  "third_party_scanner_execution": False,
               },
               "all_required_jobs_passed": passed,
               "limitations": [
                   "This is GitHub Actions validation evidence, not a cryptographic release signature.",
+                  "The Semgrep image pull is a CI setup step; adapter execution itself refuses automatic pulls and disables container networking.",
+                  "Semgrep validation covers only the repository-authored local rule set and owned synthetic vulnerable/fixed fixtures, not arbitrary third-party rules or projects.",
                   "Browser coverage is the documented hosted Chromium path, not a multi-browser certification.",
-                  "Fresh-checkout smoke is not a signed installer or packaged third-party scanner attestation.",
+                  "Fresh-checkout smoke is not a signed installer attestation.",
               ],
           }
           with open("_validation/ci-validation.json", "w", encoding="utf-8") as handle:
@@ -178,9 +241,11 @@ jobs:
         shell: bash
         run: |
           test "$NATIVE_RESULT" = success
+          test "$SEMGREP_RESULT" = success
           test "$BROWSER_RESULT" = success
           test "$FRESH_RESULT" = success
 
-  # Tests contact only owned loopback fixtures. They do not use external assessment
-  # targets, real credentials, model downloads, cloud inference, paid services,
-  # third-party scanner binaries or the legacy installer.
+  # Browser and assessment tests contact only owned loopback fixtures. The Semgrep
+  # integration job pulls one immutable reviewed image during CI setup, then the adapter
+  # itself runs with --pull never and --network none against owned local fixtures only.
+  # No external assessment targets, real credentials, cloud inference or paid services are used.
