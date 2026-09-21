@@ -65,8 +65,29 @@ def find_forbidden_artifacts(root: Path) -> list[str]:
     return sorted(blocked)
 
 
+def _optional_scanner_runner(root: Path) -> dict[str, Any]:
+    from .semgrep_runner import semgrep_tool_public_metadata
+
+    pin_path = root / "tooling" / "semgrep-1.177.0.json"
+    rules_path = root / "rules" / "semgrep_workbench.yml"
+    if not pin_path.is_file() or not rules_path.is_file():
+        raise ValueError("pinned Semgrep runner metadata or repository-authored rules are missing")
+    metadata = semgrep_tool_public_metadata()
+    metadata.update({
+        "adapter_id": "semgrep-project-local",
+        "adapter_version": "1.177.0-r1",
+        "distribution": "optional-preinstalled-container",
+        "pin_path": "tooling/semgrep-1.177.0.json",
+        "pin_sha256": _sha256(pin_path),
+        "rules_path": "rules/semgrep_workbench.yml",
+        "rules_sha256": _sha256(rules_path),
+        "validated_platform": "linux/amd64",
+    })
+    return metadata
+
+
 def source_review_manifest(root: Path) -> dict[str, Any]:
-    """Hash the small set of human review documents that define current boundaries."""
+    """Hash human review boundaries and optional executable-tool pins."""
     root = Path(root).resolve()
     missing = [name for name in _REQUIRED_REVIEW_DOCS if not (root / name).is_file()]
     if missing:
@@ -74,15 +95,18 @@ def source_review_manifest(root: Path) -> dict[str, Any]:
     blocked = find_forbidden_artifacts(root)
     if blocked:
         raise ValueError("forbidden runtime/secret artifacts found in workbench tree: " + ", ".join(blocked))
+    scanner = _optional_scanner_runner(root)
     return {
         "schema": RELEASE_EVIDENCE_SCHEMA,
         "workbench_version": __version__,
         "scope": "isolated-workbench-only",
         "python": {"minimum": "3.11", "third_party_runtime_packages": []},
         "bundled_scanners": [],
+        "optional_scanner_runners": [scanner],
         "implemented_model_adapters": ["ollama"],
         "execution_boundaries": {
-            "external_scanner_execution": False,
+            "external_scanner_execution": True,
+            "scanner_execution_scope": "pinned-local-container-only",
             "arbitrary_shell_execution": False,
             "public_server_supported": False,
             "browser_e2e_validated": False,
@@ -95,15 +119,20 @@ def source_review_manifest(root: Path) -> dict[str, Any]:
         "notes": [
             "Python standard-library modules are not enumerated as third-party packages.",
             "Ollama is an optional external runtime integration and is not bundled in this workbench source review artifact.",
-            "Semgrep, Trivy, Nuclei, ZAP and Nmap executables/images are not bundled by this milestone.",
+            "Semgrep CE is supported only through the documented digest-pinned optional container runner; the image is not bundled or automatically pulled by assessment execution.",
+            "The Semgrep container is constrained to network=none, a read-only project mount, repository-authored local rules and bounded process output.",
+            "Trivy, Nuclei, ZAP and Nmap executables/images are not bundled or executable adapters in this milestone.",
             "This manifest describes the isolated workbench contribution, not the legacy repository application.",
         ],
     }
 
 
 def cyclonedx_bom() -> dict[str, Any]:
-    """Return a minimal CycloneDX inventory for what the isolated review bundle ships."""
+    """Return a CycloneDX inventory including the optional pinned scanner runtime."""
+    from .semgrep_runner import SEMGREP_IMAGE, SEMGREP_IMAGE_DIGEST, SEMGREP_VERSION
+
     serial = uuid.uuid5(uuid.NAMESPACE_URL, f"https://github.com/HostX0/HackGpt/workbench/{__version__}")
+    digest_hex = SEMGREP_IMAGE_DIGEST.removeprefix("sha256:")
     return {
         "bomFormat": "CycloneDX",
         "specVersion": CYCLONEDX_SPEC_VERSION,
@@ -119,10 +148,27 @@ def cyclonedx_bom() -> dict[str, Any]:
                     {"name": "hackgpt:scope", "value": "isolated-workbench-only"},
                     {"name": "hackgpt:third-party-python-runtime-packages", "value": "none"},
                     {"name": "hackgpt:bundled-scanners", "value": "none"},
+                    {"name": "hackgpt:optional-scanner-runners", "value": "semgrep-ce"},
                 ],
             }
         },
-        "components": [],
+        "components": [{
+            "type": "container",
+            "name": "semgrep/semgrep",
+            "version": SEMGREP_VERSION,
+            "scope": "optional",
+            "bom-ref": f"container:semgrep/semgrep@{SEMGREP_IMAGE_DIGEST}",
+            "hashes": [{"alg": "SHA-256", "content": digest_hex}],
+            "licenses": [{"license": {"id": "LGPL-2.1-or-later"}}],
+            "properties": [
+                {"name": "hackgpt:image-reference", "value": SEMGREP_IMAGE},
+                {"name": "hackgpt:bundled", "value": "false"},
+                {"name": "hackgpt:automatic-pull", "value": "false"},
+                {"name": "hackgpt:validated-platform", "value": "linux/amd64"},
+                {"name": "hackgpt:container-network", "value": "none"},
+                {"name": "hackgpt:rules-source", "value": "repository-authored"},
+            ],
+        }],
     }
 
 
