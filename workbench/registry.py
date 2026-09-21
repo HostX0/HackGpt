@@ -12,6 +12,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from .engine import validate_url
 from .execution_contracts import ExecutionDeclaration
 from .execution_receipts import EXECUTION_RECEIPT_SCHEMA, normalize_execution_receipt
 from .project_adapter import ProjectMetadataAdapter, ProjectScanPolicy
@@ -19,6 +20,15 @@ from .web_adapter import WebHeaderAdapter, WebHeaderPolicy
 
 _ALLOWED_EFFECTS = ("read_only", "passive", "active_bounded")
 _EFFECT_RANK = {name: index for index, name in enumerate(_ALLOWED_EFFECTS)}
+
+
+def _safe_text(value: Any, name: str, maximum: int) -> str:
+    if not isinstance(value, str):
+        raise ValueError(f"{name} must be text")
+    value = value.strip()
+    if not value or len(value) > maximum or any(ord(ch) < 32 or ord(ch) == 127 for ch in value):
+        raise ValueError(f"invalid {name}")
+    return value
 
 
 @dataclass(frozen=True)
@@ -76,11 +86,12 @@ class ExecutionRegistry:
             raise ValueError("adapter request must be an object")
         if adapter_id == "native-project-metadata":
             adapter, root = self._project_adapter(request)
-            label = Path(root).name or "project-root"
+            raw_label = Path(root).name or "project-root"
+            label = "".join(ch if 32 <= ord(ch) < 127 else "?" for ch in raw_label)[:160] or "project-root"
             summary = {
                 "adapter_id": adapter_id,
                 "asset_key": request["asset_key"],
-                "project_label": label[:160],
+                "project_label": label,
                 "full_path_included": False,
             }
         else:
@@ -140,6 +151,7 @@ class ExecutionRegistry:
         root = request["root"]
         if not isinstance(root, (str, Path)):
             raise ValueError("project root must be a filesystem path")
+        _safe_text(request["asset_key"], "asset_key", 160)
         policy = ProjectScanPolicy(
             max_files=request.get("max_files", 1000),
             max_depth=request.get("max_depth", 12),
@@ -154,8 +166,9 @@ class ExecutionRegistry:
             raise ValueError("web adapter request contains unsupported fields")
         if "target" not in request or "asset_key" not in request:
             raise ValueError("web adapter requires target and asset_key")
-        if not isinstance(request["target"], str) or not isinstance(request["asset_key"], str):
-            raise ValueError("web adapter target and asset_key must be text")
+        _safe_text(request["target"], "target", 2048)
+        _safe_text(request["asset_key"], "asset_key", 160)
+        validate_url(request["target"])
         adapter = WebHeaderAdapter(WebHeaderPolicy(timeout_seconds=request.get("timeout_seconds", 15)))
         self._authorize(adapter.execution_declaration())
         return adapter
