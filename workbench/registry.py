@@ -89,7 +89,7 @@ class ExecutionRegistry:
         )
         adapter = ProjectMetadataAdapter(policy)
         self._authorize(adapter.execution_declaration())
-        return adapter.run(root, asset_key=request["asset_key"])
+        return adapter.run(root, asset_key=request["asset_key"], cancel=cancel)
 
     def _web(self, request: dict[str, Any], *, cancel=None, web_reader=None) -> dict[str, Any]:
         if set(request) - {"target", "asset_key", "timeout_seconds"}:
