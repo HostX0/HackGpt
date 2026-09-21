@@ -1,10 +1,10 @@
-# Ollama gateway and processing policy
+# Ollama adapter and processing policy
 
-Current contract, updated 2026-09-21. This supersedes the historical local-inference-only direction in Contributions 02–03. Ollama remains the only AI integration; locally running and cloud-backed models share the same assessment/evidence contract. AI may also be explicitly disabled.
+Current implemented adapter contract, updated 2026-09-21. This supersedes the historical local-inference-only direction in Contributions 02–03. **Ollama is the only AI adapter implemented in the Evidence Workbench today, not a permanent product-wide gateway requirement.** The evidence/action/report contracts are intentionally provider-neutral so reviewed future self-hosted or third-party adapters can reuse them without changing authorization or evidence authority. Locally running and cloud-backed Ollama models share the same current assessment/evidence contract. AI may also be explicitly disabled.
 
 ## Transport is not inference location
 
-`LocalRuntime` retains its name for compatibility and connects only to `127.0.0.1` on port `11434`, or the integer port in `HACKGPT_OLLAMA_PORT`. The transport does not follow redirects or proxy variables. Direct remote endpoints, workbench-held API keys, automatic sign-in, model pulls and automatic fallback are not implemented. Cloud access is through an operator-managed, already configured Ollama daemon.
+`LocalRuntime` retains its name for compatibility and connects only to `127.0.0.1` on port `11434`, or the integer port in `HACKGPT_OLLAMA_PORT`. The transport does not follow redirects or proxy variables. Direct remote provider endpoints, workbench-held API keys, automatic sign-in, model pulls and automatic fallback are not implemented in the current adapter. Cloud access is through an operator-managed, already configured Ollama daemon.
 
 Two independent controls exist:
 
@@ -13,7 +13,7 @@ Two independent controls exist:
 | Model processing policy | `local_only` by default, or `cloud_allowed` after explicit boolean `allow_cloud: true`. |
 | Assessment authorization | Declared target, mode, approval and finite action/request budgets, enforced independently of the model. |
 
-Choosing a stronger or cloud-backed model does not grant more tools, widen scope or convert model text into evidence. Deterministic native checks remain available without AI.
+Choosing a stronger or cloud-backed model does not grant more tools, widen scope or convert model text into evidence. Deterministic native checks remain available without AI. A future provider adapter must preserve these same boundaries rather than becoming a new execution authority.
 
 ## Consent and minimized disclosure
 
@@ -51,7 +51,7 @@ Tool selection remains separately validated: one declared function, empty argume
 
 ### Explicit Test response
 
-The GUI now exposes the previously implemented backend self-test. It never starts automatically. A fixed JSON readiness prompt is followed, when requested, by an inert `workbench_self_test` tool-call compatibility prompt. The returned function is validated but never executed; the probe has no execution callback. It does not receive target, authorization, findings, evidence or scanner content. Up to two inference requests may consume local compute or provider usage.
+The GUI exposes the backend self-test and never starts it automatically. A fixed JSON readiness prompt is followed, when requested, by an inert `workbench_self_test` tool-call compatibility prompt. The returned function is validated but never executed; the probe has no execution callback. It does not receive target, authorization, findings, evidence or scanner content. Up to two inference requests may consume local compute or provider usage.
 
 `inference_compatible` means only that these fixed contracts were satisfied in that probe. It is not assessment evidence, a quality/GPU benchmark, future reliability promise or proof of offline processing.
 
@@ -62,6 +62,10 @@ Each assessment reports its model, processing policy, reported location and expl
 Sampling/context/output settings stay bounded (`num_predict: 768`, `num_ctx: 4096`, temperature zero). These are requested daemon options, not proof of provider-side token enforcement. Maximum request/response bytes are 65,536/262,144; maximum messages is 16, with one declared tool per request. Quota/busy responses do not trigger retry, sign-in or model substitution. Error categories distinguish invalid policy/model, unreachable service, auth required, missing model, incompatible capabilities, oversized/malformed/incomplete/truncated output and denied actions. Thinking traces and arbitrary response metadata are not retained.
 
 Socket timeouts remain per blocking operation, not a hard overall deadline; hard cancellation/deadlines are still roadmap priorities. Live provider authentication, cloud inference and GPU/model performance have not been tested in this development environment.
+
+## Provider-neutral boundary
+
+This document describes the implemented Ollama adapter, not the permanent topology of the product. Any future provider adapter must supply model/capability identity, processing-location/disclosure metadata, bounded structured inference and usage/error telemetry while remaining unable to alter target scope, approval, action budgets or verification states. Provider-specific credentials must be isolated and must never become report evidence or reusable proof material. No adapter may silently fall back to another provider or model.
 
 ## Validation boundary
 
