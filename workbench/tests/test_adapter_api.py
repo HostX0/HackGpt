@@ -46,7 +46,7 @@ class AdapterApiTests(unittest.TestCase):
         status, payload = self.call("GET", "/api/adapters")
         self.assertEqual(status, 200)
         ids = {item["adapter"]["id"] for item in payload["adapters"]}
-        self.assertEqual(ids, {"native-project-metadata", "native-web-headers"})
+        self.assertEqual(ids, {"native-project-metadata", "native-web-headers", "semgrep-project-local"})
 
     def test_project_plan_approve_execute_persists_minimized_receipt(self):
         project = Path(self.tmp.name) / "private-customer-root"
