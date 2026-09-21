@@ -1,15 +1,25 @@
 """Ephemeral loopback-only authorization fixture. Never a remote exploitation target."""
 import hashlib
 import http.client
+import json
 import secrets
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+from .evidence_safety import summarize_records
 
 
 class CanaryLab:
     def __init__(self, fixed=False):
         self.fixed = fixed
-        self.marker = ("HACKGPT-SYNTHETIC-" + secrets.token_hex(24)).encode()
+        canary = "HACKGPT-SYNTHETIC-" + secrets.token_hex(24)
+        # Every value in this fixture is generated test data. The proof exporter still
+        # exposes only schema/count/hash plus the explicitly marked canary.
+        self.records = [
+            {"id": 101, "account": "synthetic-alpha", "role": "viewer", "marker": canary},
+            {"id": 102, "account": "synthetic-beta", "role": "analyst", "marker": "synthetic-control-row"},
+        ]
+        self.marker = json.dumps(self.records, sort_keys=True, separators=(",", ":")).encode()
         lab = self
 
         class Handler(BaseHTTPRequestHandler):
@@ -21,13 +31,13 @@ class CanaryLab:
 
             def do_GET(self):
                 if self.path == "/control" or (lab.fixed and self.path == "/record"):
-                    status, body = 401, b"Authorization required"
+                    status, body, content_type = 401, b"Authorization required", "text/plain"
                 elif self.path == "/record":
-                    status, body = 200, lab.marker
+                    status, body, content_type = 200, lab.marker, "application/json"
                 else:
-                    status, body = 404, b"Not found"
+                    status, body, content_type = 404, b"Not found", "text/plain"
                 self.send_response(status)
-                self.send_header("Content-Type", "text/plain")
+                self.send_header("Content-Type", content_type)
                 self.send_header("Content-Length", str(len(body)))
                 self.end_headers()
                 self.wfile.write(body)
@@ -62,13 +72,17 @@ class CanaryLab:
     def prove(self):
         control, _, _ = self.request("/control")
         status, _, body = self.request("/record")
+        matched = status == 200 and secrets.compare_digest(body, self.marker)
         return {
             "control_status": control,
             "record_status": status,
-            "synthetic_marker_matched": status == 200 and secrets.compare_digest(body, self.marker),
+            "synthetic_marker_matched": matched,
             "body_sha256": hashlib.sha256(body).hexdigest(),
             "expected_sha256": hashlib.sha256(self.marker).hexdigest(),
             "credentials_sent": False,
             "paths": ["/control", "/record"],
             "environment": "ephemeral synthetic loopback lab",
+            "data_summary": summarize_records(self.records) if matched else None,
+            "demonstrated_impact": "unauthenticated read of designated synthetic records" if matched else "not demonstrated",
+            "customer_data_sampled": False,
         }
