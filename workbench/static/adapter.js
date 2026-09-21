@@ -29,7 +29,11 @@
   }
 
   function kind() { return byId('adapter-kind').value; }
-  function adapterId() { return kind() === 'project' ? 'native-project-metadata' : 'native-web-headers'; }
+  function adapterId() {
+    if (kind() === 'project') return 'native-project-metadata';
+    if (kind() === 'semgrep') return 'semgrep-project-local';
+    return 'native-web-headers';
+  }
 
   function buildRequest() {
     const assetKey = byId('adapter-asset').value.trim();
@@ -37,6 +41,9 @@
     if (!assetKey || !target) throw new Error('Provide an engagement asset key and exact target.');
     if (kind() === 'project') {
       return {root: target, asset_key: assetKey, max_files: 1000, max_depth: 12, timeout_seconds: 30};
+    }
+    if (kind() === 'semgrep') {
+      return {root: target, asset_key: assetKey, max_files: 250, max_depth: 12, timeout_seconds: 90, max_target_bytes: 500000};
     }
     return {target, asset_key: assetKey, timeout_seconds: 15};
   }
@@ -62,12 +69,17 @@
   }
 
   function syncTargetLabel() {
-    const project = kind() === 'project';
+    const selected = kind();
+    const project = selected === 'project' || selected === 'semgrep';
     byId('adapter-target-label').textContent = project ? 'Project directory on this machine' : 'Exact authorized URL';
     byId('adapter-target').placeholder = project ? '/path/to/authorized/project' : 'https://authorized.example';
-    byId('adapter-target-help').textContent = project
-      ? 'Metadata-only: filenames may be inspected within the displayed limits. File contents are not read and symlinks are not followed.'
-      : 'Passive bounded web check: one HEAD request, no redirects and no response body.';
+    if (selected === 'project') {
+      byId('adapter-target-help').textContent = 'Metadata-only: filenames may be inspected within the displayed limits. File contents are not read and symlinks are not followed.';
+    } else if (selected === 'semgrep') {
+      byId('adapter-target-help').textContent = 'Pinned Semgrep CE: project content is mounted read-only into a network-disabled container using repository-authored local rules. The exact image must already be installed; execution never auto-pulls it.';
+    } else {
+      byId('adapter-target-help').textContent = 'Passive bounded web check: one HEAD request, no redirects and no response body.';
+    }
   }
 
   function show(record) {
@@ -158,7 +170,7 @@
     try {
       const info = await request('/api/adapters');
       const ids = info.adapters.map((item) => item.adapter.id).join(', ');
-      setStatus('Reviewed execution registry: ' + ids + '. External scanners are not bundled.');
+      setStatus('Reviewed execution registry: ' + ids + '. Optional scanner images are never downloaded by assessment execution.');
     } catch (error) {
       setStatus(error.message, true);
     }
