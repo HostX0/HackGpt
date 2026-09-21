@@ -52,7 +52,7 @@ class SelfTestApiTests(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertEqual(value["state"], "inference_compatible")
         self.assertFalse(value["assessment_data_sent"])
-        ollama_class.assert_called_once_with("local:test")
+        ollama_class.assert_called_once_with("local:test", allow_cloud=False)
         client.self_test.assert_called_once_with(require_tools=True)
         self.assertIsNone(self.state.active)
 

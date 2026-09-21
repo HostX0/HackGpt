@@ -28,7 +28,7 @@ python -m workbench --port 8766 --data-dir ./local-workbench-data
 
 | Mode | Implemented now | Boundary |
 |---|---|---|
-| Analyst | One HTTP metadata request; optional local-model interpretation and structured report | No exploitation; missing headers do not establish practical impact. |
+| Analyst | One HTTP metadata request; optional Ollama interpretation and validated report | No exploitation; missing headers do not establish practical impact. |
 | Controlled verification | Baseline plus an independently checked authorization canary in an ephemeral synthetic lab; optional bounded model selection of the approved action | Proof applies only to the deliberately vulnerable local fixture, never to an external website. |
 
 Controlled mode requires separate approval. With AI disabled, the approved synthetic proof runs deterministically. With AI enabled, the model can request the single approved action or stop. A skipped action remains inconclusive. It cannot choose a new target, supply command arguments, access a shell or files, or remove the budget.
@@ -53,15 +53,19 @@ The engine starts a disposable HTTP fixture on loopback. A control route rejects
 
 **Not included yet:** ZAP, Nuclei, Semgrep, Trivy or Nmap adapters; authenticated application scans; private-network target scopes; external exploit verification; broad business-logic tests; multi-user hosting; report signing; PDF export; an all-tools installer.
 
-## Local Ollama
+## Ollama: local or cloud-backed, by explicit choice
 
-Ollama is optional and separate. Choose an already installed local model with structured-output support; model-directed verification also needs tool-calling support. Click **Detect**, then use an exact installed model name. Models are not downloaded automatically.
+Ollama is the only AI integration gateway. The workbench still connects to the operator's daemon at `127.0.0.1:11434` (port configurable with `HACKGPT_OLLAMA_PORT`). A local gateway connection does **not** mean the selected model runs locally. Select an exact model already available through that daemon; there are no automatic downloads, account sign-ins, provider substitutions or cloud fallbacks.
 
-Configure the **Ollama service itself** with `OLLAMA_NO_CLOUD=1`. Setting this variable only in a workbench process does not reconfigure an already-running Ollama server. Cloud-tagged and explicitly remote models are filtered, but the client cannot independently attest the server's networking behavior.
+The default processing policy is **Local only**. Enable **Allow cloud processing for this assessment** to use a cloud-backed Ollama model. This consent does not expand target scope or tool permissions. Normalized rule IDs, severities, proof states, remediation, check outcomes and limitations may leave the device. Target URLs, authorization notes, credentials and raw evidence are omitted by the current native context builder. This is minimization, not a universal secret-detection guarantee for future adapters. Customer/provider policies and usage limits still apply.
 
-The client connects only to `127.0.0.1:11434`. An operator can change the local port through `HACKGPT_OLLAMA_PORT`; there is no remote endpoint field. Model context excludes raw HTTP bodies, arbitrary response-header values and authorization notes. An unavailable server, missing model or invalid response is recorded as a limitation.
+Cloud approval is not saved globally. The GUI resets it when the selected model or assessment scope changes and after a run is submitted. In-flight requests cannot be unsent; an active run uses its recorded configuration and can be cancelled at checkpoints. For a stronger local-only deployment, configure the **running Ollama daemon** with `OLLAMA_NO_CLOUD=1`, restart it and apply appropriate egress controls. Model metadata is not egress attestation.
 
-Live model inference and GPU performance were not tested for this first contribution. Orchestration and schema contracts were tested with controlled response fixtures.
+**Detect** lists policy-eligible model names without changing the selected model. **Check model** inspects metadata without inference. **Test response** explicitly sends fixed synthetic prompts to check response/tool contracts; it sends no assessment content, executes no tool and can consume model usage. Neither check measures assessment quality, GPU performance or vulnerability coverage.
+
+Capabilities are checked independently of execution location. Current Ollama documentation says cloud models do not support server-constrained structured outputs; the cloud path therefore requests the same JSON contract in a trusted prompt and validates the response in application code. Invalid/truncated output remains an AI error, never a fabricated finding. A model that supports analysis but not tools can still be used in Analyst mode.
+
+Reports retain the chosen processing policy, model, reported execution location, request attempts and token counts **when returned by the daemon**. Missing usage is unknown, not zero; no price or billing estimate is invented. See [OLLAMA.md](OLLAMA.md) for the exact contract and limitations. Live local/cloud model inference has not yet been validated; automated model tests use synthetic loopback protocol fixtures.
 
 ## Interpreting results
 
@@ -79,9 +83,10 @@ Reports default to `~/.hackgpt-workbench` and are **not encrypted at rest** in t
 python -m unittest discover -s workbench/tests -v
 python -m compileall -q workbench
 node --check workbench/static/app.js
+node --test workbench/tests/test_ollama_ui.cjs
 ```
 
-Node is only needed for the optional JavaScript syntax check, not application runtime. The new GitHub Actions workflow is configured for Python 3.11, 3.12 and 3.13, without a legacy installer or external scans. Inspect actual hosted run status before claiming CI success.
+Node is only needed for JavaScript syntax and behavior tests, not application runtime. The new GitHub Actions workflow is configured for Python 3.11, 3.12 and 3.13, without a legacy installer or external scans. Inspect actual hosted run status before claiming CI success.
 
 The initial development session also ran offline Chromium layout/interaction checks at 1440, 768 and 390 pixels with mocked fetch transport and real synthetic-lab report data. That harness is not included in this contribution. These checks are **not browser-to-server E2E**. The checked-in native tests separately exercise the actual loopback HTTP API, storage and exports. Full validation limitations are recorded in [PROGRESS.md](PROGRESS.md).
 
@@ -91,7 +96,9 @@ The standard-library HTTP server is intended here for a local single-user previe
 
 Cancellation happens at checkpoints, not by instantly interrupting active I/O. Per-socket timeouts exist, but the system resolver and slow reads are not yet covered by one enforceable wall-clock deadline. Atomic terminal-status publication, stronger deadline enforcement and cross-version special-address tests are immediate follow-up work.
 
-See [ROADMAP.md](ROADMAP.md) for staged development. This is a tested starting point, not a complete penetration-testing suite.
+Successful workbench CI produces a revision-bound review bundle with tracked source, the existing LICENSE, checksums and test logs. It is not an executable release or a security certification.
+
+See [PRODUCT_DIRECTION.md](PRODUCT_DIRECTION.md) for the professional workflow and measurable differentiators; see [ROADMAP.md](ROADMAP.md) for staged development. This is a tested starting point, not a complete penetration-testing suite.
 
 ## References
 

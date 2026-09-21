@@ -196,7 +196,7 @@ class Handler(BaseHTTPRequestHandler):
                 filename, kind = static[self.path]
                 return self.reply(200, (Path(__file__).parent / "static" / filename).read_bytes(), kind)
             if self.path == "/api/health":
-                return self.reply(200, {"version": __version__, "local_only": True, "third_party_adapters": "not_integrated", "active_run": self.server.state.active})
+                return self.reply(200, {"version": __version__, "local_only": True, "local_only_scope": "server_binding", "ai_processing_policies": ["local_only", "cloud_allowed"], "third_party_adapters": "not_integrated", "active_run": self.server.state.active})
             if self.path == "/api/models":
                 try:
                     return self.reply(200, Ollama("").diagnostics())
@@ -234,12 +234,18 @@ class Handler(BaseHTTPRequestHandler):
             if not 0 < length <= 16384 or self.headers.get("Content-Type", "").split(";")[0] != "application/json":
                 raise ValueError("Send a JSON object no larger than 16 KiB")
             data = json.loads(self.rfile.read(length))
+            if self.path == "/api/models/discover":
+                if (not isinstance(data, dict) or set(data) - {"allow_cloud"}
+                        or type(data.get("allow_cloud", False)) is not bool):
+                    raise ValueError("Send only optional boolean allow_cloud")
+                return self.reply(200, Ollama("", allow_cloud=data.get("allow_cloud", False)).diagnostics())
             if self.path in ("/api/models/check", "/api/models/self-test"):
-                if (not isinstance(data, dict) or set(data) - {"model", "require_tools"}
+                if (not isinstance(data, dict) or set(data) - {"model", "require_tools", "allow_cloud"}
                         or not isinstance(data.get("model"), str) or not data["model"]
-                        or not isinstance(data.get("require_tools", False), bool)):
+                        or not isinstance(data.get("require_tools", False), bool)
+                        or type(data.get("allow_cloud", False)) is not bool):
                     raise ValueError("Send an exact model name and optional boolean require_tools")
-                client = Ollama(data["model"])
+                client = Ollama(data["model"], allow_cloud=data.get("allow_cloud", False))
                 if self.path == "/api/models/self-test":
                     result = client.self_test(require_tools=data.get("require_tools", False))
                 else:
@@ -281,7 +287,7 @@ def main():
     print("Open locally: http://127.0.0.1:" + str(args.port) + "/#token=" + token)
     print("Keep this launch URL private. Loopback only; do not expose through a tunnel.")
     print("Native checks are ready. External scanners are NOT bundled in this milestone.")
-    print("For local-only AI, configure the Ollama service with OLLAMA_NO_CLOUD=1.")
+    print("Ollama models may be local or cloud-backed with explicit cloud approval in the form. Local-only remains the default privacy policy.")
     try:
         server.serve_forever()
     except KeyboardInterrupt:

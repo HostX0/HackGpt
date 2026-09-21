@@ -1,5 +1,7 @@
 # Contribution and validation ledger
 
+Historical entries describe the policy at their time. Contribution 04 supersedes the local-inference-only restriction: Ollama remains the gateway; cloud-backed selection is allowed with explicit assessment-level consent.
+
 ## 2026-09-21 — Contribution 01: Evidence-first local workbench
 
 ### Implemented
@@ -82,3 +84,27 @@ No live Ollama inference, GPU/model performance, cloud-egress attestation, new b
 ### Deliberate limits
 
 This contribution still does **not** claim successful inference against a real installed Ollama model or measure GPU capacity, speed, model quality or future reliability. A self-test pass is not evidence that the daemon is offline: operators must configure the running Ollama service with `OLLAMA_NO_CLOUD=1`, restart it, and use separate egress controls when a stronger offline guarantee is required. The new backend endpoint is intentionally not wired to an automatic GUI inference action yet; model metadata preflight remains non-inference. No external targets were contacted and no exploit action was added.
+
+## 2026-09-21 — Contribution 04: Choice of inference location, explicit consent and reviewability
+
+### Implemented
+
+- Preserved Ollama as the only gateway while adding strictly typed per-assessment `allow_cloud` support across runtime, scope, authenticated model endpoints and GUI. Local-only remains the default policy; cloud-backed catalog/show aliases become selectable when approved. Local/cloud selection does not change tool authority.
+- Added explicit cloud disclosure, no automatic first-model selection, model/location metadata and consent invalidation on model/scope changes, after submission and during stale preflight races. Added an explicit GUI Test response action for fixed synthetic compatibility probes.
+- Adapted cloud JSON responses to a prompted contract because current Ollama Cloud documentation does not support server-constrained structured outputs. Both paths retain strict application validation and cannot invent proof states.
+- Recorded daemon-reported token counts, attempts and processing metadata in assessment reports, including failed-response coverage and unknown counters. No billing values or hardware performance were fabricated.
+- Added a combined loopback integration test covering the real workbench HTTP API, fake cloud-backed Ollama protocol, assessment completion, sealed export and SQLite persistence. No real cloud inference was used.
+- Added a revision-bound CI source review artifact with the tracked workbench, workflow, original LICENSE, checksum and real test logs. Excludes root .env, untracked runtime data and reports; it is not a binary release, signed attestation or security certification.
+- Updated the current Ollama guide, roadmap and product direction: professional engagement workflow, coverage-aware retest, permission preview, evidence review, customer isolation and provenance-aware retrieval are explicit development targets, not false implemented features.
+
+### Validation actually performed before the main feature commit
+
+- **155 Python unit/integration tests passed locally** on Python 3.13, including **32 new cloud-policy/usage/API tests**; full suite completed in 19.238 seconds in this environment.
+- **20 JavaScript behavior tests passed locally**, including **10 new cloud-consent/self-test/stale-response tests**. These use DOM/fetch doubles, not browser E2E.
+- `python -m compileall -q workbench` and `node --check workbench/static/app.js` passed.
+- The initial full Python run exposed one obsolete mock assertion expecting a constructor without its new explicit default policy flag. The assertion was updated to expect `allow_cloud=False`, preserving the local-only default; the complete suite then passed.
+- Before these feature changes, the review-bundle workflow commit `4f7c2ac25cf058ca0dfd8819961256b3abfe4484` passed all three hosted Python matrix jobs in Evidence Workbench run `35551254344`. The downloaded source tar checksum was verified before extracting the full workbench for local testing. This earlier success is **not** a claim that the later feature commit passed hosted CI; inspect its exact run separately.
+
+### Limits and next work
+
+No live local/cloud model inference, account sign-in, paid API, GPU test, external target, real third-party scanner or new browser E2E/layout check was performed. `agent-browser` was unavailable in this runtime; DOM tests are not visual validation. Prompted JSON is not constrained decoding; model metadata is not egress attestation; reported counters are not a bill. Checkpoint cancellation and per-operation timeouts are still not hard end-to-end deadlines. No upstream submission or maintainer approval occurred. Next substantive work should address reliability and stable scanner-output adapters/coverage-aware retesting, rather than another provider-policy-only increment.

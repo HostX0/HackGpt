@@ -127,3 +127,95 @@ test('active runs disable model diagnostics controls', () => {
   assert.equal(h.nodes.detect.disabled, true);
   assert.equal(h.nodes['check-model'].disabled, true);
 });
+
+test('cloud approval defaults off and is disabled with AI off', () => {
+  const h = harness(); h.run('syncForm()');
+  assert.equal(h.nodes['allow-cloud'].checked, false);
+  assert.equal(h.nodes['allow-cloud'].disabled, true);
+  assert.match(html, /Provider usage limits may apply/);
+});
+
+test('cloud-approved metadata preflight keeps exact model and capability contract', async () => {
+  const h = harness(async () => ({...checked, execution_location: 'cloud_reported'}));
+  h.nodes['use-ai'].checked = true; h.nodes.model.value = 'fixture:cloud'; h.nodes['allow-cloud'].checked = true;
+  await h.run('checkModel()');
+  assert.deepEqual(h.requests[0].body, {model: 'fixture:cloud', require_tools: false, allow_cloud: true});
+  assert.match(h.nodes['model-details'].textContent, /cloud reported/);
+});
+
+test('cloud discovery is explicit and does not automatically select a cloud model', async () => {
+  const h = harness(async () => ({models: ['fixture:cloud'], note: 'Cloud allowed', state: 'models_detected', blocked_models: 0}));
+  h.nodes['use-ai'].checked = true; h.nodes['allow-cloud'].checked = true;
+  await h.trigger('detect');
+  assert.deepEqual(h.requests[0], {path: '/api/models/discover', body: {allow_cloud: true}});
+  assert.equal(h.nodes.model.value, '');
+});
+
+test('changing model, target or authorization revokes prior cloud approval', async () => {
+  const h = harness(); h.nodes['use-ai'].checked = true;
+  for (const id of ['model', 'target', 'authorization']) {
+    h.nodes['allow-cloud'].checked = true;
+    await h.trigger(id, 'input');
+    assert.equal(h.nodes['allow-cloud'].checked, false);
+  }
+});
+
+test('withdrawing cloud approval during preflight cancels stale submission', async () => {
+  let resolve;
+  const h = harness(async () => new Promise((done) => { resolve = done; }));
+  h.nodes['use-ai'].checked = true; h.nodes.model.value = 'fixture:cloud'; h.nodes['allow-cloud'].checked = true;
+  const pending = h.trigger('scan-form', 'submit');
+  h.nodes['allow-cloud'].checked = false; await h.trigger('allow-cloud', 'change');
+  resolve(checked); await pending;
+  assert.equal(h.requests.length, 1);
+  assert.match(h.nodes.notice.textContent, /approval changed/);
+});
+
+test('successful run forwards approval once and resets it for the next assessment', async () => {
+  const h = harness(async (path) => path === '/api/models/check' ? checked : path === '/api/runs/fixture' ? finalReport : {id: 'fixture', runs: []});
+  h.nodes['use-ai'].checked = true; h.nodes.model.value = 'fixture:cloud'; h.nodes['allow-cloud'].checked = true;
+  await h.trigger('scan-form', 'submit');
+  const post = h.requests.find((request) => request.path === '/api/runs' && request.body);
+  assert.equal(post.body.allow_cloud, true);
+  assert.equal(h.nodes['allow-cloud'].checked, false);
+});
+
+test('stale cloud catalog cannot overwrite candidates after consent withdrawal', async () => {
+  let resolve;
+  const h = harness(async () => new Promise((done) => { resolve = done; }));
+  h.nodes['use-ai'].checked = true; h.nodes['allow-cloud'].checked = true;
+  const pending = h.trigger('detect');
+  h.nodes['allow-cloud'].checked = false; await h.trigger('allow-cloud', 'change');
+  resolve({models: ['fixture:cloud'], note: 'old', state: 'models_detected'}); await pending;
+  assert.equal(h.nodes['model-list'].children.length, 0);
+});
+
+test('Test response is explicit and forwards no target, authorization or evidence', async () => {
+  const h = harness(async () => ({model: 'fixture:cloud', note: 'Fixed synthetic prompts only'}));
+  h.nodes['use-ai'].checked = true; h.nodes.model.value = 'fixture:cloud'; h.nodes['allow-cloud'].checked = true;
+  await h.run('testModel()');
+  assert.deepEqual(h.requests, [{path: '/api/models/self-test', body: {model: 'fixture:cloud', require_tools: false, allow_cloud: true}}]);
+  assert.match(h.nodes['model-state'].textContent, /not a security finding/);
+  assert.equal(h.nodes.start.disabled, false);
+});
+
+test('a pending self-test blocks duplicate probes and assessment submissions', async () => {
+  let resolve;
+  const h = harness(async () => new Promise((done) => { resolve = done; }));
+  h.nodes['use-ai'].checked = true; h.nodes.model.value = 'local:test';
+  const pending = h.run('testModel()');
+  await h.run('testModel()'); await h.trigger('scan-form', 'submit');
+  assert.equal(h.requests.length, 1);
+  resolve({model: 'local:test', note: 'Fixed probe'}); await pending;
+});
+
+test('stale self-test response does not validate a newly selected model', async () => {
+  let resolve;
+  const h = harness(async () => new Promise((done) => { resolve = done; }));
+  h.nodes['use-ai'].checked = true; h.nodes.model.value = 'old:test';
+  const pending = h.run('testModel()');
+  h.nodes.model.value = 'new:test'; await h.trigger('model', 'input');
+  resolve({model: 'old:test', note: 'Stale'}); await pending;
+  assert.equal(h.nodes['model-details'].hidden, true);
+  assert.match(h.nodes['model-state'].textContent, /not checked/);
+});

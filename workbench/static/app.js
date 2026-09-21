@@ -5,7 +5,9 @@ let selectedRun = null;
 let polling = null;
 let running = false;
 let starting = false;
+let testingModel = false;
 let modelCheckEpoch = 0;
+let discoveryEpoch = 0;
 const fragment = new URLSearchParams(location.hash.slice(1));
 if (fragment.has('token')) {
   token = fragment.get('token');
@@ -42,7 +44,9 @@ function syncForm() {
   $('model').disabled = !$('use-ai').checked;
   $('model').required = $('use-ai').checked;
   $('check-model').disabled = !$('use-ai').checked || running;
-  invalidateModel();
+  $('test-model').disabled = !$('use-ai').checked || running;
+  $('allow-cloud').disabled = !$('use-ai').checked || running;
+  revokeCloud();
 }
 async function unlock() {
   try {
@@ -72,6 +76,12 @@ $('unlock-form').addEventListener('submit', async (event) => {
 $('target-type').addEventListener('change', syncForm);
 $('use-ai').addEventListener('change', syncForm);
 document.querySelectorAll('input[name="mode"]').forEach((node) => node.addEventListener('change', syncForm));
+function cloudChoice() { return $('use-ai').checked && $('allow-cloud').checked; }
+function policyBody() { return cloudChoice() ? {allow_cloud: true} : {}; }
+function revokeCloud() {
+  $('allow-cloud').checked = false;
+  invalidateModel();
+}
 function invalidateModel() {
   modelCheckEpoch += 1;
   $('model-state').textContent = $('use-ai').checked ? 'Model not checked for this configuration.' : 'AI disabled. Native checks remain deterministic; no alternate provider is used.';
@@ -88,41 +98,77 @@ async function checkModel() {
   $('check-model').disabled = true;
   $('model-state').textContent = 'Checking installed model metadata. No inference is being run.';
   try {
-    const result = await api('/api/models/check', {model, require_tools: requireTools});
+    const result = await api('/api/models/check', {model, require_tools: requireTools, ...policyBody()});
     if (epoch !== modelCheckEpoch) return;
     $('model-state').textContent = result.tool_calling ? 'Metadata checked: analysis + tool calling.' : 'Metadata checked: analysis only. Tool-directed verification is unavailable.';
-    $('model-details').textContent = result.model + ' · ' + result.parameter_size + ' · ' + result.quantization + '\n' + result.note;
+    $('model-details').textContent = result.model + ' · ' + result.parameter_size + ' · ' + result.quantization + ' · ' + human(result.execution_location || 'unknown') + '\n' + result.note;
     $('model-details').hidden = false;
   } catch (error) {
     if (epoch === modelCheckEpoch) $('model-state').textContent = error.message;
     throw error;
   } finally { $('check-model').disabled = !$('use-ai').checked || running; }
 }
-$('model').addEventListener('input', invalidateModel);
+async function testModel() {
+  if (running || starting || testingModel || !$('use-ai').checked) return;
+  const model = $('model').value.trim();
+  if (!model) throw new Error('Select an Ollama model first.');
+  const epoch = ++modelCheckEpoch;
+  testingModel = true;
+  $('test-model').disabled = true;
+  $('start').disabled = true;
+  $('model-state').textContent = 'Testing fixed synthetic prompts. No assessment data is sent; model usage applies.';
+  try {
+    const result = await api('/api/models/self-test', {model, require_tools: needsTools(), ...policyBody()});
+    if (epoch !== modelCheckEpoch) return;
+    $('model-state').textContent = 'Synthetic response compatible. This is not a security finding or a quality benchmark.';
+    $('model-details').textContent = result.model + '\n' + result.note;
+    $('model-details').hidden = false;
+  } catch (error) {
+    if (epoch === modelCheckEpoch) $('model-state').textContent = error.message;
+    throw error;
+  } finally {
+    testingModel = false;
+    $('test-model').disabled = running || !$('use-ai').checked;
+    $('start').disabled = running || starting;
+  }
+}
+$('test-model').addEventListener('click', () => testModel().catch((error) => notice(error.message, true)));
+$('model').addEventListener('input', revokeCloud);
+$('target').addEventListener('input', revokeCloud);
+$('authorization').addEventListener('input', revokeCloud);
+$('authorized').addEventListener('change', revokeCloud);
+$('approve').addEventListener('change', revokeCloud);
+$('allow-cloud').addEventListener('change', invalidateModel);
 $('check-model').addEventListener('click', () => checkModel().catch((error) => notice(error.message, true)));
 $('detect').addEventListener('click', async () => {
   $('detect').disabled = true;
   invalidateModel();
+  const epoch = ++discoveryEpoch;
+  const choice = cloudChoice();
   try {
-    const result = await api('/api/models');
+    const result = cloudChoice() ? await api('/api/models/discover', {allow_cloud: true}) : await api('/api/models');
+    if (epoch !== discoveryEpoch || choice !== cloudChoice()) return;
     $('model-list').replaceChildren();
     result.models.forEach((name) => { const option = element('option'); option.value = name; $('model-list').append(option); });
     // Never silently replace a user's selected model, even if it disappeared.
-    if (result.models.length && !$('model').value) $('model').value = result.models[0];
+    // Selection is always explicit, including the first cloud model.
     $('model-help').textContent = result.note;
     $('model-state').textContent = human(result.state) + (result.blocked_models ? ' · ' + result.blocked_models + ' remote model(s) filtered.' : '');
   } catch (error) { notice(error.message, true); }
   finally { $('detect').disabled = running; }
 });
 $('scan-form').addEventListener('submit', async (event) => {
-  event.preventDefault(); if (running || starting) return;
+  event.preventDefault(); if (running || starting || testingModel) return;
   starting = true;
-  const body = {target: $('target-type').value === 'lab' ? 'lab' : $('target').value.trim(), mode: document.querySelector('input[name="mode"]:checked').value, authorized: $('authorized').checked, authorization: $('authorization').value.trim(), approve_verification: $('approve').checked, use_ai: $('use-ai').checked, model: $('model').value.trim()};
+  const body = {target: $('target-type').value === 'lab' ? 'lab' : $('target').value.trim(), mode: document.querySelector('input[name="mode"]:checked').value, authorized: $('authorized').checked, authorization: $('authorization').value.trim(), approve_verification: $('approve').checked, use_ai: $('use-ai').checked, model: $('model').value.trim(), allow_cloud: cloudChoice()};
+  const revision = modelCheckEpoch;
   $('start').disabled = true;
   try {
-    if (body.use_ai) await api('/api/models/check', {model: body.model, require_tools: body.target === 'lab' && body.mode === 'verify'});
+    if (body.use_ai) await api('/api/models/check', {model: body.model, require_tools: body.target === 'lab' && body.mode === 'verify', ...(body.allow_cloud ? {allow_cloud: true} : {})});
+    if (revision !== modelCheckEpoch) throw new Error('Configuration or processing approval changed during preflight. Review it and start again.');
     const result = await api('/api/runs', body);
-    notice('Run started. Only recorded evidence determines the verification state.');
+    revokeCloud();
+    notice('Run started with the approved configuration. Only recorded evidence determines verification.');
     await selectRun(result.id);
   } catch (error) { notice(error.message, true); }
   finally { starting = false; $('start').disabled = running; }
@@ -150,6 +196,8 @@ function render(report) {
   $('refresh').disabled = running;
   $('detect').disabled = running;
   $('check-model').disabled = running || !$('use-ai').checked;
+  $('test-model').disabled = running || !$('use-ai').checked;
+  $('allow-cloud').disabled = running || !$('use-ai').checked;
   document.querySelectorAll('.history-item').forEach((node) => { node.disabled = running; });
   $('export-json').disabled = running || !report.integrity; $('export-md').disabled = running || !report.integrity;
   $('count-findings').textContent = report.findings.length;

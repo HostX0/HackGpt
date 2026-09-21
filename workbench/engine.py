@@ -75,6 +75,7 @@ class Scope:
     model: str
     use_ai: bool
     lab: bool
+    allow_cloud: bool = False
 
     @classmethod
     def parse(cls, data):
@@ -104,10 +105,15 @@ class Scope:
         if type(use_ai) is not bool:
             raise ValueError("use_ai must be boolean")
         if use_ai and (not model or not re.fullmatch(r"[A-Za-z0-9_./:-]+", model)):
-            raise ValueError("Choose an installed local Ollama model")
-        if use_ai and "cloud" in model.lower():
-            raise ValueError("Cloud-tagged models are not allowed in this local workbench")
-        return cls(target, mode, approved, authorization.strip(), model, use_ai, lab)
+            raise ValueError("Choose a model available through Ollama")
+        allow_cloud = data.get("allow_cloud", False)
+        if type(allow_cloud) is not bool:
+            raise ValueError("allow_cloud must be boolean")
+        if allow_cloud and not use_ai:
+            raise ValueError("Cloud processing approval requires AI to be enabled")
+        if use_ai and "cloud" in model.lower() and not allow_cloud:
+            raise ValueError("A cloud-tagged model requires explicit cloud-processing approval")
+        return cls(target, mode, approved, authorization.strip(), model, use_ai, lab, allow_cloud)
 
 
 def validate_url(url):
@@ -180,7 +186,12 @@ def new_report(scope):
         "environment": "synthetic_lab" if scope.lab else "authorized_public_web",
         "authorization": scope.authorization, "verification_approved": scope.approved,
         "findings": [], "checks": [], "events": [], "verdict": "pending",
-        "ai": {"status": "not_requested", "interpretation": None},
+        "ai": {"status": "not_requested", "interpretation": None,
+               "provider": "ollama" if scope.use_ai else None,
+               "model": scope.model if scope.use_ai else None,
+               "processing_policy": "cloud_allowed" if scope.allow_cloud else "local_only",
+               "cloud_processing_approved": scope.allow_cloud,
+               "data_disclosure": "Normalized rule IDs, severities, verification states, remediation, check status and limitations only; target URLs, authorization notes, headers, bodies and credentials are omitted."},
         "limitations": [LIMITATION, "Native HTTP baseline only; ZAP, Nuclei, Semgrep, Trivy and Nmap adapters are not integrated in this milestone.", "Authentication, business logic and broad application coverage require additional tests.", "Checksums detect changes relative to a trusted digest; they are not signatures or proof of origin."],
     }
 
@@ -286,11 +297,11 @@ class Assessment:
             if self.scope.use_ai:
                 self.checkpoint()
                 self.report["ai"]["status"] = "running"
-                self.emit("ai_started", "Requesting local model interpretation; evidence remains immutable")
+                self.emit("ai_started", "Requesting selected Ollama model interpretation; evidence remains immutable")
                 try:
                     if self.ai_client is None:
                         from .ollama import Ollama
-                        self.ai_client = Ollama(self.scope.model)
+                        self.ai_client = Ollama(self.scope.model, allow_cloud=self.scope.allow_cloud)
                     if self.scope.mode == "verify" and self.scope.lab:
                         decisions = self.ai_client.plan(lambda name, arguments: self.execute_action(name, arguments, lab), self.report, self.checkpoint)
                         self.report["ai"]["decisions"] = decisions
@@ -308,7 +319,11 @@ class Assessment:
                     self.report["ai"]["error_type"] = type(exc).__name__
                     if self.scope.mode == "verify" and self.scope.lab and "verify_lab_canary" not in self.executed:
                         self.report["checks"].append({"tool": "verify_lab_canary", "status": "error", "reason": "AI orchestration unavailable; verification not executed"})
-                    self.emit("ai_unavailable", "Local AI unavailable or response invalid; no simulated AI result", {"error_type": type(exc).__name__})
+                    self.emit("ai_unavailable", "Ollama unavailable or response invalid; no simulated AI result", {"error_type": type(exc).__name__})
+                finally:
+                    from .ollama_runtime import LocalRuntime
+                    if isinstance(self.ai_client, LocalRuntime):
+                        self.report["ai"]["usage"] = self.ai_client.telemetry()
             self.checkpoint()
             incomplete = any(c["status"] in ("skipped", "error", "inconclusive") for c in self.report["checks"]) or self.report["ai"]["status"] == "unavailable"
             self.report["status"] = "partial" if incomplete else "completed"

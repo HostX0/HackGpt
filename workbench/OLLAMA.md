@@ -1,80 +1,78 @@
-# Ollama-only AI contract
+# Ollama gateway and processing policy
 
-**Status: implemented local client, readiness checks and bounded synthetic inference self-test; live inference against a real installed model has not been validated by this contribution.**
+Current contract, updated 2026-09-21. This supersedes the historical local-inference-only direction in Contributions 02–03. Ollama remains the only AI integration; locally running and cloud-backed models share the same assessment/evidence contract. AI may also be explicitly disabled.
 
-The Evidence Workbench uses **Ollama as its only AI provider**. There are no hosted-provider credentials, remote endpoint fields, cloud fallback, silent model substitution or automatic model downloads. Native deterministic checks can run with AI disabled; this is not a second AI provider. The isolated workbench does not import the legacy application. Legacy provider code elsewhere in the repository remains untouched.
+## Transport is not inference location
 
-## Model readiness, not an inference benchmark
+`LocalRuntime` retains its name for compatibility and connects only to `127.0.0.1` on port `11434`, or the integer port in `HACKGPT_OLLAMA_PORT`. The transport does not follow redirects or proxy variables. Direct remote endpoints, workbench-held API keys, automatic sign-in, model pulls and automatic fallback are not implemented. Cloud access is through an operator-managed, already configured Ollama daemon.
 
-1. **Detect** calls the local model catalog, displays exact installed names and reports how many cloud/remote entries were filtered.
-2. **Check model** validates an installed selection through `/api/show`, rejects remote aliases, and requires the `completion` capability. Model-directed synthetic verification additionally requires `tools`.
-3. Readiness shows reported parameter size, quantization and capabilities. It explicitly says `inference_tested: false` and `cloud_configuration: not_attested`.
-4. AI-enabled form submission repeats the metadata check before starting a run. The transport independently repeats model/remote metadata validation before **every** chat request; browser validation is not the security boundary.
-5. A stale, missing, incompatible or unreachable model produces a named error and next action. The workbench never changes the user's chosen model to hide a failure.
+Two independent controls exist:
 
-Metadata checking sends no assessment prompt and does not test model accuracy, structured-output quality, tokenization, available GPU memory or speed. A completion-capable model can still return invalid JSON, time out or run out of resources; those failures remain visible. Deterministic findings do not depend on model claims.
-
-## Assessment-data-free inference self-test
-
-The runtime also exposes an authenticated `POST /api/models/self-test` compatibility probe. It accepts only an exact `model` name and optional boolean `require_tools`.
-
-The probe is intentionally separate from an assessment. It sends a **fixed synthetic prompt** containing no target, authorization reference, findings, evidence, credentials, user content or scanner output. It verifies that the selected local model can return one exact structured JSON value. When `require_tools` is true, it sends a second fixed prompt declaring a single `workbench_self_test` no-op function and requires exactly one empty-argument call. The workbench does **not execute that tool call**; there is no execution callback in the probe.
-
-A passing result reports `state: inference_compatible`, `inference_tested: true`, `structured_output_tested: true`, whether tool calling was exercised, and `assessment_data_sent: false`. A mismatch fails closed with `self_test_failed`. This means only that the installed local model followed the narrow workbench protocol at that moment. It is **not** a security finding, quality benchmark, GPU benchmark, proof of reliable future outputs or attestation that the Ollama daemon cannot use the network.
-
-The GUI does not yet require this probe to start an assessment; current preflight still uses metadata/capability checks. A later UI step can expose the self-test explicitly without silently sending inference prompts.
-
-## Local transport and its limits
-
-The only connection destination is `127.0.0.1`, using port `11434` unless `HACKGPT_OLLAMA_PORT` sets another validated local port. There is no arbitrary hostname/URL setting. The transport does not honor HTTP proxy environment variables and refuses redirects.
-
-A local Ollama daemon can itself use a cloud-backed model. Configure **the running Ollama service** with `OLLAMA_NO_CLOUD=1` and restart it when installing a local-only deployment. Setting this variable only on the workbench client does not reconfigure an existing daemon. For a stronger offline guarantee, an operator must enforce and verify the daemon's network egress policy separately.
-
-The client filters cloud-tagged entries and checks `remote_model` / `remote_host` in catalog and selected-model metadata. It also rejects a chat response that reports remote inference. These checks are **not an attestation**: a dishonest/compromised daemon or a model changed between checks can evade metadata assumptions. Rejecting a remote response cannot undo an already transmitted prompt. The report context therefore remains minimized, and local service integrity is part of the trust boundary.
-
-## Enforced request contract
-
-| Property | Current limit |
+| Control | Meaning |
 |---|---|
-| API operations | `GET /api/tags`, `POST /api/show`, `POST /api/chat` only |
-| Model catalog | 256 entries, exact selection, 120-character supported names |
-| Encoded request / response | 64 KiB / 256 KiB |
-| Chat messages | At most 16 |
-| Planning | At most two model decisions and one approved synthetic action |
-| Tools | At most one declared tool, with fixed name and arguments checked by the engine |
-| Self-test | One structured-output request; optional second inert tool-call request; no assessment data or execution callback |
-| Output / context setting | `num_predict: 768`, `num_ctx: 4096`, temperature zero |
-| Model residency request | `keep_alive: 2m` |
-| Socket timeout | 3 seconds for metadata; 90 seconds for chat |
+| Model processing policy | `local_only` by default, or `cloud_allowed` after explicit boolean `allow_cloud: true`. |
+| Assessment authorization | Declared target, mode, approval and finite action/request budgets, enforced independently of the model. |
 
-The token settings are runtime parameters, not a claim of optimal model performance or guaranteed prompt fit. The byte limit does not prove that every prompt fits every tokenizer/context window. Socket timeouts are **per blocking operation**, not hard total deadlines. Cancellation/deadline improvements remain on the roadmap.
+Choosing a stronger or cloud-backed model does not grant more tools, widen scope or convert model text into evidence. Deterministic native checks remain available without AI.
 
-The runtime rejects caller attempts to override model, endpoint, stream mode, options or keep-alive. It requires a completed non-streaming response, rejects output-budget truncation, validates the message/tool-call shape and omits model thinking traces from retained output. Structured summaries are validated by the interpretation adapter. No shell, filesystem access, model pulls, sign-in, cloud search or arbitrary network tool is provided to a model.
+## Consent and minimized disclosure
 
-## Safe diagnostics
+The GUI has an unchecked **Allow cloud processing for this assessment** control. It is disabled with AI off. Consent is reset on model/scope/authorization changes and after submitting a run; stale discovery or preflight results cannot apply old consent to a new selection. No first model is selected automatically. A submitted run records its immutable choice; resetting the next-run form does not revoke an already-dispatched request. Cancellation is currently checkpoint-based, not instantaneous.
 
-The authenticated local API exposes:
+The report's AI context is a deliberately restricted projection: environment/mode, finding IDs, native rule IDs, severity, verification state, remediation, check status/result and limitations. The current builder omits target URLs, authorization references, HTTP bodies, header values, raw proof material and credentials. Do not describe this as a general-purpose scrubber: future imported text, code and richer adapters require their own minimization and disclosure review. Reports stored locally still contain sensitive assessment information and are not encrypted at rest.
 
-- `GET /api/models`: catalog or a categorized diagnostic, without inference.
-- `POST /api/models/check`: accepts only `model` and optional boolean `require_tools`; returns metadata or HTTP 422 with a stable error code.
-- `POST /api/models/self-test`: accepts the same narrow fields and performs only the fixed compatibility inference described above.
+`allow_cloud` is strictly boolean in the scope, runtime and model endpoints; strings/numbers are rejected. A cloud consent flag with AI disabled is invalid. Operators must have permission to disclose the allowed fields under the engagement's data-processing terms. The workbench cannot verify a customer's legal consent from a checkbox and does not attest provider retention policy.
 
-Codes distinguish unreachable service, timeout, busy service, invalid port/name/catalog, missing model, missing capabilities, unsupported completion/tools, blocked cloud model, redirect, unsupported authentication, oversized context/response, incomplete/invalid output and self-test contract failure. Responses do not echo daemon error bodies, prompts, model outputs or secrets. No automatic retry or provider fallback hides an error.
+For local-only operation, cloud-like names and `remote_host`/`remote_model` catalog/show metadata are rejected before chat. For cloud-approved operation they are allowed and labeled `cloud_reported`. Aliases without `cloud` in the name are also checked. A local-reported model remains local-reported even when cloud is permitted; opting in does not force cloud use.
 
-## Validation and review
+Metadata may be incomplete, misleading or change between check and inference. It is **not** an egress guarantee. Strong local-only deployments should configure the running Ollama service with `OLLAMA_NO_CLOUD=1`, restart it and enforce network controls separately. A response reporting unauthorized remote execution is rejected, but rejection cannot undo a prompt already sent by a misconfigured daemon.
 
-The protocol tests use real loopback HTTP **fixtures**, not a running Ollama model. They exercise routing, response limits, errors, local-alias/capability gates and bounded chat contracts. Self-test unit/API tests use controlled model doubles and the real loopback workbench API; they verify that no target/evidence fields enter the fixed prompt, malformed structured/tool responses fail closed, the no-op tool is never executed, extra API fields are rejected and Ollama failures remain categorized. Frontend tests use Node's built-in test runner with DOM/fetch doubles: model detection, readiness, stale-response invalidation, preflight rejection, native-only operation and double-submit prevention. They are not browser layout or browser-to-server E2E tests.
+## Model operations
 
-See [PROGRESS.md](PROGRESS.md) for exact local and hosted test outcomes. No model quality, GPU benchmark, successful live inference against a real installed model, universal offline assurance or production readiness is claimed.
+All workbench model endpoints require the existing local session token and Host/Origin checks.
+
+| Endpoint | Accepted body | Operation |
+|---|---|---|
+| `GET /api/models` | None | Local-only discovery; no inference. |
+| `POST /api/models/discover` | Optional boolean `allow_cloud` | Discovery for the selected policy; no inference. |
+| `POST /api/models/check` | Exact `model`, optional booleans `require_tools`, `allow_cloud` | Catalog and `/api/show`; no inference. |
+| `POST /api/models/self-test` | Same closed fields as check | Fixed synthetic response/tool probes; model usage applies. |
+| `POST /api/runs` | Existing assessment fields plus optional boolean `allow_cloud` | Bounded assessment with its recorded processing choice. |
+
+Model endpoints reject extra fields such as target, prompt or credentials. The legacy health field `local_only: true` refers only to server binding; `local_only_scope: server_binding` and `ai_processing_policies` make this distinction explicit.
+
+Every chat checks catalog/show again. The selected model must exist and report `completion`; tool-directed synthetic verification also requires `tools`. Unknown or unsupported capabilities are not guessed. Model parameters/quantization are display metadata, not a measured hardware recommendation.
+
+### Structured response compatibility
+
+The official Ollama structured-output documentation currently states that Ollama Cloud does not support structured outputs. Local-reported models use `format` with the schema (`server_schema`). Cloud-reported models instead receive the same schema as a trusted instruction and omit the unsupported `format` field (`prompt_then_validate`). The application still validates exact JSON keys, types and limits. This is **not** constrained decoding or a guarantee that the model will comply; malformed output fails explicitly without repair by another model.
+
+Tool selection remains separately validated: one declared function, empty arguments, no arbitrary shell/filesystem/network action, at most two planning responses and one approved synthetic verification. Model text cannot change the independent result state.
+
+### Explicit Test response
+
+The GUI now exposes the previously implemented backend self-test. It never starts automatically. A fixed JSON readiness prompt is followed, when requested, by an inert `workbench_self_test` tool-call compatibility prompt. The returned function is validated but never executed; the probe has no execution callback. It does not receive target, authorization, findings, evidence or scanner content. Up to two inference requests may consume local compute or provider usage.
+
+`inference_compatible` means only that these fixed contracts were satisfied in that probe. It is not assessment evidence, a quality/GPU benchmark, future reliability promise or proof of offline processing.
+
+## Usage and error handling
+
+Each assessment reports its model, processing policy, reported location and explicit approval. `inference_attempts` counts chat dispatch attempts after local byte validation, not metadata requests. `prompt_eval_count` and `eval_count` are retained only when valid nonnegative integer counters are returned. Unknown counters remain null. Aggregated counts are null when the received responses lack complete counter coverage; unreported failed calls remain outside those sums and are disclosed. `billing_cost` is null; no financial estimate is made.
+
+Sampling/context/output settings stay bounded (`num_predict: 768`, `num_ctx: 4096`, temperature zero). These are requested daemon options, not proof of provider-side token enforcement. Maximum request/response bytes are 65,536/262,144; maximum messages is 16, with one declared tool per request. Quota/busy responses do not trigger retry, sign-in or model substitution. Error categories distinguish invalid policy/model, unreachable service, auth required, missing model, incompatible capabilities, oversized/malformed/incomplete/truncated output and denied actions. Thinking traces and arbitrary response metadata are not retained.
+
+Socket timeouts remain per blocking operation, not a hard overall deadline; hard cancellation/deadlines are still roadmap priorities. Live provider authentication, cloud inference and GPU/model performance have not been tested in this development environment.
+
+## Validation boundary
+
+The test suite uses real owned loopback HTTP servers implementing a synthetic Ollama protocol, plus direct unit fixtures. A combined integration test traverses the workbench API, fake cloud-backed gateway, assessment engine, SQLite persistence and export integrity. No live model or cloud account is used. JavaScript tests use DOM/fetch doubles, not browser-to-server E2E. Read [PROGRESS.md](PROGRESS.md) and the exact commit's CI output for observed counts; a configured workflow is not a successful run.
 
 ## Primary references
 
-- Ollama model listing: https://docs.ollama.com/api/tags
-- Ollama model details: https://docs.ollama.com/api-reference/show-model-details
-- Ollama chat contract: https://docs.ollama.com/api/chat
-- Tool calls: https://docs.ollama.com/capabilities/tool-calling
-- Structured output: https://docs.ollama.com/capabilities/structured-outputs
-- Local/cloud service settings: https://docs.ollama.com/faq
-- Upstream API types (`ShowResponse`, `ListModelResponse`, `ChatResponse`): https://github.com/ollama/ollama/blob/main/api/types.go
+Checked 2026-09-21; revisit capability assumptions when upgrading Ollama.
 
-These references were consulted on 2026-09-21. API contracts can change; the client fails visibly on unrecognized capability/response formats rather than asserting compatibility.
+- Cloud via local gateway: https://docs.ollama.com/cloud
+- Structured-output limitation and schema usage: https://docs.ollama.com/capabilities/structured-outputs
+- Tool calling: https://docs.ollama.com/capabilities/tool-calling
+- Chat response usage fields: https://docs.ollama.com/api/chat
+- Local-only service configuration: https://docs.ollama.com/faq

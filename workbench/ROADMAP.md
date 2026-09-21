@@ -8,7 +8,9 @@ Read current main, open pull requests and PROGRESS.md before each contribution. 
 
 Record actual files changed, tests run, limitations and next work in PROGRESS.md. Check for overlapping changes before advancing a ref. Do not force-push or merge unreviewed conflicting changes. Tools and permissions may differ in scheduled runs: report blockers rather than fabricate completion.
 
-**Owner direction, 2026-09-21:** develop and validate without requiring the owner to install/test now. Ollama is the sole AI provider for this workbench. No hosted-provider adapters, remote inference endpoints, API credentials, automatic downloads or fallback models. Explicit no-AI deterministic checks remain supported. Preserve legacy modules instead of claiming that their providers were removed repository-wide. See [OLLAMA.md](OLLAMA.md) for the implemented local model readiness contract and its non-attestation limits.
+**Current owner direction, 2026-09-21 (supersedes earlier local-only AI restrictions):** develop and validate without requiring the owner to install/test now. Keep Ollama as the gateway, permit user-selected local or cloud-backed inference with explicit per-engagement data-processing approval, and keep features/evidence independent of execution location. Local-only is an optional privacy policy. No silent fallback, provider SDK sprawl, automatic model pulls or paid development calls. Preserve legacy modules and attribution. See [OLLAMA.md](OLLAMA.md) for implementation details and [PRODUCT_DIRECTION.md](PRODUCT_DIRECTION.md) for the professional service workflow and future differentiators.
+
+The existing 48-hour sprint is a sequence of development opportunities, not a promise to finish the roadmap, gain stars, earn investment or replace a security team. Continue substantive tested slices; do not spend every increment on model plumbing or policy-only edits.
 
 ## 1. Complete the reliability boundary
 
@@ -32,7 +34,7 @@ Acceptance: fixture-driven parsers handle malformed/truncated output and cannot 
 
 ## 3. Project-code checks first
 
-Integrate narrowly configured local code/dependency/secret checks (for example Semgrep Community Edition and Trivy), after reviewing each tool and rule license. Mount source read-only, redact secrets by default and expose exact coverage. Do not send source or credentials to hosted inference services; the current AI scope is local Ollama only.
+Integrate narrowly configured local code/dependency/secret checks (for example Semgrep Community Edition and Trivy), after reviewing each tool and rule license. Mount source read-only, redact secrets by default and expose exact coverage. Do not send source, credentials or raw secrets to inference by default. Minimize adapter-derived context and preview/disclose any approved external processing; a generic cloud checkbox is not permission to transmit every file.
 
 Acceptance: vulnerable and corrected project fixtures, offline behavior documented, versions pinned, actual errors visible.
 
@@ -48,11 +50,11 @@ Support operator-provided test accounts and explicitly scoped roles, secure loca
 
 Acceptance: role/isolation regression fixtures and secrets absent from logs, model prompts and exports.
 
-## 6. Bounded local AI orchestration
+## 6. Bounded model-independent orchestration
 
 Expand the finite action registry only when an adapter has deterministic validation and independent scope enforcement. Require renewed approval when target, effect level or scope changes. Add recorded public decision/action traces, model compatibility tests and budget accounting. Treat tool output as untrusted data. Explanations are not authority or proof.
 
-Acceptance: adversarial model-response tests cannot change target, permissions, shell commands, budgets or evidence state. No unbounded self-directed exploit loop. Add opt-in live local Ollama compatibility testing before claiming any model/GPU benchmark; preserve offline protocol fixtures as a separate test category.
+Acceptance: adversarial model-response tests cannot change target, permissions, shell commands, budgets or evidence state. No unbounded self-directed exploit loop. Add separately approved live local/cloud compatibility tests before claiming model performance; preserve offline protocol fixtures as a separate category. Never turn a local/cloud routing choice into a tool-permission decision. Track actual protocol-reported usage, cache only permitted context within its engagement, and do not conflate missing counters with zero cost.
 
 ## 7. Retesting and change-aware reports
 
@@ -77,3 +79,11 @@ Acceptance: fresh-install smoke tests on documented platforms; no claim that too
 Cross-platform validation, signed releases, documented threat model, regression lab catalog, measured performance, realistic example reports, contributor guide and a clean upstream proposal after the user approves it.
 
 Acceptance: honest release notes distinguish supported functionality, experiments and missing coverage. No guarantee of popularity, stars, vulnerability discovery or universal exploitability judgments.
+
+## 11. Professional engagement workflow and trusted knowledge (planned)
+
+Build customer-isolated workspaces, machine-readable rules of engagement, scope/effect previews, operator-provided role matrices, reviewed non-destructive proof plans, remediation ownership and executive/technical handover. Maintain a human review gate for customer-facing final reports; legal authorization is necessary but not a substitute for narrowly defined technical scope and data handling.
+
+Knowledge refresh should start with a licensed, source-linked, versioned retrieval corpus, not automatic model self-training. Separate publication date from ingestion time; preserve source revision, scope and confidence, detect conflicting/stale knowledge, test poisoned-content resistance and support rollback. Never ingest customer secrets into a global corpus. A trained model/adapter upgrade is a separate approved artifact with held-out evaluation, provenance and rollback.
+
+Acceptance: unknowns and limitations remain visible; one customer's data cannot cross into another workspace, a retrieved document cannot authorize an action, and a report cannot claim a deeper demonstrated impact than the independent evidence supports. These features are backlog, not currently implemented.

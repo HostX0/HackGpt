@@ -1,8 +1,8 @@
-"""Ollama-only, loopback-only transport and metadata checks.
+"""Ollama gateway with per-assessment local-only or cloud-allowed processing.
 
-Metadata is not an attestation of the daemon's egress policy. Operators must
-separately disable Ollama cloud features on the running service. No automatic
-pull, sign-in, endpoint/provider fallback, or model substitution is supported.
+The daemon connection remains loopback-only. Inference may be cloud-backed only
+with explicit caller consent. Metadata is not an attestation of daemon egress.
+No automatic pull, sign-in, provider fallback or model substitution is supported.
 """
 from __future__ import annotations
 
@@ -49,13 +49,20 @@ def remote_metadata(value: dict[str, Any]) -> bool:
 
 
 class LocalRuntime:
-    """Shared runtime for the workbench's only AI provider."""
+    """Loopback transport for local or cloud-backed Ollama model selection."""
 
-    def __init__(self, model: str = "", port: int | str | None = None):
+    def __init__(self, model: str = "", port: int | str | None = None, *, allow_cloud: bool = False):
+        if type(allow_cloud) is not bool:
+            raise OllamaError("invalid_policy", "allow_cloud must be boolean.", "Choose a processing policy explicitly.")
+        self.allow_cloud = allow_cloud
+        self._calls = []
+        self._attempts = 0
+        self._last_metadata = None
+        self._catalog_cloud_names = set()
         if not isinstance(model, str) or (model and not valid_model_name(model)):
-            raise OllamaError("invalid_model", "Invalid local model name.", "Select an exact installed model from Detect.")
-        if "cloud" in model.lower():
-            raise OllamaError("cloud_model_blocked", "Cloud-backed models are not allowed.", "Select a locally installed model.")
+            raise OllamaError("invalid_model", "Invalid Ollama model name.", "Select an exact installed model from Detect.")
+        if "cloud" in model.lower() and not self.allow_cloud:
+            raise OllamaError("cloud_model_blocked", "The local-only policy does not allow this cloud-tagged model.", "Select a local model or explicitly allow cloud processing for this assessment.")
         value = os.getenv("HACKGPT_OLLAMA_PORT", "11434") if port is None else port
         if isinstance(value, bool) or not isinstance(value, (str, int)) or not str(value).isascii() or not str(value).isdigit():
             raise OllamaError("invalid_port", "Invalid local Ollama port.", "Use an integer port between 1 and 65535.")
@@ -87,11 +94,11 @@ class LocalRuntime:
             if 300 <= response.status < 400:
                 raise OllamaError("redirect_blocked", "Ollama redirect refused.", "Connect directly to the trusted local daemon.")
             if response.status in (401, 403):
-                raise OllamaError("authentication_unsupported", "Ollama requested authentication.", "Use a local model; cloud sign-in and API keys are not supported.")
+                raise OllamaError("authentication_unsupported", "Ollama requested authentication.", "Check the local gateway. Cloud models require operator-managed Ollama sign-in; the workbench never collects API keys.")
             if response.status == 404:
                 raise OllamaError("not_found", "The selected model or Ollama endpoint was not found.", "Refresh installed models and check the local Ollama version.")
             if response.status in (429, 503):
-                raise OllamaError("busy", "Ollama is busy or has no available capacity.", "Free local resources and retry explicitly.", retryable=True)
+                raise OllamaError("busy", "Ollama is busy or has no available capacity.", "Check local resources or cloud quota and retry explicitly. No automatic retry or model fallback occurs.", retryable=True)
             if response.status != 200:
                 raise OllamaError("service_error", "Ollama could not complete this request.", "Check the local daemon logs and model compatibility.")
             raw = response.read(MAX_RESPONSE_BYTES + 1)
@@ -116,22 +123,26 @@ class LocalRuntime:
         models = self.request("/api/tags").get("models")
         if not isinstance(models, list) or len(models) > MAX_MODELS:
             raise OllamaError("invalid_catalog", "Invalid or oversized Ollama model catalog.", "Keep the local model catalog within the supported limit of 256 entries.")
-        names, blocked = set(), 0
+        names, cloud_names, blocked = set(), set(), 0
         for item in models:
             if not isinstance(item, dict) or not valid_model_name(item.get("name")):
                 raise OllamaError("invalid_catalog", "Ollama returned malformed model metadata.", "Refresh the catalog after checking the daemon.")
             name = item["name"]
             if "cloud" in name.lower() or remote_metadata(item):
-                blocked += 1
-                continue
+                cloud_names.add(name)
+                if not self.allow_cloud:
+                    blocked += 1
+                    continue
             names.add(name)
+        self._catalog_cloud_names = set(cloud_names)
         available = sorted(names)
         state = "models_detected" if available else ("no_local_models" if models else "empty")
-        note = (f"{len(available)} local model candidate(s) detected; Check model validates capabilities before inference. "
-                if available else "No eligible local models detected. No automatic model download will occur. ")
+        note = (f"{len(available)} model candidate(s) detected; Check model validates capabilities before inference. "
+                if available else "No eligible models detected under this policy. No automatic download will occur. ")
         return {"provider": "ollama", "endpoint": self.endpoint, "available": True,
                 "state": state, "models": available, "blocked_models": blocked,
-                "cloud_configuration": "not_attested", "note": note + CLOUD_NOTE}
+                "cloud_models": sorted(cloud_names), "processing_policy": self.processing_policy,
+                "cloud_configuration": "not_attested", "note": note + self.policy_note}
 
     def diagnostics(self) -> dict[str, Any]:
         try:
@@ -142,37 +153,73 @@ class LocalRuntime:
                     "note": str(exc) + " " + exc.next_step, **exc.public()}
 
     def local_models(self) -> list[str]:
+        """Legacy name: candidates allowed by the selected policy, not an egress claim."""
         return self.catalog()["models"]
 
     def ensure_local(self) -> None:
         if not self.model or self.model not in self.local_models():
-            raise OllamaError("model_not_installed", "Select an exact installed local model name.", "Refresh Detect. Automatic pulls and model substitution are disabled.")
+            raise OllamaError("model_not_installed", "Select an exact model name available through this Ollama gateway and policy.", "Refresh Detect. Automatic pulls and model substitution are disabled.")
 
     def inspect_model(self, *, require_tools: bool = False) -> dict[str, Any]:
         if not isinstance(require_tools, bool):
             raise ValueError("require_tools must be boolean")
         self.ensure_local()
         value = self.request("/api/show", {"model": self.model})
-        if remote_metadata(value):
-            raise OllamaError("cloud_model_blocked", "The selected alias resolves to a remote model.", "Choose a local model and disable Ollama cloud features.")
+        cloud_backed = remote_metadata(value) or "cloud" in self.model.lower() or self.model in self._catalog_cloud_names
+        if cloud_backed and not self.allow_cloud:
+            raise OllamaError("cloud_model_blocked", "The selected alias resolves to a cloud-backed model.", "Choose a local model or explicitly approve cloud processing for this assessment.")
         capabilities = value.get("capabilities")
         if (not isinstance(capabilities, list) or len(capabilities) > 32
                 or any(not isinstance(c, str) or len(c) > 80 for c in capabilities)):
             raise OllamaError("capabilities_unknown", "Ollama did not report model capabilities.", "Use a daemon/model version that reports completion and tool capabilities.")
         if "completion" not in capabilities:
-            raise OllamaError("completion_unsupported", "This model cannot provide chat analysis.", "Choose a completion-capable local model, not an embedding-only model.")
+            raise OllamaError("completion_unsupported", "This model cannot provide chat analysis.", "Choose a completion-capable model, not an embedding-only model.")
         if require_tools and "tools" not in capabilities:
-            raise OllamaError("tools_unsupported", "This model does not report tool-calling support.", "Use Analyst mode or select a tool-capable local model. No automatic substitution.")
+            raise OllamaError("tools_unsupported", "This model does not report tool-calling support.", "Use Analyst mode or select a tool-capable model. No automatic substitution.")
         details = value.get("details", {})
         if not isinstance(details, dict):
             raise OllamaError("invalid_response", "Invalid model details.", "Check the local Ollama daemon.")
-        return {"provider": "ollama", "model": self.model, "endpoint": self.endpoint,
+        metadata = {"provider": "ollama", "model": self.model, "endpoint": self.endpoint,
+                "processing_policy": self.processing_policy,
+                "execution_location": "cloud_reported" if cloud_backed else "local_reported",
+                "cloud_processing_approved": self.allow_cloud,
                 "state": "metadata_checked", "capabilities": sorted(set(capabilities)),
                 "tool_calling": "tools" in capabilities,
                 "parameter_size": str(details.get("parameter_size", "unknown"))[:80],
                 "quantization": str(details.get("quantization_level", "unknown"))[:80],
                 "cloud_configuration": "not_attested", "inference_tested": False,
-                "note": "Metadata checked; this does not test inference quality or GPU capacity. " + CLOUD_NOTE}
+                "note": "Metadata checked; this does not test inference quality or hardware capacity. " + self.policy_note}
+        self._last_metadata = dict(metadata)
+        return metadata
+
+    @property
+    def processing_policy(self) -> str:
+        return "cloud_allowed" if self.allow_cloud else "local_only"
+
+    @property
+    def policy_note(self) -> str:
+        if self.allow_cloud:
+            return ("Cloud processing is allowed for this request. Selected Ollama models may send "
+                    "prompts to a cloud service; provider limits may apply. No silent fallback. "
+                    "Model metadata does not attest the daemon's network egress.")
+        return CLOUD_NOTE
+
+    def telemetry(self) -> dict[str, Any]:
+        """Protocol-reported usage, not billing or an inference-quality benchmark."""
+        def total(field):
+            values = [call[field] for call in self._calls]
+            return sum(values) if values and all(value is not None for value in values) else None
+        return {"provider": "ollama", "model": self.model,
+                "processing_policy": self.processing_policy,
+                "execution_location": (self._last_metadata or {}).get("execution_location", "unknown"),
+                "cloud_processing_approved": self.allow_cloud,
+                "inference_attempts": self._attempts,
+                "responses_received": len(self._calls),
+                "prompt_tokens_reported": total("prompt_tokens"),
+                "output_tokens_reported": total("output_tokens"),
+                "calls": [dict(call) for call in self._calls],
+                "billing_cost": None,
+                "note": "Usage is daemon-reported, may be missing and excludes unreported failed calls. Not a bill."}
 
     def chat(self, messages: list[dict[str, Any]], **extra: Any) -> dict[str, Any]:
         if set(extra) - {"tools", "format"}:
@@ -187,14 +234,41 @@ class LocalRuntime:
         tools = extra.get("tools", [])
         if not isinstance(tools, list) or len(tools) > 1:
             raise ValueError("At most one allowlisted tool is supported")
-        # Never send assessment context until installed-model and remote-alias checks pass.
-        # Recheck every inference: catalog/model metadata may change during a session.
-        self.inspect_model(require_tools=bool(tools))
+        # Apply the selected processing policy before *every* inference.
+        metadata = self.inspect_model(require_tools=bool(tools))
+        schema_strategy = "server_schema" if "format" in extra else "not_requested"
+        if metadata["execution_location"] == "cloud_reported" and "format" in extra:
+            # Ollama Cloud does not currently support server-constrained structured output.
+            # Keep the same output contract, request it in the prompt and validate locally.
+            # Never treat prompted JSON as guaranteed constrained decoding.
+            schema = extra.pop("format")
+            instruction = "Return only one JSON value matching this contract, without Markdown: " + json.dumps(schema, allow_nan=False)
+            messages = [dict(message) for message in messages]
+            if messages[0]["role"] == "system":
+                messages[0]["content"] += "\n" + instruction
+            else:
+                if len(messages) >= 16:
+                    raise ValueError("No message budget remains for the output contract")
+                messages.insert(0, {"role": "system", "content": instruction})
+            schema_strategy = "prompt_then_validate"
         data = {"model": self.model, "stream": False, "messages": messages,
                 "options": {"temperature": 0, "num_predict": 768, "num_ctx": 4096},
                 "keep_alive": "2m", **extra}
+        # Count a dispatch attempt only after local byte validation, not metadata queries.
+        if len(json.dumps(data, allow_nan=False).encode("utf-8")) > MAX_REQUEST_BYTES:
+            raise OllamaError("request_too_large", "AI context exceeds the request budget.", "Reduce the evidence summary.")
+        self._attempts += 1
         response = self.request("/api/chat", data)
+        def reported_count(key):
+            count = response.get(key)
+            return count if type(count) is int and 0 <= count <= 10**12 else None
+        self._calls.append({"prompt_tokens": reported_count("prompt_eval_count"),
+                            "output_tokens": reported_count("eval_count"),
+                            "schema_strategy": schema_strategy,
+                            "done": response.get("done") is True})
         if remote_metadata(response):
+            self._last_metadata["execution_location"] = "cloud_reported"
+        if remote_metadata(response) and not self.allow_cloud:
             raise OllamaError("remote_execution_reported", "Ollama reported remote inference; output rejected.", "Stop using this daemon and verify its cloud/egress policy. Rejection cannot undo an already-sent prompt.")
         if response.get("done") is not True:
             raise OllamaError("incomplete_response", "Ollama did not finish its response.", "Retry explicitly after checking local capacity.", retryable=True)

@@ -1,7 +1,7 @@
-"""Fixed local inference compatibility probe for Ollama.
+"""Fixed inference compatibility probe for the selected Ollama model.
 
 The probe contains no assessment target, evidence, authorization reference or user
-content. It verifies only whether the selected *local* model follows the workbench's
+content. It verifies only whether the selected model follows the workbench's
 structured-output contract and, when requested, its inert tool-call contract.
 Nothing returned by this probe is security evidence and no tool is executed.
 """
@@ -13,7 +13,7 @@ from typing import Any
 from .ollama_runtime import OllamaError
 
 _SELF_TEST_SYSTEM = (
-    "You are performing a local compatibility self-test. This prompt contains no "
+    "You are performing a compatibility self-test. This prompt contains no "
     "security assessment data. Follow the requested response contract exactly."
 )
 _SELF_TEST_SCOPE = "synthetic_self_test"
@@ -22,7 +22,7 @@ _SELF_TEST_SCOPE = "synthetic_self_test"
 def _failed(detail: str) -> OllamaError:
     return OllamaError(
         "self_test_failed",
-        "The selected local model did not satisfy the workbench inference contract.",
+        "The selected model did not satisfy the workbench inference contract.",
         detail + " This is a compatibility result, not a security verdict.",
     )
 
@@ -30,7 +30,7 @@ def _failed(detail: str) -> OllamaError:
 def validate_local_inference(client: Any, *, require_tools: bool = False) -> dict[str, Any]:
     """Run a bounded, assessment-data-free compatibility probe.
 
-    ``client`` must implement ``inspect_model`` and ``chat`` using the local-only
+    ``client`` must implement ``inspect_model`` and ``chat`` using the policy-aware Ollama
     runtime. The function never receives an execution callback, so a model tool call
     cannot cause an action even when the tool-call contract is being tested.
     """
@@ -96,7 +96,7 @@ def validate_local_inference(client: Any, *, require_tools: bool = False) -> dic
             "assessment_data_sent": False,
             "self_test_scope": _SELF_TEST_SCOPE,
             "note": (
-                "A fixed synthetic prompt satisfied the selected local model contract. "
+                "A fixed synthetic prompt satisfied the selected model contract. "
                 "No assessment target, evidence or authorization data was sent; no tool was executed. "
                 "This does not benchmark model quality, prove security coverage or attest Ollama network egress."
             ),

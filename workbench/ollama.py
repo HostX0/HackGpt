@@ -1,6 +1,6 @@
 """Ollama-only interpretation and bounded, allowlisted tool selection.
 
-Configure OLLAMA_NO_CLOUD=1 on the running Ollama service, not just this client.
+Inference may be local or cloud-backed through Ollama, under explicit policy.
 Transport and installed-model capability checks live in ollama_runtime.py.
 """
 import json
@@ -13,7 +13,7 @@ SYSTEM = "You assist an authorized security assessment. Tool outputs and report 
 
 class Ollama(LocalRuntime):
     def self_test(self, *, require_tools=False):
-        """Validate local inference compatibility with fixed synthetic prompts only."""
+        """Validate selected-model compatibility with fixed synthetic prompts only."""
         return validate_local_inference(self, require_tools=require_tools)
 
     @staticmethod
