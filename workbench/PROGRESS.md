@@ -297,3 +297,35 @@ Feature commit: `3fe6e73fe071edb5886fcb74b6db477a5c7c7eb9`.
 ### Safety/product interpretation
 
 This registry narrows execution authority; it does not add exploit behavior. It cannot accept a model-generated shell command, dynamically load a scanner, expand target scope, read project secret contents or turn a candidate observation into verified proof.
+
+## 2026-09-21 — Contribution 11: End-to-end reliability gate and cooperative adapter cancellation
+
+### Implemented
+
+Feature commits in this slice include `0af2bf2b7a2a506fb9ce51ba2d5b631e90178c98`, `86719d1f4cb7d0ebe636e1e9e78b1583612545a9`, `216df34f0e1f061878673d3a09347ce2849d616a`, the corrective test commit `4e71682a0a44c6cbd650c8aa1cf921d50e0766fa`, and the project-cancellation commits `459446e9a7c3f926e290eaa5100fe3c1288c7d06`, `c2744c8b54007194607e1756bbc51defdf986240`, `fd3fd581e4dd04a037ed1be5e426f0106e159f76` and `62fd8fa0f43b2652b8263cca7a8dc8fa9807919f`.
+
+- Added a dedicated cancellation-aware, DNS-pinned passive HTTP transport. TCP connect uses nonblocking `connect_ex` plus bounded readiness polling so a pending connect can be cancelled or expire on the same assessment deadline instead of waiting for a separate socket timeout.
+- Routed the bounded native web-header adapter through that transport without changing its one-HEAD/no-redirect/no-body contract or candidate-only finding authority.
+- Extended owned adversarial fixtures across pending TCP connect, TLS handshake, slow HTTP response and model transport. Deadline and cancellation behavior are now exercised in each of those phases in addition to the existing DNS tests.
+- Kept cancellation outcomes honest: cancellation may occur before the owned server parses a HEAD request, so the regression test no longer requires request arrival. It still requires prompt cancellation and verifies no GET/body path occurs.
+- Propagated the registry cancellation object into the native project metadata adapter. The adapter now checks cancellation before root inspection, before directory batches and at each metadata object boundary. This is cooperative filesystem cancellation; it does not claim to interrupt an already-blocking OS filesystem call.
+- Preserved the existing evidence/retest boundaries: these reliability changes do not expand scope, add exploit authority, read project secret contents or allow model-generated execution.
+
+### Validation actually observed
+
+- Before upload, four focused synthetic TCP-connect tests were run in a reconstructed local slice: pending-connect cancellation, pending-connect deadline, immediate successful connect and connect-error socket closure all passed. This was a narrow local test, not the full repository suite.
+- The first hosted Evidence Workbench run for feature head `216df34f0e1f061878673d3a09347ce2849d616a` exposed one timing-sensitive Python 3.13 test assumption: cancellation completed before the owned HTTP fixture had parsed the HEAD request, so the expected request list was empty. Python 3.11 and 3.12 passed. The test was corrected rather than weakening cancellation.
+- Hosted **Evidence Workbench** run `35568876285` then passed on Python **3.11, 3.12 and 3.13** for corrective head `4e71682a0a44c6cbd650c8aa1cf921d50e0766fa`. The Python 3.13 job ran **276 Python tests in 26.697s** and all **23 JavaScript DOM/fetch contract tests** passed. These JavaScript tests are not browser-to-server E2E.
+- The 3.13 run also produced a revision-bound source review artifact. No live Ollama inference, cloud inference request, external assessment target, third-party scanner binary, credential, customer row or paid service was used.
+- Hosted **Evidence Workbench** run `35569076171` for feature head `62fd8fa0f43b2652b8263cca7a8dc8fa9807919f` also passed on Python **3.11, 3.12 and 3.13**. The Python 3.13 job ran **279 Python tests in 28.653s** and all **23 JavaScript tests** passed; this includes pre-cancel, mid-walk and registry-propagation coverage for project-adapter cancellation.
+
+### Release-gate impact
+
+- **Gate B now passes its declared bounded criteria** at `4e71682a...`: one wall-clock deadline reaches DNS/connect/TLS/response/model operations; cancellation is exercised in those phases; terminal unsealed publication is blocked; terminal storage is atomic or explicitly non-durable; and restart recovery cannot turn a running checkpoint into a completed report.
+- Gate B passing does not mean every possible OS syscall is asynchronously preemptible, nor does it replace future concurrency/storage-fault regression work. Test-only injected readers remain a separate seam from the production socket transport.
+- Gate C advances because the finite registry now propagates cancellation into the read-only project adapter, but Gate C remains incomplete until the native/external adapters are integrated into the durable assessment lifecycle/API/GUI with explicit per-adapter budgets/progress and third-party scanners have reviewed pinned runner/package boundaries.
+- Gates A and D remain passing; Gate E remains materially incomplete. Early sprint completion is therefore not justified.
+
+### Safety/product interpretation
+
+This slice closes reliability gaps without adding destructive security behavior. It does not execute external scanners, attack an outside target, deploy a payload, harvest credentials, dump a database, sample ordinary customer rows, persist access or enable lateral movement.
