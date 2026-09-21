@@ -165,30 +165,32 @@ jobs:
           docker network create --internal hackgpt-ollama-internal >/dev/null
           docker run -d --name hackgpt-ollama-live \
             --network hackgpt-ollama-internal \
-            -p 127.0.0.1:11434:11434 \
             -e OLLAMA_HOST=0.0.0.0:11434 \
             -e OLLAMA_NO_CLOUD=1 \
             -v hackgpt-ollama-models:/root/.ollama \
             "$OLLAMA_IMAGE" serve >/dev/null
           docker network inspect hackgpt-ollama-internal --format '{{.Internal}}' | grep -qx true
           for attempt in $(seq 1 60); do
-            if python - <<'PY'
-          import json, urllib.request
-          with urllib.request.urlopen('http://127.0.0.1:11434/api/tags', timeout=2) as response:
-              value = json.load(response)
-          assert isinstance(value.get('models'), list)
-          PY
-            then break; fi
+            if docker exec hackgpt-ollama-live ollama list >/dev/null 2>&1; then break; fi
             if [ "$attempt" = 60 ]; then docker logs hackgpt-ollama-live; exit 1; fi
             sleep 1
           done
+          docker exec hackgpt-ollama-live ollama list | tee _live_model_review/isolated-models.txt
+          HACKGPT_LIVE_OLLAMA_UPSTREAM="$(docker inspect hackgpt-ollama-live --format '{{with index .NetworkSettings.Networks "hackgpt-ollama-internal"}}{{.IPAddress}}{{end}}')"
+          export HACKGPT_LIVE_OLLAMA_UPSTREAM
+          python - <<'PY'
+          import ipaddress, os
+          address = ipaddress.ip_address(os.environ['HACKGPT_LIVE_OLLAMA_UPSTREAM'])
+          assert address.version == 4 and address.is_private and not address.is_multicast and not address.is_unspecified
+          PY
+          echo "HACKGPT_LIVE_OLLAMA_UPSTREAM=$HACKGPT_LIVE_OLLAMA_UPSTREAM" >> "$GITHUB_ENV"
+          docker inspect hackgpt-ollama-live --format '{{json .NetworkSettings.Networks}}' > _live_model_review/container-networks.json
       - name: Run real assessment-data-free workbench inference compatibility probe
         shell: bash
         run: |
           set -euo pipefail
           python -m workbench.tests.live_ollama_validation
-          docker inspect hackgpt-ollama-live --format '{{json .NetworkSettings.Networks}}' > _live_model_review/container-networks.json
-          printf '%s\n' 'The model was downloaded during CI setup, before validation.' 'Validation then used the preloaded model through an Ollama daemon attached only to a Docker --internal network, with OLLAMA_NO_CLOUD=1.' 'The workbench sent one fixed synthetic structured-output prompt containing no target, evidence, authorization, credentials or customer data.' 'No tool call was required or executed. This is compatibility evidence for one model/runtime combination, not a quality benchmark or universal provider claim.' > _live_model_review/BOUNDARY.txt
+          printf '%s\n' 'The model was downloaded during CI setup, before validation.' 'Validation then used the preloaded model through an Ollama daemon attached only to a Docker --internal network, with OLLAMA_NO_CLOUD=1.' 'The production workbench client remained loopback-only; the CI validator used a temporary non-logging loopback TCP relay to the daemon private bridge address because Docker does not publish a host port from this isolated validation boundary.' 'The workbench sent one fixed synthetic structured-output prompt containing no target, evidence, authorization, credentials or customer data.' 'No tool call was required or executed. This is compatibility evidence for one model/runtime combination, not a quality benchmark or universal provider claim.' > _live_model_review/BOUNDARY.txt
       - name: Upload live local-model compatibility evidence
         if: success()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
@@ -200,7 +202,10 @@ jobs:
       - name: Stop local inference container
         if: always()
         shell: bash
-        run: docker rm -f hackgpt-ollama-live hackgpt-ollama-seed >/dev/null 2>&1 || true
+        run: |
+          docker rm -f hackgpt-ollama-live hackgpt-ollama-seed >/dev/null 2>&1 || true
+          docker network rm hackgpt-ollama-internal >/dev/null 2>&1 || true
+          docker volume rm hackgpt-ollama-models >/dev/null 2>&1 || true
 
   browser-e2e:
     runs-on: ubuntu-latest
@@ -294,7 +299,7 @@ jobs:
                   "scanner_container_network": "none",
                   "external_assessment_target": False,
                   "live_model_inference": "one preloaded SmolLM2 135M local structured-output compatibility probe; no assessment data or tool execution",
-                  "live_model_network": "Docker internal-only network after model preload; OLLAMA_NO_CLOUD=1",
+                  "live_model_network": "Docker internal-only network after model preload; loopback relay to private bridge IP; OLLAMA_NO_CLOUD=1",
               },
               "all_required_jobs_passed": passed,
               "limitations": [
@@ -302,7 +307,7 @@ jobs:
                   "The Semgrep image pull is a CI setup step; adapter execution itself refuses automatic pulls and disables container networking.",
                   "Semgrep validation covers only the repository-authored local rule set and owned synthetic vulnerable/fixed fixtures, not arbitrary third-party rules or projects.",
                   "The live-model job validates one small local model/runtime combination and fixed structured-output contract; it is not a quality, GPU, tool-calling or provider-wide benchmark.",
-                  "The local model is downloaded before the daemon is restarted on an internal-only Docker network; the workbench compatibility prompt contains no assessment data.",
+                  "The local model is downloaded before the daemon is restarted on an internal-only Docker network; the test-only host loopback relay has one fixed private-container destination and the workbench compatibility prompt contains no assessment data.",
                   "Browser coverage is the documented hosted Chromium path, not a multi-browser certification.",
                   "Fresh-checkout smoke is not a signed installer attestation.",
               ],
@@ -333,5 +338,6 @@ jobs:
   # integration job pulls one immutable reviewed image during CI setup, then the adapter
   # itself runs with --pull never and --network none against owned local fixtures only.
   # The live-model job downloads one public model during setup, then restarts the daemon
-  # on a Docker --internal network and sends one fixed assessment-data-free probe.
+  # on a Docker --internal network. A test-only loopback relay reaches only that private
+  # bridge address and sends one fixed assessment-data-free probe through the normal client.
   # No external assessment targets, real credentials, cloud inference or paid services are used.
