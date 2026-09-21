@@ -37,12 +37,14 @@ jobs:
           mkdir -p _review
           python -m unittest discover -s workbench/tests -v 2>&1 | tee _review/python-tests.txt
       - name: Check frontend JavaScript syntax
-        run: node --check workbench/static/app.js
+        run: |
+          node --check workbench/static/app.js
+          node --check workbench/static/adapter.js
       - name: Frontend behavior contracts (DOM and fetch doubles, not browser E2E)
         shell: bash
         run: |
           set -o pipefail
-          node --test workbench/tests/test_ollama_ui.cjs workbench/tests/test_reviewer_ui.cjs 2>&1 | tee _review/javascript-tests.txt
+          node --test workbench/tests/test_ollama_ui.cjs workbench/tests/test_reviewer_ui.cjs workbench/tests/test_adapter_ui.cjs 2>&1 | tee _review/javascript-tests.txt
       - name: Generate bounded release-review evidence
         if: success() && matrix.python == '3.13'
         run: python -m workbench.release_evidence --output-dir _review/release-evidence
