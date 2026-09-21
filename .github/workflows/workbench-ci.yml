@@ -1,0 +1,39 @@
+name: Evidence Workbench
+
+on:
+  push:
+    branches: [main, 'feat/evidence-workbench', 'workbench/**']
+    paths: ['workbench/**', '.github/workflows/workbench-ci.yml']
+  pull_request:
+    paths: ['workbench/**', '.github/workflows/workbench-ci.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: workbench-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  native-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ['3.11', '3.12', '3.13']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Compile isolated workbench
+        run: python -m compileall -q workbench
+      - name: Unit and real loopback integration tests
+        run: python -m unittest discover -s workbench/tests -v
+      - name: Check frontend JavaScript syntax
+        run: node --check workbench/static/app.js
+
+  # No external targets, real credentials, model downloads, legacy installer,
+  # dependency installation or cloud inference are used by these tests.

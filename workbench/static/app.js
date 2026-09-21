@@ -109,6 +109,8 @@ async function poll(id) {
 function render(report) {
   running = report.status === 'running';
   $('start').disabled = running; $('cancel').disabled = !running;
+  $('refresh').disabled = running;
+  document.querySelectorAll('.history-item').forEach((node) => { node.disabled = running; });
   $('export-json').disabled = running || !report.integrity; $('export-md').disabled = running || !report.integrity;
   $('count-findings').textContent = report.findings.length;
   $('count-verified').textContent = report.findings.filter((f) => f.verification === 'verified_in_lab').length;

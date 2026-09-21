@@ -5,6 +5,7 @@ are loaded by this package. Missing coverage is represented, not silently passed
 """
 import copy
 import hashlib
+import html
 import http.client
 import ipaddress
 import json
@@ -42,17 +43,26 @@ def seal(report):
 
 
 def verify_integrity(report):
+    if not isinstance(report, dict):
+        return False
     value = copy.deepcopy(report)
     integrity = value.pop("integrity", {})
+    if not isinstance(integrity, dict) or integrity.get("algorithm") != "sha256" or integrity.get("signed") is not False:
+        return False
     if integrity.get("report_sha256") != digest(value):
         return False
     previous = "0" * 64
-    for event in value.get("events", []):
+    for index, event in enumerate(value.get("events", []), 1):
+        if not isinstance(event, dict):
+            return False
         item = dict(event)
         event_hash = item.pop("sha256", None)
-        if item.get("previous_sha256") != previous or event_hash != digest(item):
+        if item.get("sequence") != index or item.get("previous_sha256") != previous or event_hash != digest(item):
             return False
         previous = event_hash
+    for finding in value.get("findings", []):
+        if not isinstance(finding, dict) or finding.get("evidence_sha256") != digest(finding.get("evidence")):
+            return False
     return True
 
 
@@ -101,11 +111,11 @@ class Scope:
 
 
 def validate_url(url):
-    if any(ord(c) < 33 for c in url) or "\\" in url:
+    if any(ord(c) < 33 or ord(c) == 127 for c in url) or "\\" in url:
         raise ValueError("Whitespace, control characters and backslashes are not allowed")
     try:
         parsed = urlsplit(url)
-        port = parsed.port or (443 if parsed.scheme == "https" else 80)
+        port = parsed.port if parsed.port is not None else (443 if parsed.scheme == "https" else 80)
     except ValueError as exc:
         raise ValueError("Malformed target URL") from exc
     if parsed.scheme not in ("http", "https") or not parsed.hostname:
@@ -141,7 +151,7 @@ def inspect_remote(url):
     """One HEAD request, no redirects/proxies/body capture; socket pinned after DNS."""
     parsed = validate_url(url)
     host = parsed.hostname.encode("idna").decode("ascii")
-    port = parsed.port or (443 if parsed.scheme == "https" else 80)
+    port = parsed.port if parsed.port is not None else (443 if parsed.scheme == "https" else 80)
     address = public_addresses(host, port)[0]
     sock = socket.create_connection((address, port), timeout=8)
     connection = http.client.HTTPConnection(host, port, timeout=8)
@@ -330,7 +340,7 @@ class Assessment:
 
 
 def markdown(report):
-    lines = ["# HackGPT Evidence Workbench report", "", "- Run: " + report["id"], "- Target: " + report["target"], "- Status: " + report["status"], "- Verdict: " + report["verdict"], "- Environment: " + report["environment"], "", "> " + LIMITATION, "", "## Findings"]
+    lines = ["# HackGPT Evidence Workbench report", "", "- Run: " + report["id"], "- Target: " + html.escape(report["target"]).replace("`", "\\`").replace("[", "\\[").replace("]", "\\]"), "- Status: " + report["status"], "- Verdict: " + report["verdict"], "- Environment: " + report["environment"], "", "> " + LIMITATION, "", "## Findings"]
     for finding in report["findings"]:
         lines += ["", "### " + finding["title"], "Severity: " + finding["severity"], "Verification: " + finding["verification"], "Remediation: " + finding["remediation"], "", "Evidence SHA-256: " + finding["evidence_sha256"], "```json", json.dumps(finding["evidence"], indent=2), "```"]
     lines += ["", "## Coverage and execution", "```json", json.dumps(report["checks"], indent=2), "```", "", "## AI interpretation (not evidence)", "```json", json.dumps(report["ai"], indent=2), "```", "", "## Limitations"]
