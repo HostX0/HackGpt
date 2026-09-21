@@ -175,3 +175,35 @@ This contribution adds implementation commits `b436437bfee52478823e10587b72e5171
 ### Safety/product interpretation
 
 This contribution deliberately increases **review quality**, not exploit authority. It makes scanner output safer to import and access-control test results harder to overstate. It does not launch scanners, harvest credentials, dump databases, replay raw exploit traffic or contact external targets.
+
+## 2026-09-21 — Contribution 07: Reliability publication boundary and cancellable resolution
+
+### Implemented
+
+Feature commits in this slice: `640e7805ebe00facb878f744a37f826e2e7fceec`, `06a948885ffbea0f6beba5ea325c845e90939367`, and `0e65f26d25f10ef874987b6c07078524c0f30cef`.
+
+- Bounded DNS resolution now checks the assessment cancellation event while waiting on the resolver worker. A cancellation request can therefore stop the assessment before a slow resolver returns and before a network connection is opened.
+- `Assessment` no longer publishes its terminal `finished` event through the live callback before sealing. All callback snapshots emitted by the engine remain explicitly `running`; the returned terminal report contains the final event and passes integrity verification.
+- The local server accepts only running progress snapshots for the active run. Terminal publication is controlled by `State.run` after the report has been resealed with durability metadata.
+- SQLite finalization remains one `BEGIN IMMEDIATE` transaction that inserts the intact terminal report and retires the active checkpoint. The published terminal report now records `durability.status=durable`, `storage=sqlite` and `terminal_publication=after_atomic_commit` only after that transaction succeeds.
+- If terminal persistence fails, the in-memory terminal report is resealed and explicitly marked `not_durable` / `memory_only`; JSON/Markdown/evidence-bundle export and cross-run comparison refuse that explicit non-durable result. Legacy finalized rows without the new field remain reviewable for backward compatibility.
+- Running-checkpoint persistence failures are retained as `checkpoint_gap_observed=true` in a later successfully durable terminal report instead of being silently forgotten.
+- Restart recovery now marks an abandoned checkpoint `interrupted` / `inconclusive` and records explicit durable recovery metadata. It is never exposed as a completed assessment.
+
+### Validation actually performed in this run
+
+- `py_compile` passed for the reconstructed modified reliability slice.
+- **14 targeted Python tests passed locally** in a reduced reconstructed harness: the existing deadline and restart-recovery cases plus six new reliability-publication cases. The new cases cover no unsealed terminal callback, durable-before-publication semantics, explicit memory-only fallback on finalization failure, checkpoint-gap disclosure, durable interrupted restart recovery and cancellation during a deliberately slow DNS resolver.
+- The local cancellation test sets the cancellation event while a synthetic resolver sleeps and verifies the call raises `Cancelled` in under 0.2 seconds; it does not open an external connection.
+- Hosted Evidence Workbench runs for feature head `0e65f26d25f10ef874987b6c07078524c0f30cef` were **still pending** when this ledger entry was written. Their configuration is not counted as a pass. The dedicated push run is `35561466540`; the PR run is `35561470769`.
+- The local harness used stubs for unrelated workbench modules and is **not** a full repository/workbench suite. No external assessment target, scanner binary, live model inference, credential or paid service was used.
+
+### Release-gate impact and remaining blockers
+
+- Gate B advances substantially: terminal unsealed publication is closed, terminal durability is atomic-or-explicitly-non-durable, restart recovery remains inconclusive, and DNS waiting now honors cancellation.
+- **Gate B still does not pass.** Cancellation has not yet been exercised during connect, TLS, slow response and model operations across the supported paths. Test-only injected readers also remain outside the production socket deadline guarantee. Additional storage/concurrency failure modes and special-address regression coverage remain to be completed.
+- Gates C, D and E retain their existing blockers; this reliability slice does not justify early sprint completion.
+
+### Safety/product interpretation
+
+These changes improve evidence trust and interruption behavior without increasing exploitation authority. They do not execute third-party scanners, contact an external target, collect credentials, extract customer records, deploy payloads, persist access or add lateral movement.
