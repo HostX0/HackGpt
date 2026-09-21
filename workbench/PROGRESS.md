@@ -36,3 +36,29 @@ Read ROADMAP.md item 1: hard total deadlines, special-range coverage across Pyth
 ### Product claims deliberately not made
 
 This is a working experimental foundation, not a complete production pentest suite. A local-lab proof is not a compromise of a customer's application. No findings does not establish security; inability to demonstrate exploitation does not establish impossibility. SHA-256 records are not signatures. No stars or community adoption are guaranteed.
+
+## 2026-09-21 — Contribution 02: Ollama-only readiness and diagnostics
+
+### Owner direction
+
+Keep developing, testing and uploading without requiring the owner to install or run anything now. Ollama is the workbench's **only AI provider**. Do not add hosted providers or fallback services. Deterministic checks with AI explicitly disabled remain supported. Existing legacy code and attribution are preserved, not silently rewritten.
+
+### Implemented
+
+- Extracted a typed, standard-library-only local runtime with an explicit operation allowlist, strict port/model validation, bounded requests/responses and stable user-safe errors.
+- Added model discovery diagnostics and authenticated metadata checking. Exact installed selection is required; `/api/show` gates completion/tool capabilities and rejects remote aliases before each inference.
+- Added a fixed-provider GUI panel, model capability details, explicit Check model action, safe error guidance and preflight checks for AI-enabled submissions. Stale model-check results are invalidated; duplicate submissions and silent substitution are prevented.
+- Kept local metadata checks separate from inference validation and daemon egress attestation. No prompt is sent during Check model, no model is pulled, no API key is requested, and no fallback provider is used.
+- Added completed-response/truncation validation, controlled sampling/context/output settings and filtering of model thinking traces. Existing independent finding/evidence verdicts remain authoritative.
+- Added [OLLAMA.md](OLLAMA.md) with the provider contract, supported operations, limits, diagnostics, threat boundary, references and validation caveats; updated the roadmap and isolated workflow.
+
+### Validation actually performed before upload
+
+- **38 new Python tests passed locally on Python 3.13.5**, including real loopback HTTP against a synthetic Ollama protocol server. Tests cover installed-model and alias gates, capability compatibility, budgets, strict configuration, malformed/failed/redirected responses and bounded planning contracts.
+- **10 new JavaScript behavior tests passed** with Node 22.16.0 using DOM/fetch doubles. Tests cover model discovery, no substitution, stale metadata, tool support, preflight failure, native-only submissions and duplicate-submit prevention.
+- Compilation of the locally reconstructed workbench files and JavaScript syntax validation passed.
+- The 72 existing Python tests were not rerun in this local working copy because the full repository was not materialized. The workflow is configured to run the complete repository test suite plus the new JavaScript tests on Python 3.11, 3.12 and 3.13. Check the actual commit's hosted CI results separately; configuration is not a passing result.
+
+### Not validated / still pending
+
+No live Ollama inference, GPU/model performance, cloud-egress attestation, new browser layout/E2E run, external target or third-party scanner execution was performed. Protocol fixtures and DOM doubles are not replacements for those tests. The new model metadata endpoint has safe validation and uses the already-authenticated local handler, but broader real-browser integration remains pending. Hard total deadlines, cancellation/restart behavior and atomic durable finalization remain the next reliability priorities. Upstream submission and maintainer acceptance have not occurred.

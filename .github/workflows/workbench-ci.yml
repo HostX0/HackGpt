@@ -34,6 +34,8 @@ jobs:
         run: python -m unittest discover -s workbench/tests -v
       - name: Check frontend JavaScript syntax
         run: node --check workbench/static/app.js
+      - name: Frontend behavior contracts (DOM and fetch doubles, not browser E2E)
+        run: node --test workbench/tests/test_ollama_ui.cjs
 
   # No external targets, real credentials, model downloads, legacy installer,
   # dependency installation or cloud inference are used by these tests.

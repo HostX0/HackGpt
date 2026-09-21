@@ -4,6 +4,8 @@ let token = sessionStorage.getItem('hackgpt-token') || '';
 let selectedRun = null;
 let polling = null;
 let running = false;
+let starting = false;
+let modelCheckEpoch = 0;
 const fragment = new URLSearchParams(location.hash.slice(1));
 if (fragment.has('token')) {
   token = fragment.get('token');
@@ -18,7 +20,7 @@ async function api(path, body, raw = false) {
   const response = await fetch(path, {method: body === undefined ? 'GET' : 'POST', headers: {'Authorization': 'Bearer ' + token, ...(body === undefined ? {} : {'Content-Type': 'application/json'})}, ...(body === undefined ? {} : {body: JSON.stringify(body)})});
   if (!response.ok) {
     const error = await response.json().catch(() => ({error: 'Local service unavailable'}));
-    throw new Error(error.error || 'Request failed');
+    throw new Error((error.error || 'Request failed') + (error.next_step ? ' ' + error.next_step : ''));
   }
   return raw ? response : response.json();
 }
@@ -39,6 +41,8 @@ function syncForm() {
   $('approve').required = verify;
   $('model').disabled = !$('use-ai').checked;
   $('model').required = $('use-ai').checked;
+  $('check-model').disabled = !$('use-ai').checked || running;
+  invalidateModel();
 }
 async function unlock() {
   try {
@@ -68,26 +72,60 @@ $('unlock-form').addEventListener('submit', async (event) => {
 $('target-type').addEventListener('change', syncForm);
 $('use-ai').addEventListener('change', syncForm);
 document.querySelectorAll('input[name="mode"]').forEach((node) => node.addEventListener('change', syncForm));
+function invalidateModel() {
+  modelCheckEpoch += 1;
+  $('model-state').textContent = $('use-ai').checked ? 'Model not checked for this configuration.' : 'AI disabled. Native checks remain deterministic; no alternate provider is used.';
+  $('model-details').hidden = true;
+}
+function needsTools() {
+  return $('target-type').value === 'lab' && document.querySelector('input[name="mode"]:checked').value === 'verify';
+}
+async function checkModel() {
+  const epoch = ++modelCheckEpoch;
+  const model = $('model').value.trim();
+  const requireTools = needsTools();
+  if (!model) throw new Error('Detect and select an installed Ollama model first.');
+  $('check-model').disabled = true;
+  $('model-state').textContent = 'Checking installed model metadata. No inference is being run.';
+  try {
+    const result = await api('/api/models/check', {model, require_tools: requireTools});
+    if (epoch !== modelCheckEpoch) return;
+    $('model-state').textContent = result.tool_calling ? 'Metadata checked: analysis + tool calling.' : 'Metadata checked: analysis only. Tool-directed verification is unavailable.';
+    $('model-details').textContent = result.model + ' · ' + result.parameter_size + ' · ' + result.quantization + '\n' + result.note;
+    $('model-details').hidden = false;
+  } catch (error) {
+    if (epoch === modelCheckEpoch) $('model-state').textContent = error.message;
+    throw error;
+  } finally { $('check-model').disabled = !$('use-ai').checked || running; }
+}
+$('model').addEventListener('input', invalidateModel);
+$('check-model').addEventListener('click', () => checkModel().catch((error) => notice(error.message, true)));
 $('detect').addEventListener('click', async () => {
   $('detect').disabled = true;
+  invalidateModel();
   try {
     const result = await api('/api/models');
     $('model-list').replaceChildren();
     result.models.forEach((name) => { const option = element('option'); option.value = name; $('model-list').append(option); });
+    // Never silently replace a user's selected model, even if it disappeared.
     if (result.models.length && !$('model').value) $('model').value = result.models[0];
-    $('model-help').textContent = result.note + (result.models.length ? ' ' + result.models.length + ' local model(s) detected.' : '');
+    $('model-help').textContent = result.note;
+    $('model-state').textContent = human(result.state) + (result.blocked_models ? ' · ' + result.blocked_models + ' remote model(s) filtered.' : '');
   } catch (error) { notice(error.message, true); }
-  finally { $('detect').disabled = false; }
+  finally { $('detect').disabled = running; }
 });
 $('scan-form').addEventListener('submit', async (event) => {
-  event.preventDefault(); if (running) return;
+  event.preventDefault(); if (running || starting) return;
+  starting = true;
   const body = {target: $('target-type').value === 'lab' ? 'lab' : $('target').value.trim(), mode: document.querySelector('input[name="mode"]:checked').value, authorized: $('authorized').checked, authorization: $('authorization').value.trim(), approve_verification: $('approve').checked, use_ai: $('use-ai').checked, model: $('model').value.trim()};
   $('start').disabled = true;
   try {
+    if (body.use_ai) await api('/api/models/check', {model: body.model, require_tools: body.target === 'lab' && body.mode === 'verify'});
     const result = await api('/api/runs', body);
     notice('Run started. Only recorded evidence determines the verification state.');
     await selectRun(result.id);
-  } catch (error) { notice(error.message, true); $('start').disabled = false; }
+  } catch (error) { notice(error.message, true); }
+  finally { starting = false; $('start').disabled = running; }
 });
 async function selectRun(id) {
   if (polling) clearTimeout(polling);
@@ -110,6 +148,8 @@ function render(report) {
   running = report.status === 'running';
   $('start').disabled = running; $('cancel').disabled = !running;
   $('refresh').disabled = running;
+  $('detect').disabled = running;
+  $('check-model').disabled = running || !$('use-ai').checked;
   document.querySelectorAll('.history-item').forEach((node) => { node.disabled = running; });
   $('export-json').disabled = running || !report.integrity; $('export-md').disabled = running || !report.integrity;
   $('count-findings').textContent = report.findings.length;

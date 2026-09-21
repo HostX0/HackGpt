@@ -8,6 +8,8 @@ Read current main, open pull requests and PROGRESS.md before each contribution. 
 
 Record actual files changed, tests run, limitations and next work in PROGRESS.md. Check for overlapping changes before advancing a ref. Do not force-push or merge unreviewed conflicting changes. Tools and permissions may differ in scheduled runs: report blockers rather than fabricate completion.
 
+**Owner direction, 2026-09-21:** develop and validate without requiring the owner to install/test now. Ollama is the sole AI provider for this workbench. No hosted-provider adapters, remote inference endpoints, API credentials, automatic downloads or fallback models. Explicit no-AI deterministic checks remain supported. Preserve legacy modules instead of claiming that their providers were removed repository-wide. See [OLLAMA.md](OLLAMA.md) for the implemented local model readiness contract and its non-attestation limits.
+
 ## 1. Complete the reliability boundary
 
 - Enforce a genuine end-to-end deadline, including resolver and slow-read behavior; add adversarial loopback tests.
@@ -30,7 +32,7 @@ Acceptance: fixture-driven parsers handle malformed/truncated output and cannot 
 
 ## 3. Project-code checks first
 
-Integrate narrowly configured local code/dependency/secret checks (for example Semgrep Community Edition and Trivy), after reviewing each tool and rule license. Mount source read-only, redact secrets by default and expose exact coverage. Never send source or credentials to a cloud service without an explicit new opt-in.
+Integrate narrowly configured local code/dependency/secret checks (for example Semgrep Community Edition and Trivy), after reviewing each tool and rule license. Mount source read-only, redact secrets by default and expose exact coverage. Do not send source or credentials to hosted inference services; the current AI scope is local Ollama only.
 
 Acceptance: vulnerable and corrected project fixtures, offline behavior documented, versions pinned, actual errors visible.
 
@@ -50,7 +52,7 @@ Acceptance: role/isolation regression fixtures and secrets absent from logs, mod
 
 Expand the finite action registry only when an adapter has deterministic validation and independent scope enforcement. Require renewed approval when target, effect level or scope changes. Add recorded public decision/action traces, model compatibility tests and budget accounting. Treat tool output as untrusted data. Explanations are not authority or proof.
 
-Acceptance: adversarial model-response tests cannot change target, permissions, shell commands, budgets or evidence state. No unbounded self-directed exploit loop.
+Acceptance: adversarial model-response tests cannot change target, permissions, shell commands, budgets or evidence state. No unbounded self-directed exploit loop. Add opt-in live local Ollama compatibility testing before claiming any model/GPU benchmark; preserve offline protocol fixtures as a separate test category.
 
 ## 7. Retesting and change-aware reports
 

@@ -14,7 +14,7 @@ from pathlib import Path
 
 from . import __version__
 from .engine import Assessment, Scope, markdown, verify_integrity
-from .ollama import Ollama
+from .ollama import Ollama, OllamaError
 
 
 class Busy(Exception):
@@ -199,10 +199,10 @@ class Handler(BaseHTTPRequestHandler):
                 return self.reply(200, {"version": __version__, "local_only": True, "third_party_adapters": "not_integrated", "active_run": self.server.state.active})
             if self.path == "/api/models":
                 try:
-                    models = Ollama("").local_models()
-                    return self.reply(200, {"available": True, "models": models, "note": "Configure the Ollama service with OLLAMA_NO_CLOUD=1."})
-                except Exception:
-                    return self.reply(200, {"available": False, "models": [], "note": "Ollama is unavailable on the configured loopback port. Native checks still work."})
+                    return self.reply(200, Ollama("").diagnostics())
+                except OllamaError as exc:
+                    return self.reply(200, {"available": False, "models": [], "state": exc.code,
+                                            "note": str(exc) + " " + exc.next_step, **exc.public()})
             if self.path == "/api/runs":
                 return self.reply(200, {"runs": self.server.state.store.recent()})
             match = re.fullmatch(r"/api/runs/([a-f0-9]{32})(?:/export\.(json|md))?", self.path)
@@ -234,6 +234,13 @@ class Handler(BaseHTTPRequestHandler):
             if not 0 < length <= 16384 or self.headers.get("Content-Type", "").split(";")[0] != "application/json":
                 raise ValueError("Send a JSON object no larger than 16 KiB")
             data = json.loads(self.rfile.read(length))
+            if self.path == "/api/models/check":
+                if (not isinstance(data, dict) or set(data) - {"model", "require_tools"}
+                        or not isinstance(data.get("model"), str) or not data["model"]
+                        or not isinstance(data.get("require_tools", False), bool)):
+                    raise ValueError("Send an exact model name and optional boolean require_tools")
+                result = Ollama(data["model"]).inspect_model(require_tools=data.get("require_tools", False))
+                return self.reply(200, result)
             if self.path == "/api/runs":
                 run_id = self.server.state.start(data)
                 return self.reply(202, {"id": run_id})
@@ -245,6 +252,8 @@ class Handler(BaseHTTPRequestHandler):
                     self.server.state.cancel.set()
                 return self.reply(202, {"status": "cancellation_requested", "note": "In-flight bounded I/O is not interrupted instantly."})
             self.reply(404, {"error": "Not found"})
+        except OllamaError as exc:
+            self.reply(422, exc.public())
         except Busy as exc:
             self.reply(409, {"error": str(exc)})
         except (ValueError, TypeError, UnicodeDecodeError):
