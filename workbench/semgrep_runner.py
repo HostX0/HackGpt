@@ -267,10 +267,13 @@ class SemgrepContainerAdapter:
             "-e", "XDG_CACHE_HOME=/tmp/.cache",
             "-e", "HOME=/tmp",
             "-v", f"{root}:/src:ro",
-            "-v", f"{RULES_PATH.resolve()}:/rules/workbench.yml:ro",
+            # Mount the reviewed config at the container root. Semgrep prefixes local
+            # rule IDs with parent directories; a root-level config keeps rule IDs
+            # stable instead of coupling evidence fingerprints to our mount path.
+            "-v", f"{RULES_PATH.resolve()}:/workbench.yml:ro",
             "-w", "/src",
             SEMGREP_IMAGE,
-            "semgrep", "scan", "--config", "/rules/workbench.yml", "--json", "--metrics", "off",
+            "semgrep", "scan", "--config", "/workbench.yml", "--json", "--metrics", "off",
             "--disable-version-check", "--max-target-bytes", str(self.policy.max_target_bytes),
         ]
         for excluded in sorted(DEFAULT_EXCLUDED_DIRS):
