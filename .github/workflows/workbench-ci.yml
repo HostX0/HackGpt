@@ -40,7 +40,8 @@ jobs:
         run: |
           node --check workbench/static/app.js
           node --check workbench/static/adapter.js
-      - name: Frontend behavior contracts (DOM and fetch doubles, not browser E2E)
+          node --check workbench/tests/browser_e2e.mjs
+      - name: Frontend behavior contracts (DOM and fetch doubles)
         shell: bash
         run: |
           set -o pipefail
@@ -55,7 +56,7 @@ jobs:
           git archive --format=tar HEAD workbench .github/workflows/workbench-ci.yml LICENSE > _review/workbench-source.tar
           git rev-parse HEAD > _review/REVISION.txt
           (cd _review && sha256sum workbench-source.tar > SHA256SUMS)
-          printf '%s\n' 'Review source for the exact checked-out revision, not a binary release or security certification.' 'This job passed compile, Python loopback/unit tests, JavaScript syntax, DOM/fetch-double tests and release-evidence generation.' 'The release-evidence directory contains a scoped machine-readable manifest, CycloneDX SBOM and a report generated from the owned synthetic authorization lab.' 'No live Ollama inference, cloud request, external target, GPU test or browser E2E was performed.' 'See the other matrix jobs independently; this archive is produced by Python 3.13 only.' 'No root .env, reports, credentials, untracked runtime files or legacy installer are included.' > _review/VALIDATION.txt
+          printf '%s\n' 'Review source for the exact checked-out revision, not a binary release or security certification.' 'This matrix job passed compile, Python loopback/unit tests, JavaScript syntax, DOM/fetch-double tests and release-evidence generation.' 'Separate jobs in this workflow exercise a real system browser against the loopback UI and run checkout smoke tests on Ubuntu, macOS and Windows; this artifact alone does not attest those jobs passed.' 'The release-evidence directory contains a scoped machine-readable manifest, CycloneDX SBOM and a report generated from the owned synthetic authorization lab.' 'No live Ollama inference, cloud request, external assessment target or GPU test was performed.' 'No root .env, reports, credentials, untracked runtime files or legacy installer are included.' > _review/VALIDATION.txt
       - name: Upload successful review bundle
         if: success() && matrix.python == '3.13'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
@@ -65,5 +66,57 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
-  # No external targets, real credentials, model downloads, legacy installer,
-  # dependency installation or cloud inference are used by these tests.
+  browser-e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Compile isolated workbench
+        run: python -m compileall -q workbench
+      - name: Locate system Chrome
+        shell: bash
+        run: |
+          CHROME_BIN="$(command -v google-chrome || command -v google-chrome-stable || command -v chromium || command -v chromium-browser || true)"
+          test -n "$CHROME_BIN"
+          echo "CHROME_BIN=$CHROME_BIN" >> "$GITHUB_ENV"
+      - name: Real browser-to-loopback E2E and accessibility
+        shell: bash
+        run: |
+          set -o pipefail
+          mkdir -p _browser_review
+          node workbench/tests/browser_e2e.mjs 2>&1 | tee _browser_review/browser-e2e.json
+      - name: Upload browser E2E evidence
+        if: success()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: workbench-browser-e2e-${{ github.sha }}
+          path: _browser_review/browser-e2e.json
+          if-no-files-found: error
+          retention-days: 7
+
+  fresh-install:
+    timeout-minutes: 8
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Compile isolated workbench from checkout
+        run: python -m compileall -q workbench
+      - name: Fresh-checkout loopback smoke
+        run: python -m workbench.tests.fresh_install_smoke
+
+  # Tests contact only owned loopback fixtures. They do not use external assessment
+  # targets, real credentials, model downloads, cloud inference, paid services,
+  # third-party scanner binaries or the legacy installer.
