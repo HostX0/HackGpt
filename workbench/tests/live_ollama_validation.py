@@ -5,12 +5,21 @@ Ollama daemon containing one preloaded small model, runs the workbench's fixed
 assessment-data-free structured-output self-test, and writes a machine-readable record.
 It does not run an assessment, execute a tool, use customer data, or contact a cloud
 model through the workbench.
+
+For CI, the daemon may live on a Docker ``--internal`` bridge. The production Ollama
+client intentionally accepts loopback only, so this module can create a temporary
+loopback TCP relay to one literal private/loopback upstream IP supplied by the workflow.
+The relay does not parse, persist, log, redirect, discover, or choose destinations.
 """
 from __future__ import annotations
 
+import ipaddress
 import json
 import os
+import socket
+import threading
 import time
+from contextlib import nullcontext
 from pathlib import Path
 
 from workbench.ollama import Ollama
@@ -18,6 +27,101 @@ from workbench.ollama import Ollama
 SCHEMA = "hackgpt.live-model-validation/v1"
 DEFAULT_MODEL = "smollm2:135m-instruct-q5_K_M"
 DEFAULT_DIGEST_PREFIX = "a703ae7fccb0"
+UPSTREAM_PORT = 11434
+
+
+class _LoopbackRelay:
+    """Ephemeral test-only loopback relay to one validated private IP."""
+
+    def __init__(self, upstream_host: str, upstream_port: int = UPSTREAM_PORT):
+        try:
+            address = ipaddress.ip_address(upstream_host)
+        except ValueError as exc:
+            raise RuntimeError("live-model relay upstream must be a literal IP address") from exc
+        if address.version != 4 or not address.is_private or address.is_multicast or address.is_unspecified:
+            raise RuntimeError("live-model relay upstream must be one private IPv4 address")
+        if isinstance(upstream_port, bool) or not isinstance(upstream_port, int) or not 1 <= upstream_port <= 65535:
+            raise RuntimeError("live-model relay upstream port is invalid")
+        self.upstream_host = str(address)
+        self.upstream_port = upstream_port
+        self.listener: socket.socket | None = None
+        self._stop = threading.Event()
+        self._accept_thread: threading.Thread | None = None
+        self._workers: list[threading.Thread] = []
+        self.port: int | None = None
+
+    @staticmethod
+    def _copy(source: socket.socket, destination: socket.socket) -> None:
+        try:
+            while True:
+                data = source.recv(65536)
+                if not data:
+                    break
+                destination.sendall(data)
+        except OSError:
+            pass
+        finally:
+            try:
+                destination.shutdown(socket.SHUT_WR)
+            except OSError:
+                pass
+
+    def _bridge(self, client: socket.socket) -> None:
+        upstream: socket.socket | None = None
+        try:
+            upstream = socket.create_connection((self.upstream_host, self.upstream_port), timeout=5)
+            client.settimeout(90)
+            upstream.settimeout(90)
+            left = threading.Thread(target=self._copy, args=(client, upstream), daemon=True)
+            right = threading.Thread(target=self._copy, args=(upstream, client), daemon=True)
+            left.start()
+            right.start()
+            left.join(timeout=95)
+            right.join(timeout=95)
+        finally:
+            try:
+                client.close()
+            except OSError:
+                pass
+            if upstream is not None:
+                try:
+                    upstream.close()
+                except OSError:
+                    pass
+
+    def _accept(self) -> None:
+        assert self.listener is not None
+        while not self._stop.is_set():
+            try:
+                client, _ = self.listener.accept()
+            except socket.timeout:
+                continue
+            except OSError:
+                return
+            worker = threading.Thread(target=self._bridge, args=(client,), daemon=True)
+            self._workers.append(worker)
+            worker.start()
+
+    def __enter__(self) -> int:
+        listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        listener.bind(("127.0.0.1", 0))
+        listener.listen(8)
+        listener.settimeout(0.2)
+        self.listener = listener
+        self.port = int(listener.getsockname()[1])
+        self._accept_thread = threading.Thread(target=self._accept, name="hackgpt-live-model-relay", daemon=True)
+        self._accept_thread.start()
+        return self.port
+
+    def __exit__(self, exc_type, exc, traceback) -> None:
+        self._stop.set()
+        if self.listener is not None:
+            self.listener.close()
+        if self._accept_thread is not None:
+            self._accept_thread.join(timeout=1)
+        for worker in self._workers:
+            worker.join(timeout=1)
 
 
 def _catalog_digest(client: Ollama, model: str) -> str:
@@ -34,15 +138,8 @@ def _catalog_digest(client: Ollama, model: str) -> str:
     raise RuntimeError("Selected live-validation model was not present in the Ollama catalog")
 
 
-def main() -> int:
-    model = os.environ.get("HACKGPT_LIVE_OLLAMA_MODEL", DEFAULT_MODEL)
-    expected_prefix = os.environ.get("HACKGPT_LIVE_OLLAMA_DIGEST_PREFIX", DEFAULT_DIGEST_PREFIX).lower()
-    output_path = Path(os.environ.get("HACKGPT_LIVE_OLLAMA_EVIDENCE", "_live_model_review/live-model-validation.json"))
-    deadline_seconds = float(os.environ.get("HACKGPT_LIVE_OLLAMA_DEADLINE_SECONDS", "60"))
-    if not 5 <= deadline_seconds <= 180:
-        raise RuntimeError("live-model deadline must be between 5 and 180 seconds")
-
-    client = Ollama(model=model, allow_cloud=False)
+def _run_probe(*, port: int | None, model: str, expected_prefix: str, deadline_seconds: float) -> tuple[dict, dict, str]:
+    client = Ollama(model=model, port=port, allow_cloud=False)
     client.set_deadline(time.monotonic() + deadline_seconds)
 
     digest = _catalog_digest(client, model)
@@ -68,6 +165,26 @@ def main() -> int:
         raise RuntimeError("live-model validation expected exactly one inference request/response")
     if telemetry.get("execution_location") != "local_reported":
         raise RuntimeError("telemetry did not preserve local-reported processing location")
+    return result, telemetry, digest
+
+
+def main() -> int:
+    model = os.environ.get("HACKGPT_LIVE_OLLAMA_MODEL", DEFAULT_MODEL)
+    expected_prefix = os.environ.get("HACKGPT_LIVE_OLLAMA_DIGEST_PREFIX", DEFAULT_DIGEST_PREFIX).lower()
+    output_path = Path(os.environ.get("HACKGPT_LIVE_OLLAMA_EVIDENCE", "_live_model_review/live-model-validation.json"))
+    deadline_seconds = float(os.environ.get("HACKGPT_LIVE_OLLAMA_DEADLINE_SECONDS", "60"))
+    upstream_host = os.environ.get("HACKGPT_LIVE_OLLAMA_UPSTREAM", "").strip()
+    if not 5 <= deadline_seconds <= 180:
+        raise RuntimeError("live-model deadline must be between 5 and 180 seconds")
+
+    relay = _LoopbackRelay(upstream_host) if upstream_host else nullcontext(None)
+    with relay as relay_port:
+        result, telemetry, digest = _run_probe(
+            port=relay_port,
+            model=model,
+            expected_prefix=expected_prefix,
+            deadline_seconds=deadline_seconds,
+        )
 
     document = {
         "schema": SCHEMA,
@@ -92,6 +209,7 @@ def main() -> int:
         "tool_executed": False,
         "external_assessment_target": False,
         "customer_data": False,
+        "transport": "loopback_relay_to_private_ci_network" if upstream_host else "direct_loopback",
         "note": (
             "A real preloaded model satisfied the fixed synthetic structured-output compatibility probe. "
             "This validates one model/runtime combination only; it is not a quality benchmark, a security verdict, "
