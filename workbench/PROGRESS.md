@@ -142,3 +142,36 @@ This contribution spans feature commits `fa95c429a1d9dd6c47eafde7e0d2bb8381b869b
 ### Safety/product interpretation
 
 The stronger synthetic data proof is intentionally **not** a database dump. It demonstrates the product pattern the owner requested—concrete evidence that a data boundary can be crossed—using designated synthetic records and a denied control, while avoiding reusable credentials or customer data in the report. Real external exploitation, persistence, credential theft, customer-row sampling and lateral movement remain outside this workbench contribution.
+
+## 2026-09-21 — Contribution 06: Privacy-minimizing scanner parsers and bounded access matrix
+
+### Implemented
+
+This contribution adds implementation commits `b436437bfee52478823e10587b72e5171466aa74`, `a6df41fa32dd71fb3094ada6530f9a6afa35890c`, `8c49a8a6cbab21de861e32cfa4a08940a2e3cbf0`, `83f67297e7825e96c8f7b9d0e1c3d6b53200d4f6` and documentation commit `932abb6101f3ddd69b13d804e27868a71e9f082a`.
+
+- Added `adapters.py`, an offline non-executing parser layer for Semgrep JSON, Trivy JSON and Nuclei JSONL. Input is UTF-8/NUL checked and bounded to 2 MiB; malformed/truncated output fails closed and normalized findings still pass through `hackgpt.adapter-result/v1`, so imported scanner data remains `candidate` rather than independently verified.
+- Semgrep parsing retains rule, path and line metadata but deliberately omits source snippets and metavariable contents. Scanner errors make coverage partial rather than successful.
+- Trivy parsing handles vulnerability, misconfiguration and secret observations while omitting secret matches and embedded source/configuration code from normalized evidence.
+- Nuclei JSONL parsing deliberately omits raw requests/responses, curl commands, extracted values and URL queries. A finding stream does not establish complete target/template coverage, so non-empty imports are marked partial; an empty stream keeps coverage unknown instead of implying the target is safe.
+- Added `access_matrix.py`, an execution-neutral role/resource policy evaluator. It accepts no credentials, cookies, tokens, response bodies or customer records. Unexpected allows become candidate access-control observations; a confirmed denied control raises confidence but does not self-promote the finding to verified. Missing/error/skipped cases stay incomplete coverage, and unexpected denials remain policy mismatches rather than exploit findings.
+- Added [ADAPTERS.md](ADAPTERS.md) documenting format assumptions, privacy omissions, execution boundaries and the still-unmet requirements for actual scanner runners.
+
+### Validation actually performed
+
+- **20 focused Python tests passed locally** on Python 3.13 in the reconstructed pure-module slice: 12 parser/redaction/fail-closed tests plus 8 access-matrix tests. They cover stable fingerprints, oversized/non-UTF-8 input, malformed/truncated formats, Semgrep partial errors, Trivy secret/code omission, Nuclei raw-material omission, fixed/vulnerable matrix semantics, denied-control confidence, missing coverage, out-of-scope/duplicate cases and rejection of credential/body fields.
+- Hosted **Evidence Workbench** run `35557901717` completed successfully for branch head `932abb6101f3ddd69b13d804e27868a71e9f082a` on Python **3.11, 3.12 and 3.13**. The revision-bound Python 3.13 review artifact recorded **211 Python tests passed** and **23 JavaScript tests passed**. The artifact's `REVISION.txt` is the GitHub pull-request merge revision `29602520afa3ef33348ecb6339ac202985e78ab3`, while the workflow metadata records feature head `932abb6101f3ddd69b13d804e27868a71e9f082a`; this distinction is retained rather than presenting the synthetic merge SHA as the feature-branch commit.
+- The hosted log explicitly includes all 20 new `test_adapters` / `test_access_matrix` cases. No real scanner binary, external target, customer data, credential, model download or paid service was used.
+- Legacy Enterprise/HackGPT workflows are separate and are not inferred successful from the dedicated workbench workflow.
+
+### Release-gate impact and remaining blockers
+
+- Gate A's adapter verification firewall is now exercised by concrete format parsers rather than only a generic envelope, but the gate status is not used to justify early sprint completion while B/C/E remain materially incomplete.
+- Gate C advances on malformed/truncated/oversized parser handling and privacy-minimized normalization for three formats. **Gate C is still incomplete** because the workbench does not execute a read-only project scanner or bounded web scanner, has no pinned runner/license/SBOM packaging for them, and has not passed vulnerable/fixed execution fixtures.
+- The access matrix advances the role-matrix data/evidence model, but it is not an authenticated external role runner and does not store or use credentials.
+- Gate B remains incomplete because cancellation is checkpoint-based and the currently implemented deadline/recovery mechanisms do not yet prove every blocking phase is interruptible within a true total deadline under all supported paths.
+- Gate D now has real GUI comparison/bundle controls on the live branch, correcting the older Contribution 05 note; remediation-to-recheck linkage and stronger reviewer attestation remain work.
+- Gate E remains incomplete: no live model compatibility benchmark, browser-to-server E2E/accessibility pass, cross-platform fresh-install smoke test, signed release or complete packaging/SBOM evidence.
+
+### Safety/product interpretation
+
+This contribution deliberately increases **review quality**, not exploit authority. It makes scanner output safer to import and access-control test results harder to overstate. It does not launch scanners, harvest credentials, dump databases, replay raw exploit traffic or contact external targets.
