@@ -207,3 +207,29 @@ Feature commits in this slice: `640e7805ebe00facb878f744a37f826e2e7fceec`, `06a9
 ### Safety/product interpretation
 
 These changes improve evidence trust and interruption behavior without increasing exploitation authority. They do not execute third-party scanners, contact an external target, collect credentials, extract customer records, deploy payloads, persist access or add lateral movement.
+
+## 2026-09-21 — Contribution 08: Remediation-linked recheck evidence
+
+### Implemented
+
+Feature commits: `ffb7961ce19ed6003012cd5976b016116e8157e9` and `1c85853a1c4ad1a51ff91d4ab3e758de32f206b9`.
+
+- The existing `hackgpt.retest-diff/v1` output remains backward-compatible while each prior finding now receives an explicit `recheck` binding.
+- The binding carries previous/current run IDs, prior finding ID when available, prior evidence SHA-256 when available, a SHA-256 reference to remediation guidance, exact mapped coverage status and scope comparability. It intentionally records `remediation_applied: unknown` rather than inferring that advice was implemented.
+- Changed target or environment is preserved as non-comparable scope and therefore `not_retested`, even if a similarly named check completed.
+- Failed, skipped, absent and unmapped check coverage remains visible in the recheck object. A failed mapped scanner cannot turn an absent finding into `not_reproduced`.
+- New findings use an explicit `not_applicable` remediation-application state rather than pretending they came from a prior remediation cycle.
+
+### Validation actually performed
+
+- Focused local assertions exercised still-present/not-reproduced/not-retested behavior, remediation/evidence hash linkage, failed mapped coverage and changed-scope behavior. This was a small logic check, not a full local repository run.
+- Hosted **Evidence Workbench** run `35561727602` completed successfully for feature head `1c85853a1c4ad1a51ff91d4ab3e758de32f206b9`. All matrix jobs succeeded on Python **3.11, 3.12 and 3.13**.
+- The Python 3.13 job ran **221 Python tests in 22.456s** and passed all of them, including the six new reliability-publication tests and the expanded ten-case retest suite. The same job also passed JavaScript syntax and **23 JavaScript DOM/fetch contract tests**; these are not browser E2E.
+- The Python 3.13 review artifact was produced from GitHub's pull-request merge revision `d8cb750a06a07da8c9c16a6070152b6a58719460`, while workflow metadata records feature head `1c85853a1c4ad1a51ff91d4ab3e758de32f206b9`. That distinction is intentional.
+- No live model inference, external target, scanner binary, credential, customer row or paid service was used.
+
+### Release-gate impact
+
+- **Gate D now passes its declared bounded criteria**: four-state conservative comparison is implemented; safe checksummed reviewer bundles already exist; remediation guidance/evidence is linked to the exact recheck without claiming it was applied; and changed-scope/failed/unmapped coverage remains non-closing.
+- Gate D passing does not mean reports are cryptographically signed or that a human remediation action was independently attested. Those stronger release/reviewer properties remain later work.
+- Gate B remains incomplete, and Gates C/E remain incomplete, so the sprint is not eligible for early completion.
