@@ -338,7 +338,7 @@ class Assessment:
         self.report["findings"].append(finding)
         self.emit("finding", title, {"finding_id": finding["id"], "verification": state})
 
-    def _record_adapter_result(self, result, execution_receipt=None):
+    def _record_adapter_result(self, result):
         """Merge a normalized adapter result without granting it verification authority."""
         if not isinstance(result, dict) or result.get("verification_authority") != "workbench_only":
             raise ValueError("Adapter result did not pass the workbench trust contract")
@@ -354,12 +354,6 @@ class Assessment:
             "adapter": copy.deepcopy(adapter),
             "coverage": copy.deepcopy(result.get("coverage", {})),
         }
-        if execution_receipt is not None:
-            from .execution_receipts import normalize_execution_receipt
-            receipt = normalize_execution_receipt(copy.deepcopy(execution_receipt))
-            if receipt["result"] != result:
-                raise ValueError("Execution receipt result does not match the adapter result")
-            check["execution_receipt"] = receipt
         if result.get("error"):
             check["reason"] = result["error"]
         self.report["checks"].append(check)
@@ -371,10 +365,7 @@ class Assessment:
             self.report["findings"].append(item)
             self.emit("finding", item["title"], {"finding_id": item["id"], "verification": "candidate", "adapter": adapter_id})
         event_kind = "tool_completed" if status == "completed" else ("tool_inconclusive" if status == "partial" else "tool_" + str(status))
-        details = {"adapter": adapter_id, "status": status, "findings": len(result.get("findings", []))}
-        if execution_receipt is not None:
-            details["usage"] = copy.deepcopy(execution_receipt["usage"])
-        self.emit(event_kind, "Adapter execution recorded", details)
+        self.emit(event_kind, "Adapter execution recorded", {"adapter": adapter_id, "status": status, "findings": len(result.get("findings", []))})
 
     def baseline(self, lab):
         self.budget(1)
@@ -393,14 +384,14 @@ class Assessment:
                         value.setdefault("method", "HEAD")
                         value.setdefault("redirect_followed", False)
                     return value
-            receipt = registry.execute_with_receipt(
+            result = registry.execute(
                 "native-web-headers",
                 {"target": self.scope.target, "asset_key": digest({"target": self.report["target"], "environment": self.report["environment"]})[:32], "timeout_seconds": timeout},
                 cancel=self.cancel,
                 web_reader=web_reader,
             )
             self.checkpoint()
-            self._record_adapter_result(receipt["result"], execution_receipt=receipt)
+            self._record_adapter_result(result)
             return
 
         status, headers, _ = lab.request("/", "HEAD")
@@ -437,93 +428,101 @@ class Assessment:
         self.report["checks"].append({"tool": name, "status": "completed", "result": "verified_in_lab" if demonstrated else "not_demonstrated", "evidence": proof})
         if demonstrated:
             self.add_finding("lab/missing-authorization", "Synthetic record accessible without authorization", "high", "verified_in_lab", proof, "Enforce authorization on the record route; test both denied and allowed cases. This evidence applies ONLY to the disposable fixture.")
-            self.emit("verification", "Synthetic canary demonstrated impact inside the owned lab", {"scope": "lab_only"})
-        else:
-            self.emit("verification", "The lab verification did not demonstrate the expected condition", {"scope": "lab_only"})
+        self.emit("tool_completed", "Synthetic proof completed", {"demonstrated": demonstrated, "external_target_tested": False})
+        return {"demonstrated": demonstrated, "environment": "synthetic_lab"}
 
-    def run(self):
-        lab = CanaryLab() if self.scope.lab else None
-        if lab:
-            lab.start()
+    def run(self, fixed_lab=False):
+        lab = None
         try:
-            self.emit("started", "Assessment started", {"mode": self.scope.mode, "target_kind": "synthetic_lab" if self.scope.lab else "authorized_web"})
+            self.emit("scope_approved", "Scope and authorization recorded", {"mode": self.scope.mode, "max_http_requests": 3, "wall_clock_seconds": self.deadline.seconds})
             self.checkpoint()
+            if self.scope.lab:
+                lab = CanaryLab(fixed=fixed_lab).__enter__()
             self.baseline(lab)
-            self.checkpoint()
             if self.scope.mode == "verify":
-                if self.scope.lab:
-                    if self.ai_client:
-                        action = self.ai_client.plan(self.context(), self.scope.model)
-                        self.checkpoint()
-                        if action:
-                            self.execute_action(action["name"], action.get("arguments", {}), lab)
-                        else:
-                            self.report["checks"].append({"tool": "model_action", "status": "inconclusive", "reason": "The model did not request an allowlisted verification action"})
-                    else:
-                        self.execute_action("verify_lab_canary", {}, lab)
-                else:
-                    self.report["checks"].append({"tool": "external_verification", "status": "skipped", "reason": "External exploit verification is not implemented in this milestone"})
-                    self.emit("tool_skipped", "External verification is unavailable; no exploitation was attempted")
-            if self.scope.use_ai and self.ai_client:
+                if not self.scope.lab:
+                    self.report["checks"].append({"tool": "controlled_verification", "status": "skipped", "reason": "No approved external verification adapter is implemented in this milestone"})
+                    self.emit("tool_skipped", "External exploit verification is not implemented; no exploitation attempted")
+                elif not self.scope.use_ai:
+                    self.execute_action("verify_lab_canary", {}, lab)
+            if self.scope.use_ai:
                 self.checkpoint()
-                self.report["ai"]["status"] = "requested"
+                self.report["ai"]["status"] = "running"
+                self.emit("ai_started", "Requesting selected Ollama model interpretation; evidence remains immutable")
                 try:
-                    self.report["ai"]["interpretation"] = self.ai_client.summarize(self.context(), self.scope.model)
+                    if self.ai_client is None:
+                        from .ollama import Ollama
+                        self.ai_client = Ollama(self.scope.model, allow_cloud=self.scope.allow_cloud)
+                    from .ollama_runtime import LocalRuntime
+                    if isinstance(self.ai_client, LocalRuntime):
+                        self.ai_client.set_deadline(self.deadline.expires_at)
+                        self.ai_client.set_cancel(self.cancel)
+                    if self.scope.mode == "verify" and self.scope.lab:
+                        decisions = self.ai_client.plan(lambda name, arguments: self.execute_action(name, arguments, lab), self.report, self.checkpoint)
+                        self.report["ai"]["decisions"] = decisions
+                        if "verify_lab_canary" not in self.executed:
+                            self.report["checks"].append({"tool": "verify_lab_canary", "status": "skipped", "reason": "Model did not request the approved verification action"})
+                    self.checkpoint()
+                    self.report["ai"]["interpretation"] = self.ai_client.summarize(copy.deepcopy(self.report))
+                    self.checkpoint()
                     self.report["ai"]["status"] = "completed"
+                    self.emit("ai_completed", "AI commentary stored separately from deterministic findings")
+                except (Cancelled, DeadlineExceeded):
+                    raise
                 except Exception as exc:
-                    self.report["ai"]["status"] = "failed"
-                    self.report["ai"]["error"] = str(exc)[:300]
-                    self.emit("ai_failed", "AI interpretation failed; deterministic evidence remains authoritative")
-            elif self.scope.use_ai:
-                self.report["ai"]["status"] = "unavailable"
-            failed = [check for check in self.report["checks"] if check.get("status") in ("failed", "error", "inconclusive")]
-            skipped = [check for check in self.report["checks"] if check.get("status") == "skipped"]
-            if failed or skipped:
-                self.report["status"] = "partial"
+                    if getattr(exc, "code", None) == "cancelled":
+                        raise Cancelled() from exc
+                    self.report["ai"]["status"] = "unavailable"
+                    self.report["ai"]["error_type"] = type(exc).__name__
+                    if self.scope.mode == "verify" and self.scope.lab and "verify_lab_canary" not in self.executed:
+                        self.report["checks"].append({"tool": "verify_lab_canary", "status": "error", "reason": "AI orchestration unavailable; verification not executed"})
+                    self.emit("ai_unavailable", "Ollama unavailable or response invalid; no simulated AI result", {"error_type": type(exc).__name__})
+                finally:
+                    from .ollama_runtime import LocalRuntime
+                    if isinstance(self.ai_client, LocalRuntime):
+                        self.report["ai"]["usage"] = self.ai_client.telemetry()
+            self.checkpoint()
+            incomplete = any(c["status"] in ("skipped", "error", "inconclusive") for c in self.report["checks"]) or self.report["ai"]["status"] == "unavailable"
+            self.report["status"] = "partial" if incomplete else "completed"
+            if any(f["verification"] == "verified_in_lab" for f in self.report["findings"]):
+                self.report["verdict"] = "verified_in_synthetic_lab_only"
+            elif incomplete:
                 self.report["verdict"] = "inconclusive"
+            elif self.report["findings"]:
+                self.report["verdict"] = "observations_need_context"
             else:
-                self.report["status"] = "completed"
-                self.report["verdict"] = "findings_recorded" if self.report["findings"] else "no_findings_in_executed_checks"
-            self.report["finished_at"] = now()
-            self.emit("finished", "Assessment finalized", {"verdict": self.report["verdict"]}, publish=False)
+                self.report["verdict"] = "no_findings_in_executed_checks"
         except Cancelled:
-            self.report["status"] = "cancelled"
-            self.report["verdict"] = "inconclusive"
-            self.report["finished_at"] = now()
-            self.emit("cancelled", "Assessment cancelled; partial evidence is not a clean result", publish=False)
+            self.report["status"], self.report["verdict"] = "cancelled", "inconclusive"
+            if self.report["ai"]["status"] == "running":
+                self.report["ai"]["status"] = "cancelled"
+            self.emit("cancelled", "Cancellation honored; in-flight bounded I/O may finish before this checkpoint")
         except DeadlineExceeded:
-            self.report["status"] = "timed_out"
-            self.report["verdict"] = "inconclusive"
-            self.report["finished_at"] = now()
-            self.emit("timed_out", "Assessment deadline expired; incomplete work is not a clean result", publish=False)
+            self.report["status"], self.report["verdict"] = "timed_out", "inconclusive"
+            if self.report["ai"]["status"] == "running":
+                self.report["ai"]["status"] = "unavailable"
+                self.report["ai"]["error_type"] = "DeadlineExceeded"
+            self.report["checks"].append({"tool": "assessment_deadline", "status": "error", "reason": "Wall-clock deadline exceeded"})
+            self.emit("deadline_exceeded", "Assessment wall-clock deadline exceeded; no completion assumed")
         except Exception as exc:
-            self.report["status"] = "failed"
-            self.report["verdict"] = "inconclusive"
-            self.report["finished_at"] = now()
-            self.report["checks"].append({"tool": "engine", "status": "failed", "reason": str(exc)[:500]})
-            self.emit("failed", "Assessment failed; no security conclusion is possible", publish=False)
+            self.report["status"], self.report["verdict"] = "error", "inconclusive"
+            self.report["checks"].append({"tool": "assessment", "status": "error", "reason": type(exc).__name__})
+            self.emit("error", "Assessment incomplete; no security conclusion", {"error_type": type(exc).__name__})
         finally:
             if lab:
-                lab.stop()
-        return seal(self.report)
-
-    def context(self):
-        findings = [{"rule": f["rule"], "severity": f["severity"], "verification": f["verification"], "remediation": f["remediation"]} for f in self.report["findings"]]
-        checks = [{"tool": c.get("tool"), "status": c.get("status"), "reason": c.get("reason")} for c in self.report["checks"]]
-        return {"mode": self.scope.mode, "environment": self.report["environment"], "findings": findings, "checks": checks, "limitations": self.report["limitations"]}
+                lab.__exit__(None, None, None)
+            self.report["finished_at"] = now()
+            self.report["http_requests_budgeted"] = self.requests_used
+            self.emit("finished", "Assessment finished", {"status": self.report["status"], "verdict": self.report["verdict"]}, publish=False)
+            seal(self.report)
+        return copy.deepcopy(self.report)
 
 
 def markdown(report):
-    target = html.escape(str(report.get("target", "")))
-    lines = ["# HackGPT Evidence Workbench Report", "", f"Run ID: `{report.get('id', '')}`", f"Target: `{target}`", f"Status: **{report.get('status', '')}**", f"Verdict: **{report.get('verdict', '')}**", "", "## Findings"]
-    if not report.get("findings"):
-        lines.append("No findings were recorded by the checks that actually executed. This is not a security guarantee.")
-    for finding in report.get("findings", []):
-        lines += ["", f"### {html.escape(str(finding.get('title', 'Finding')))}", f"- Severity: {finding.get('severity')}", f"- Verification: {finding.get('verification')}", f"- Rule: `{html.escape(str(finding.get('rule', '')))}`", f"- Evidence SHA-256: `{finding.get('evidence_sha256')}`", f"- Remediation: {html.escape(str(finding.get('remediation', '')))}"]
-    lines += ["", "## Coverage"]
-    for check in report.get("checks", []):
-        lines.append(f"- `{html.escape(str(check.get('tool', 'unknown')))}`: {html.escape(str(check.get('status', 'unknown')))}" + (f" — {html.escape(str(check.get('reason')))}" if check.get("reason") else ""))
-    lines += ["", "## Limitations"] + [f"- {html.escape(str(item))}" for item in report.get("limitations", [])]
-    integrity = report.get("integrity", {})
-    lines += ["", "## Integrity", f"Report SHA-256: `{integrity.get('report_sha256', '')}`", "Signed: no"]
-    return "\n".join(lines) + "\n"
+    lines = ["# HackGPT Evidence Workbench report", "", "- Run: " + report["id"], "- Target: " + html.escape(report["target"]).replace("`", "\\`").replace("[", "\\[").replace("]", "\\]"), "- Status: " + report["status"], "- Verdict: " + report["verdict"], "- Environment: " + report["environment"], "", "> " + LIMITATION, "", "## Findings"]
+    for finding in report["findings"]:
+        lines += ["", "### " + finding["title"], "Severity: " + finding["severity"], "Verification: " + finding["verification"], "Remediation: " + finding["remediation"], "", "Evidence SHA-256: " + finding["evidence_sha256"], "```json", json.dumps(finding["evidence"], indent=2), "```"]
+    lines += ["", "## Coverage and execution", "```json", json.dumps(report["checks"], indent=2), "```", "", "## AI interpretation (not evidence)", "```json", json.dumps(report["ai"], indent=2), "```", "", "## Limitations"]
+    lines += ["- " + item for item in report["limitations"]]
+    lines += ["", "Report SHA-256 (unsigned): " + report.get("integrity", {}).get("report_sha256", "not finalized")]
+    return "\n".join(lines)

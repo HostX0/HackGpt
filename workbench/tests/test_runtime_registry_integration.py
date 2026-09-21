@@ -6,7 +6,7 @@ import time
 import unittest
 from unittest import mock
 
-from workbench.engine import Assessment, Cancelled, Deadline, DeadlineExceeded, Scope, verify_integrity
+from workbench.engine import Assessment, Cancelled, Deadline, DeadlineExceeded, Scope
 from workbench.network_transport import inspect_remote
 from workbench.ollama_runtime import LocalRuntime, OllamaError
 from workbench.retest import compare_reports
@@ -75,25 +75,9 @@ class RuntimeAndRegistryIntegrationTests(unittest.TestCase):
         self.assertEqual(len(checks), 1)
         self.assertEqual(checks[0]["status"], "completed")
         self.assertEqual(checks[0]["adapter"]["version"], "1")
-        receipt = checks[0]["execution_receipt"]
-        self.assertEqual(receipt["schema"], "hackgpt.execution-receipt/v1")
-        self.assertEqual(receipt["declaration"]["adapter"]["id"], "native-web-headers")
-        self.assertEqual(receipt["usage"]["network_requests"], 1)
-        self.assertEqual(receipt["request_summary"]["method"], "HEAD")
-        self.assertFalse(receipt["request_summary"]["response_body"])
-        self.assertTrue(verify_integrity(report))
         self.assertTrue(report["findings"])
         self.assertTrue(all(item["verification"] == "candidate" for item in report["findings"]))
         self.assertTrue(all(item["rule"].startswith("web/") for item in report["findings"]))
-
-    def test_execution_receipt_is_bound_into_report_integrity(self):
-        report = Assessment(
-            external_scope(),
-            remote_reader=lambda _: {"status": 200, "headers": {"content-type": "text/html"}},
-        ).run()
-        check = next(item for item in report["checks"] if item["tool"] == "native-web-headers")
-        check["execution_receipt"]["usage"]["network_requests"] = 0
-        self.assertFalse(verify_integrity(report))
 
     def test_registry_web_rule_maps_to_comparable_retest_coverage(self):
         prior = {
@@ -126,7 +110,6 @@ class RuntimeAndRegistryIntegrationTests(unittest.TestCase):
         self.assertEqual(report["verdict"], "inconclusive")
         check = next(item for item in report["checks"] if item["tool"] == "native-web-headers")
         self.assertEqual(check["status"], "inconclusive")
-        self.assertEqual(check["execution_receipt"]["usage"]["network_requests"], 1)
 
     def test_cancel_interrupts_tls_handshake_after_connection(self):
         cancel = threading.Event()
