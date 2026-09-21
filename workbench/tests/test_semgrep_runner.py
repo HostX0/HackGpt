@@ -1,5 +1,6 @@
 import json
 import os
+import subprocess
 import tempfile
 import threading
 import unittest
@@ -178,6 +179,14 @@ class SemgrepRunnerTests(unittest.TestCase):
 
 @unittest.skipUnless(os.environ.get("HACKGPT_RUN_REAL_SEMGREP") == "1", "real pinned Semgrep container integration is opt-in")
 class SemgrepContainerIntegrationTests(unittest.TestCase):
+    @staticmethod
+    def _owned_fixture_diagnostic(adapter, directory):
+        """Return bounded stderr only for the synthetic CI fixture if runner startup fails."""
+        command = adapter._build_command("docker", Path(directory).resolve(), "hackgpt-semgrep-diagnostic")
+        completed = subprocess.run(command, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=30, check=False)
+        text = completed.stderr.decode("utf-8", "replace")[-4000:]
+        return f"exit={completed.returncode}; stderr={text}"
+
     def test_owned_vulnerable_and_fixed_projects(self):
         adapter = SemgrepContainerAdapter(SemgrepPolicy(max_files=10, timeout_seconds=90))
         with tempfile.TemporaryDirectory() as vulnerable_dir, tempfile.TemporaryDirectory() as fixed_dir:
@@ -190,12 +199,14 @@ class SemgrepContainerIntegrationTests(unittest.TestCase):
                 encoding="utf-8",
             )
             vulnerable = adapter.run(vulnerable_dir, asset_key="asset:owned-vulnerable")
+            if vulnerable["status"] != "completed":
+                self.fail("owned vulnerable fixture failed: " + self._owned_fixture_diagnostic(adapter, vulnerable_dir))
             fixed = adapter.run(fixed_dir, asset_key="asset:owned-fixed")
+            if fixed["status"] != "completed":
+                self.fail("owned fixed fixture failed: " + self._owned_fixture_diagnostic(adapter, fixed_dir))
 
-        self.assertEqual(vulnerable["status"], "completed")
         self.assertTrue(any(item["rule"] == "hackgpt.python.dynamic-eval" for item in vulnerable["findings"]))
         self.assertTrue(all(item["verification"] == "candidate" for item in vulnerable["findings"]))
-        self.assertEqual(fixed["status"], "completed")
         self.assertEqual(fixed["findings"], [])
         self.assertNotIn("eval(user_input)", json.dumps(vulnerable))
         self.assertEqual(vulnerable["adapter"]["id"], ADAPTER_ID)
