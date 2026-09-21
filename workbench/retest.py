@@ -12,8 +12,10 @@ from typing import Any
 
 
 def _tool_for_rule(rule: str) -> str | None:
+    if rule.startswith("web/"):
+        return "native-web-headers"
     if rule.startswith("header/"):
-        return "http_baseline"
+        return "http_baseline"  # legacy reports before the registry-backed web adapter
     if rule == "lab/missing-authorization":
         return "verify_lab_canary"
     return None

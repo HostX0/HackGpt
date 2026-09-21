@@ -9,8 +9,10 @@ from __future__ import annotations
 import http.client
 import json
 import os
+import queue
 import re
 import socket
+import threading
 import time
 from typing import Any
 
@@ -61,6 +63,7 @@ class LocalRuntime:
         self._last_metadata = None
         self._catalog_cloud_names = set()
         self._deadline_at = None
+        self._cancel = None
         if not isinstance(model, str) or (model and not valid_model_name(model)):
             raise OllamaError("invalid_model", "Invalid Ollama model name.", "Select an exact installed model from Detect.")
         if "cloud" in model.lower() and not self.allow_cloud:
@@ -84,6 +87,15 @@ class LocalRuntime:
         self._deadline_at = float(expires_at)
         self._operation_timeout(90)
 
+    def set_cancel(self, cancel) -> None:
+        """Attach a cooperative cancellation event to later requests."""
+        if cancel is not None and not callable(getattr(cancel, "is_set", None)):
+            raise OllamaError("invalid_cancel", "Invalid cancellation handle.", "Restart the assessment.")
+        self._cancel = cancel
+
+    def _cancelled(self) -> bool:
+        return self._cancel is not None and self._cancel.is_set()
+
     def _operation_timeout(self, cap: float) -> float:
         if self._deadline_at is None:
             return float(cap)
@@ -102,42 +114,95 @@ class LocalRuntime:
         if body is not None and len(body) > MAX_REQUEST_BYTES:
             raise OllamaError("request_too_large", "AI context exceeds the request budget.", "Reduce the evidence summary before retrying.")
         timeout = self._operation_timeout(90 if route == "/api/chat" else 3)
-        # http.client neither reads proxy environment variables nor follows redirects.
-        conn = http.client.HTTPConnection("127.0.0.1", self.port, timeout=timeout)
-        try:
-            conn.request(methods[route], route, body=body,
-                         headers={"Content-Type": "application/json", "Connection": "close"})
-            response = conn.getresponse()
-            if 300 <= response.status < 400:
-                raise OllamaError("redirect_blocked", "Ollama redirect refused.", "Connect directly to the trusted local daemon.")
-            if response.status in (401, 403):
-                raise OllamaError("authentication_unsupported", "Ollama requested authentication.", "Check the local gateway. Cloud models require operator-managed Ollama sign-in; the workbench never collects API keys.")
-            if response.status == 404:
-                raise OllamaError("not_found", "The selected model or Ollama endpoint was not found.", "Refresh installed models and check the local Ollama version.")
-            if response.status in (429, 503):
-                raise OllamaError("busy", "Ollama is busy or has no available capacity.", "Check local resources or cloud quota and retry explicitly. No automatic retry or model fallback occurs.", retryable=True)
-            if response.status != 200:
-                raise OllamaError("service_error", "Ollama could not complete this request.", "Check the local daemon logs and model compatibility.")
-            raw = response.read(MAX_RESPONSE_BYTES + 1)
-            if len(raw) > MAX_RESPONSE_BYTES:
-                raise OllamaError("response_too_large", "Ollama response exceeds the byte budget.", "Use a smaller response or model catalog.")
-            value = json.loads(raw)
-            if not isinstance(value, dict) or "error" in value:
-                raise OllamaError("invalid_response", "Ollama returned an invalid response.", "Check the daemon version and selected model.")
-            return value
-        except OllamaError:
-            raise
-        except (TimeoutError, socket.timeout) as exc:
-            deadline_hit = self._deadline_at is not None and time.monotonic() >= self._deadline_at
-            if deadline_hit:
-                raise OllamaError("deadline_exceeded", "Assessment wall-clock deadline expired during the model operation.", "Start a new assessment if additional approved time is required.") from exc
-            raise OllamaError("timeout", "Ollama did not respond within the socket timeout.", "Check local load or select a smaller installed model.", retryable=True) from exc
-        except (json.JSONDecodeError, UnicodeDecodeError, RecursionError, http.client.HTTPException) as exc:
-            raise OllamaError("invalid_response", "Ollama returned a malformed response.", "Check that the configured port belongs to Ollama.") from exc
-        except OSError as exc:
-            raise OllamaError("unreachable", "The local Ollama service is unreachable.", "Start Ollama and check HACKGPT_OLLAMA_PORT.", retryable=True) from exc
-        finally:
+        if self._cancelled():
+            raise OllamaError("cancelled", "Model operation cancelled before network I/O.", "No model request was sent.")
+
+        result_queue: queue.Queue[tuple[bool, Any]] = queue.Queue(maxsize=1)
+        holder: dict[str, Any] = {"connection": None}
+
+        def deliver(ok: bool, value: Any) -> None:
+            try:
+                result_queue.put((ok, value), block=False)
+            except queue.Full:
+                pass
+
+        def perform() -> None:
+            # http.client neither reads proxy environment variables nor follows redirects.
+            conn = http.client.HTTPConnection("127.0.0.1", self.port, timeout=timeout)
+            holder["connection"] = conn
+            try:
+                conn.request(methods[route], route, body=body,
+                             headers={"Content-Type": "application/json", "Connection": "close"})
+                response = conn.getresponse()
+                if 300 <= response.status < 400:
+                    raise OllamaError("redirect_blocked", "Ollama redirect refused.", "Connect directly to the trusted local daemon.")
+                if response.status in (401, 403):
+                    raise OllamaError("authentication_unsupported", "Ollama requested authentication.", "Check the local gateway. Cloud models require operator-managed Ollama sign-in; the workbench never collects API keys.")
+                if response.status == 404:
+                    raise OllamaError("not_found", "The selected model or Ollama endpoint was not found.", "Refresh installed models and check the local Ollama version.")
+                if response.status in (429, 503):
+                    raise OllamaError("busy", "Ollama is busy or has no available capacity.", "Check local resources or cloud quota and retry explicitly. No automatic retry or model fallback occurs.", retryable=True)
+                if response.status != 200:
+                    raise OllamaError("service_error", "Ollama could not complete this request.", "Check the local daemon logs and model compatibility.")
+                raw = response.read(MAX_RESPONSE_BYTES + 1)
+                if len(raw) > MAX_RESPONSE_BYTES:
+                    raise OllamaError("response_too_large", "Ollama response exceeds the byte budget.", "Use a smaller response or model catalog.")
+                value = json.loads(raw)
+                if not isinstance(value, dict) or "error" in value:
+                    raise OllamaError("invalid_response", "Ollama returned an invalid response.", "Check the daemon version and selected model.")
+                deliver(True, value)
+            except OllamaError as exc:
+                deliver(False, exc)
+            except (TimeoutError, socket.timeout) as exc:
+                deadline_hit = self._deadline_at is not None and time.monotonic() >= self._deadline_at
+                if deadline_hit:
+                    deliver(False, OllamaError("deadline_exceeded", "Assessment wall-clock deadline expired during the model operation.", "Start a new assessment if additional approved time is required."))
+                else:
+                    deliver(False, OllamaError("timeout", "Ollama did not respond within the socket timeout.", "Check local load or select a smaller installed model.", retryable=True))
+            except (json.JSONDecodeError, UnicodeDecodeError, RecursionError, http.client.HTTPException):
+                deliver(False, OllamaError("invalid_response", "Ollama returned a malformed response.", "Check that the configured port belongs to Ollama."))
+            except OSError:
+                deliver(False, OllamaError("unreachable", "The local Ollama service is unreachable.", "Start Ollama and check HACKGPT_OLLAMA_PORT.", retryable=True))
+            finally:
+                conn.close()
+
+        def abort_connection() -> None:
+            conn = holder.get("connection")
+            if conn is None:
+                return
+            sock = getattr(conn, "sock", None)
+            if sock is not None:
+                try:
+                    sock.shutdown(socket.SHUT_RDWR)
+                except OSError:
+                    pass
             conn.close()
+
+        worker = threading.Thread(target=perform, name="hackgpt-ollama-request", daemon=True)
+        worker.start()
+        while True:
+            if self._cancelled():
+                abort_connection()
+                worker.join(timeout=0.2)
+                raise OllamaError(
+                    "cancelled",
+                    "Model operation cancelled; no response was accepted.",
+                    "Already-dispatched model computation may finish in the Ollama service, but the workbench discards its result.",
+                )
+            if self._deadline_at is not None and time.monotonic() >= self._deadline_at:
+                abort_connection()
+                worker.join(timeout=0.2)
+                raise OllamaError("deadline_exceeded", "Assessment wall-clock deadline expired during the model operation.", "Start a new assessment if additional approved time is required.")
+            wait = 0.025
+            if self._deadline_at is not None:
+                wait = min(wait, max(0.001, self._deadline_at - time.monotonic()))
+            try:
+                ok, value = result_queue.get(timeout=wait)
+            except queue.Empty:
+                continue
+            if ok:
+                return value
+            raise value
 
     def catalog(self) -> dict[str, Any]:
         models = self.request("/api/tags").get("models")
@@ -240,6 +305,8 @@ class LocalRuntime:
                 "calls": [dict(call) for call in self._calls],
                 "billing_cost": None,
                 "assessment_deadline_attached": self._deadline_at is not None,
+                "cancellation_attached": self._cancel is not None,
+                "cancellation_behavior": "client_result_discarded; already-dispatched daemon work may continue",
                 "note": "Usage is daemon-reported, may be missing and excludes unreported failed calls. Not a bill."}
 
     def chat(self, messages: list[dict[str, Any]], **extra: Any) -> dict[str, Any]:

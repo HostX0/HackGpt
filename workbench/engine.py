@@ -210,29 +210,68 @@ def inspect_remote(url, deadline=None, cancel=None):
     port = parsed.port if parsed.port is not None else (443 if parsed.scheme == "https" else 80)
     address = public_addresses(host, port, deadline=deadline, cancel=cancel)[0]
     timeout = deadline.remaining(8) if deadline is not None else 8
+    if cancel is not None and cancel.is_set():
+        raise Cancelled()
     sock = socket.create_connection((address, port), timeout=timeout)
+    holder = {"socket": sock}
+    watcher_stop = threading.Event()
+
+    def cancel_watcher():
+        while not watcher_stop.wait(0.025):
+            if cancel is not None and cancel.is_set():
+                current = holder.get("socket")
+                if current is not None:
+                    try:
+                        current.shutdown(socket.SHUT_RDWR)
+                    except OSError:
+                        pass
+                    try:
+                        current.close()
+                    except OSError:
+                        pass
+                return
+
+    watcher = None
+    if cancel is not None:
+        watcher = threading.Thread(target=cancel_watcher, name="hackgpt-http-cancel", daemon=True)
+        watcher.start()
     connection = http.client.HTTPConnection(host, port, timeout=timeout)
     try:
         if parsed.scheme == "https":
             if deadline is not None:
                 sock.settimeout(deadline.remaining(8))
             sock = ssl.create_default_context().wrap_socket(sock, server_hostname=host)
+            holder["socket"] = sock
         if deadline is not None:
             sock.settimeout(deadline.remaining(8))
+        if cancel is not None and cancel.is_set():
+            raise Cancelled()
         connection.sock = sock
         connection.request("HEAD", parsed.path or "/", headers={"User-Agent": "HackGPT-Workbench/" + __version__, "Connection": "close"})
         if deadline is not None:
             sock.settimeout(deadline.remaining(8))
         response = connection.getresponse()
+        if cancel is not None and cancel.is_set():
+            raise Cancelled()
         headers = {}
         allowed = {"content-type", "content-security-policy", "x-frame-options", "strict-transport-security", "x-content-type-options", "referrer-policy"}
         for name, value in response.getheaders():
             if name.lower() in allowed:
                 headers[name.lower()] = value[:2048]
         return {"status": response.status, "headers": headers, "resolved_ip": address, "method": "HEAD", "redirect_followed": False}
+    except (OSError, ssl.SSLError, http.client.HTTPException) as exc:
+        if cancel is not None and cancel.is_set():
+            raise Cancelled() from exc
+        raise
     finally:
+        watcher_stop.set()
         connection.close()
-        sock.close()
+        try:
+            sock.close()
+        except OSError:
+            pass
+        if watcher is not None:
+            watcher.join(timeout=0.2)
 
 
 def new_report(scope, deadline_seconds=DEFAULT_ASSESSMENT_DEADLINE_SECONDS):
@@ -299,16 +338,64 @@ class Assessment:
         self.report["findings"].append(finding)
         self.emit("finding", title, {"finding_id": finding["id"], "verification": state})
 
+    def _record_adapter_result(self, result):
+        """Merge a normalized adapter result without granting it verification authority."""
+        if not isinstance(result, dict) or result.get("verification_authority") != "workbench_only":
+            raise ValueError("Adapter result did not pass the workbench trust contract")
+        adapter = result.get("adapter") or {}
+        adapter_id = adapter.get("id")
+        if not isinstance(adapter_id, str):
+            raise ValueError("Adapter result is missing a stable adapter id")
+        status = result.get("status")
+        check_status = "inconclusive" if status == "partial" else status
+        check = {
+            "tool": adapter_id,
+            "status": check_status,
+            "adapter": copy.deepcopy(adapter),
+            "coverage": copy.deepcopy(result.get("coverage", {})),
+        }
+        if result.get("error"):
+            check["reason"] = result["error"]
+        self.report["checks"].append(check)
+        for finding in result.get("findings", []):
+            if finding.get("verification") != "candidate":
+                raise ValueError("Execution adapters cannot self-promote verification state")
+            item = copy.deepcopy(finding)
+            item["observed_at"] = now()
+            self.report["findings"].append(item)
+            self.emit("finding", item["title"], {"finding_id": item["id"], "verification": "candidate", "adapter": adapter_id})
+        event_kind = "tool_completed" if status == "completed" else ("tool_inconclusive" if status == "partial" else "tool_" + str(status))
+        self.emit(event_kind, "Adapter execution recorded", {"adapter": adapter_id, "status": status, "findings": len(result.get("findings", []))})
+
     def baseline(self, lab):
         self.budget(1)
         self.emit("tool_started", "Inspecting HTTP response metadata; no redirects or body collection")
-        if lab:
-            status, headers, _ = lab.request("/", "HEAD")
-            result = {"status": status, "headers": headers, "method": "HEAD", "redirect_followed": False, "resolved_ip": "127.0.0.1 (owned ephemeral fixture)"}
-        elif self.remote_reader is None:
-            result = inspect_remote(self.scope.target, deadline=self.deadline, cancel=self.cancel)
-        else:
-            result = self.remote_reader(self.scope.target)
+        if not lab:
+            from .registry import ExecutionRegistry, RegistryPolicy
+            timeout = max(1, min(15, int(self.deadline.remaining(15))))
+            registry = ExecutionRegistry(RegistryPolicy(max_effect="passive", allow_filesystem=False, allow_network=True))
+            web_reader = self.remote_reader
+            if web_reader is not None:
+                original_reader = web_reader
+                def web_reader(target):
+                    value = original_reader(target)
+                    if isinstance(value, dict):
+                        value = dict(value)
+                        value.setdefault("method", "HEAD")
+                        value.setdefault("redirect_followed", False)
+                    return value
+            result = registry.execute(
+                "native-web-headers",
+                {"target": self.scope.target, "asset_key": digest({"target": self.report["target"], "environment": self.report["environment"]})[:32], "timeout_seconds": timeout},
+                cancel=self.cancel,
+                web_reader=web_reader,
+            )
+            self.checkpoint()
+            self._record_adapter_result(result)
+            return
+
+        status, headers, _ = lab.request("/", "HEAD")
+        result = {"status": status, "headers": headers, "method": "HEAD", "redirect_followed": False, "resolved_ip": "127.0.0.1 (owned ephemeral fixture)"}
         self.checkpoint()
         status = result["status"]
         if not 200 <= status < 300:
@@ -369,6 +456,7 @@ class Assessment:
                     from .ollama_runtime import LocalRuntime
                     if isinstance(self.ai_client, LocalRuntime):
                         self.ai_client.set_deadline(self.deadline.expires_at)
+                        self.ai_client.set_cancel(self.cancel)
                     if self.scope.mode == "verify" and self.scope.lab:
                         decisions = self.ai_client.plan(lambda name, arguments: self.execute_action(name, arguments, lab), self.report, self.checkpoint)
                         self.report["ai"]["decisions"] = decisions
@@ -382,6 +470,8 @@ class Assessment:
                 except (Cancelled, DeadlineExceeded):
                     raise
                 except Exception as exc:
+                    if getattr(exc, "code", None) == "cancelled":
+                        raise Cancelled() from exc
                     self.report["ai"]["status"] = "unavailable"
                     self.report["ai"]["error_type"] = type(exc).__name__
                     if self.scope.mode == "verify" and self.scope.lab and "verify_lab_canary" not in self.executed:
