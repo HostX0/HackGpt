@@ -19,24 +19,42 @@ class ReleaseEvidenceTests(unittest.TestCase):
     def root(self):
         return Path(__file__).resolve().parents[1]
 
-    def test_manifest_is_scoped_and_truthful_about_open_release_gaps(self):
+    def test_manifest_is_scoped_and_truthful_about_release_boundaries(self):
         manifest = source_review_manifest(self.root)
         self.assertEqual(manifest["schema"], RELEASE_EVIDENCE_SCHEMA)
         self.assertEqual(manifest["scope"], "isolated-workbench-only")
         self.assertEqual(manifest["python"]["third_party_runtime_packages"], [])
         self.assertEqual(manifest["bundled_scanners"], [])
-        self.assertFalse(manifest["execution_boundaries"]["external_scanner_execution"])
+        self.assertTrue(manifest["execution_boundaries"]["external_scanner_execution"])
+        self.assertEqual(manifest["execution_boundaries"]["scanner_execution_scope"], "pinned-local-container-only")
         self.assertFalse(manifest["execution_boundaries"]["browser_e2e_validated"])
         self.assertFalse(manifest["execution_boundaries"]["signed_release"])
         self.assertTrue(all(len(item["sha256"]) == 64 for item in manifest["review_documents"]))
+        self.assertEqual(len(manifest["optional_scanner_runners"]), 1)
+        runner = manifest["optional_scanner_runners"][0]
+        self.assertEqual(runner["id"], "semgrep-ce")
+        self.assertEqual(runner["version"], "1.177.0")
+        self.assertEqual(runner["license"]["spdx"], "LGPL-2.1-or-later")
+        self.assertEqual(runner["distribution"], "optional-preinstalled-container")
+        self.assertFalse(runner["container"]["automatic_pull"])
+        self.assertEqual(len(runner["pin_sha256"]), 64)
+        self.assertEqual(len(runner["rules_sha256"]), 64)
 
-    def test_sbom_describes_only_the_isolated_shipped_component(self):
+    def test_sbom_scopes_optional_pinned_scanner_without_calling_it_bundled(self):
         bom = cyclonedx_bom()
         self.assertEqual(bom["bomFormat"], "CycloneDX")
         self.assertEqual(bom["metadata"]["component"]["name"], "HackGPT Evidence Workbench")
-        self.assertEqual(bom["components"], [])
         properties = {item["name"]: item["value"] for item in bom["metadata"]["component"]["properties"]}
         self.assertEqual(properties["hackgpt:bundled-scanners"], "none")
+        self.assertEqual(properties["hackgpt:optional-scanner-runners"], "semgrep-ce")
+        self.assertEqual(len(bom["components"]), 1)
+        semgrep = bom["components"][0]
+        self.assertEqual(semgrep["type"], "container")
+        self.assertEqual(semgrep["name"], "semgrep/semgrep")
+        self.assertEqual(semgrep["version"], "1.177.0")
+        self.assertEqual(semgrep["scope"], "optional")
+        self.assertEqual(semgrep["licenses"][0]["license"]["id"], "LGPL-2.1-or-later")
+        self.assertEqual(len(semgrep["hashes"][0]["content"]), 64)
 
     def test_synthetic_sample_is_owned_intact_and_credential_free(self):
         report = synthetic_sample_report()
@@ -76,6 +94,9 @@ class ReleaseEvidenceTests(unittest.TestCase):
     def test_manifest_never_hashes_absolute_paths_into_document_entries(self):
         manifest = source_review_manifest(self.root)
         self.assertTrue(all(not Path(item["path"]).is_absolute() for item in manifest["review_documents"]))
+        runner = manifest["optional_scanner_runners"][0]
+        self.assertFalse(Path(runner["pin_path"]).is_absolute())
+        self.assertFalse(Path(runner["rules_path"]).is_absolute())
 
 
 if __name__ == "__main__":
