@@ -7,11 +7,13 @@ an operator policy before invoking an adapter.
 """
 from __future__ import annotations
 
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 from .execution_contracts import ExecutionDeclaration
+from .execution_receipts import EXECUTION_RECEIPT_SCHEMA, normalize_execution_receipt
 from .project_adapter import ProjectMetadataAdapter, ProjectScanPolicy
 from .web_adapter import WebHeaderAdapter, WebHeaderPolicy
 
@@ -61,6 +63,40 @@ class ExecutionRegistry:
         ]
         return [declaration for declaration in declarations if self.policy.permits(declaration)]
 
+    def plan(self, adapter_id: str, request: Any) -> dict[str, Any]:
+        """Validate typed adapter configuration and return a sanitized authority preview.
+
+        Planning performs no adapter I/O. In particular, project roots are reduced to a
+        basename label so a review surface does not need to retain the operator's full
+        local filesystem path.
+        """
+        if not isinstance(adapter_id, str) or adapter_id not in self._factories:
+            raise ValueError("adapter is not in the reviewed execution registry")
+        if not isinstance(request, dict):
+            raise ValueError("adapter request must be an object")
+        if adapter_id == "native-project-metadata":
+            adapter, root = self._project_adapter(request)
+            label = Path(root).name or "project-root"
+            summary = {
+                "adapter_id": adapter_id,
+                "asset_key": request["asset_key"],
+                "project_label": label[:160],
+                "full_path_included": False,
+            }
+        else:
+            adapter = self._web_adapter(request)
+            summary = {
+                "adapter_id": adapter_id,
+                "asset_key": request["asset_key"],
+                "target": request["target"],
+                "method": "HEAD",
+                "redirects": False,
+                "response_body": False,
+            }
+        declaration = adapter.execution_declaration()
+        self._authorize(declaration)
+        return {"declaration": declaration, "request_summary": summary}
+
     def execute(self, adapter_id: str, request: Any, *, cancel=None, web_reader=None) -> dict[str, Any]:
         if not isinstance(adapter_id, str) or adapter_id not in self._factories:
             raise ValueError("adapter is not in the reviewed execution registry")
@@ -68,17 +104,39 @@ class ExecutionRegistry:
             raise ValueError("adapter request must be an object")
         return self._factories[adapter_id](request, cancel=cancel, web_reader=web_reader)
 
+    def execute_with_receipt(self, adapter_id: str, request: Any, *, cancel=None, web_reader=None) -> dict[str, Any]:
+        """Execute one reviewed adapter and return budget-accounted review metadata."""
+        plan = self.plan(adapter_id, request)
+        if cancel is not None and cancel.is_set():
+            raise InterruptedError("adapter execution cancelled before start")
+        started = time.monotonic()
+        result = self.execute(adapter_id, request, cancel=cancel, web_reader=web_reader)
+        elapsed_ms = max(0, int((time.monotonic() - started) * 1000))
+        coverage = result.get("coverage", {}) if isinstance(result, dict) else {}
+        tested = coverage.get("objects_tested")
+        objects_tested = tested if type(tested) is int and tested >= 0 else 0
+        network_requests = 1 if adapter_id == "native-web-headers" and result.get("status") in {"completed", "partial"} else 0
+        return normalize_execution_receipt({
+            "schema": EXECUTION_RECEIPT_SCHEMA,
+            "declaration": plan["declaration"],
+            "request_summary": plan["request_summary"],
+            "usage": {
+                "objects_tested": objects_tested,
+                "network_requests": network_requests,
+                "elapsed_ms": elapsed_ms,
+            },
+            "result": result,
+        })
+
     def _authorize(self, declaration: dict[str, Any]) -> None:
         if not self.policy.permits(declaration):
             raise PermissionError("adapter authority exceeds the operator execution policy")
 
-    def _project(self, request: dict[str, Any], *, cancel=None, web_reader=None) -> dict[str, Any]:
+    def _project_adapter(self, request: dict[str, Any]) -> tuple[ProjectMetadataAdapter, str | Path]:
         if set(request) - {"root", "asset_key", "max_files", "max_depth", "timeout_seconds"}:
             raise ValueError("project adapter request contains unsupported fields")
         if "root" not in request or "asset_key" not in request:
             raise ValueError("project adapter requires root and asset_key")
-        if cancel is not None and cancel.is_set():
-            raise InterruptedError("adapter execution cancelled before start")
         root = request["root"]
         if not isinstance(root, (str, Path)):
             raise ValueError("project root must be a filesystem path")
@@ -89,15 +147,27 @@ class ExecutionRegistry:
         )
         adapter = ProjectMetadataAdapter(policy)
         self._authorize(adapter.execution_declaration())
-        return adapter.run(root, asset_key=request["asset_key"], cancel=cancel)
+        return adapter, root
 
-    def _web(self, request: dict[str, Any], *, cancel=None, web_reader=None) -> dict[str, Any]:
+    def _web_adapter(self, request: dict[str, Any]) -> WebHeaderAdapter:
         if set(request) - {"target", "asset_key", "timeout_seconds"}:
             raise ValueError("web adapter request contains unsupported fields")
         if "target" not in request or "asset_key" not in request:
             raise ValueError("web adapter requires target and asset_key")
-        if cancel is not None and cancel.is_set():
-            raise InterruptedError("adapter execution cancelled before start")
+        if not isinstance(request["target"], str) or not isinstance(request["asset_key"], str):
+            raise ValueError("web adapter target and asset_key must be text")
         adapter = WebHeaderAdapter(WebHeaderPolicy(timeout_seconds=request.get("timeout_seconds", 15)))
         self._authorize(adapter.execution_declaration())
+        return adapter
+
+    def _project(self, request: dict[str, Any], *, cancel=None, web_reader=None) -> dict[str, Any]:
+        adapter, root = self._project_adapter(request)
+        if cancel is not None and cancel.is_set():
+            raise InterruptedError("adapter execution cancelled before start")
+        return adapter.run(root, asset_key=request["asset_key"], cancel=cancel)
+
+    def _web(self, request: dict[str, Any], *, cancel=None, web_reader=None) -> dict[str, Any]:
+        adapter = self._web_adapter(request)
+        if cancel is not None and cancel.is_set():
+            raise InterruptedError("adapter execution cancelled before start")
         return adapter.run(request["target"], asset_key=request["asset_key"], cancel=cancel, reader=web_reader)
