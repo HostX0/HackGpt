@@ -1,0 +1,90 @@
+import tempfile
+import threading
+import unittest
+from pathlib import Path
+
+from workbench.registry import ExecutionRegistry, RegistryPolicy
+
+
+class ExecutionRegistryTests(unittest.TestCase):
+    def test_describe_returns_only_reviewed_native_adapters(self):
+        declarations = ExecutionRegistry().describe()
+        self.assertEqual({item["adapter"]["id"] for item in declarations}, {
+            "native-project-metadata", "native-web-headers",
+        })
+        self.assertTrue(all("command" not in item for item in declarations))
+
+    def test_unknown_adapter_and_dynamic_execution_fields_fail_closed(self):
+        registry = ExecutionRegistry()
+        with self.assertRaises(ValueError):
+            registry.execute("python-module", {"command": "anything"})
+        with tempfile.TemporaryDirectory() as directory:
+            with self.assertRaises(ValueError):
+                registry.execute("native-project-metadata", {
+                    "root": directory, "asset_key": "fixture", "command": "anything"
+                })
+
+    def test_filesystem_policy_blocks_project_adapter_but_not_web(self):
+        registry = ExecutionRegistry(RegistryPolicy(allow_filesystem=False, allow_network=True))
+        self.assertEqual([item["adapter"]["id"] for item in registry.describe()], ["native-web-headers"])
+        with tempfile.TemporaryDirectory() as directory:
+            with self.assertRaises(PermissionError):
+                registry.execute("native-project-metadata", {"root": directory, "asset_key": "fixture"})
+
+    def test_network_policy_blocks_web_adapter_before_reader(self):
+        calls = []
+        registry = ExecutionRegistry(RegistryPolicy(allow_filesystem=True, allow_network=False))
+        with self.assertRaises(PermissionError):
+            registry.execute(
+                "native-web-headers",
+                {"target": "https://example.com", "asset_key": "fixture"},
+                web_reader=lambda target: calls.append(target),
+            )
+        self.assertEqual(calls, [])
+
+    def test_project_execution_remains_candidate_and_secret_safe(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / ".env").write_text("API_KEY=DO_NOT_EXPORT")
+            result = ExecutionRegistry().execute(
+                "native-project-metadata", {"root": directory, "asset_key": "fixture"}
+            )
+        self.assertEqual(result["findings"][0]["verification"], "candidate")
+        self.assertNotIn("DO_NOT_EXPORT", repr(result))
+
+    def test_web_execution_remains_candidate_and_body_free(self):
+        result = ExecutionRegistry().execute(
+            "native-web-headers",
+            {"target": "https://example.com", "asset_key": "fixture"},
+            web_reader=lambda _: {
+                "status": 200,
+                "headers": {"content-type": "text/html"},
+                "method": "HEAD",
+                "redirect_followed": False,
+            },
+        )
+        self.assertTrue(result["findings"])
+        self.assertTrue(all(item["verification"] == "candidate" for item in result["findings"]))
+        self.assertTrue(all(item["evidence"]["body_read"] is False for item in result["findings"]))
+
+    def test_pre_cancelled_execution_stops_before_adapter_io(self):
+        cancel = threading.Event()
+        cancel.set()
+        calls = []
+        with self.assertRaises(InterruptedError):
+            ExecutionRegistry().execute(
+                "native-web-headers",
+                {"target": "https://example.com", "asset_key": "fixture"},
+                cancel=cancel,
+                web_reader=lambda target: calls.append(target),
+            )
+        self.assertEqual(calls, [])
+
+    def test_invalid_policy_is_rejected(self):
+        for kwargs in ({"max_effect": "unbounded"}, {"allow_filesystem": 1}, {"allow_network": None}):
+            with self.subTest(kwargs=kwargs), self.assertRaises(ValueError):
+                RegistryPolicy(**kwargs)
+
+
+if __name__ == "__main__":
+    unittest.main()
