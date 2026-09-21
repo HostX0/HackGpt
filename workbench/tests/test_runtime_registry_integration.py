@@ -1,11 +1,13 @@
 import http.server
 import socket
+import socketserver
 import threading
 import time
 import unittest
 from unittest import mock
 
-from workbench.engine import Assessment, Cancelled, Deadline, Scope, inspect_remote
+from workbench.engine import Assessment, Cancelled, Deadline, DeadlineExceeded, Scope
+from workbench.network_transport import inspect_remote
 from workbench.ollama_runtime import LocalRuntime, OllamaError
 from workbench.retest import compare_reports
 from workbench.web_adapter import WebHeaderAdapter
@@ -36,6 +38,11 @@ class _HeadFixture(http.server.BaseHTTPRequestHandler):
 
     def log_message(self, *_args):
         pass
+
+
+class _SilentTLSHandler(socketserver.BaseRequestHandler):
+    def handle(self):
+        time.sleep(0.8)
 
 
 class _SlowOllama(http.server.BaseHTTPRequestHandler):
@@ -122,7 +129,7 @@ class RuntimeAndRegistryIntegrationTests(unittest.TestCase):
         started = time.monotonic()
         try:
             with mock.patch("workbench.engine.public_addresses", return_value=["8.8.8.8"]), \
-                 mock.patch("workbench.engine.socket.create_connection", return_value=sock), \
+                 mock.patch("workbench.network_transport._connect_bounded", return_value=sock), \
                  mock.patch("workbench.engine.ssl.create_default_context", return_value=context):
                 with self.assertRaises(Cancelled):
                     inspect_remote("https://example.com", Deadline(2), cancel)
@@ -140,14 +147,14 @@ class RuntimeAndRegistryIntegrationTests(unittest.TestCase):
         timer = threading.Timer(0.05, cancel.set)
         port = server.server_address[1]
 
-        def owned_connect(_address, timeout=None, **_kwargs):
-            return _REAL_CREATE_CONNECTION(("127.0.0.1", port), timeout=timeout)
+        def owned_connect(_address, _port, deadline, _cancel=None):
+            return _REAL_CREATE_CONNECTION(("127.0.0.1", port), timeout=deadline.remaining(2))
 
         started = time.monotonic()
         timer.start()
         try:
             with mock.patch("workbench.engine.public_addresses", return_value=["93.184.216.34"]), \
-                 mock.patch("workbench.engine.socket.create_connection", side_effect=owned_connect):
+                 mock.patch("workbench.network_transport._connect_bounded", side_effect=owned_connect):
                 with self.assertRaises(Cancelled):
                     WebHeaderAdapter().run("http://example.com", asset_key="cancel-fixture", cancel=cancel)
         finally:
@@ -158,6 +165,52 @@ class RuntimeAndRegistryIntegrationTests(unittest.TestCase):
             _HeadFixture.delay = 0.0
         self.assertLess(time.monotonic() - started, 0.7)
         self.assertEqual(_HeadFixture.requests, [("HEAD", "/")])
+
+    def test_shared_deadline_interrupts_slow_http_response(self):
+        _HeadFixture.delay = 0.8
+        _HeadFixture.requests = []
+        server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), _HeadFixture)
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        port = server.server_address[1]
+
+        def owned_connect(_address, _port, deadline, _cancel=None):
+            return _REAL_CREATE_CONNECTION(("127.0.0.1", port), timeout=deadline.remaining(2))
+
+        started = time.monotonic()
+        try:
+            with mock.patch("workbench.engine.public_addresses", return_value=["93.184.216.34"]), \
+                 mock.patch("workbench.network_transport._connect_bounded", side_effect=owned_connect):
+                with self.assertRaises(DeadlineExceeded):
+                    inspect_remote("http://example.com", Deadline(0.08))
+        finally:
+            server.shutdown()
+            server.server_close()
+            thread.join(timeout=2)
+            _HeadFixture.delay = 0.0
+        self.assertLess(time.monotonic() - started, 0.7)
+
+    def test_shared_deadline_interrupts_silent_tls_handshake(self):
+        server = socketserver.ThreadingTCPServer(("127.0.0.1", 0), _SilentTLSHandler)
+        server.daemon_threads = True
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        port = server.server_address[1]
+
+        def owned_connect(_address, _port, deadline, _cancel=None):
+            return _REAL_CREATE_CONNECTION(("127.0.0.1", port), timeout=deadline.remaining(2))
+
+        started = time.monotonic()
+        try:
+            with mock.patch("workbench.engine.public_addresses", return_value=["93.184.216.34"]), \
+                 mock.patch("workbench.network_transport._connect_bounded", side_effect=owned_connect):
+                with self.assertRaises(DeadlineExceeded):
+                    inspect_remote("https://example.com", Deadline(0.08))
+        finally:
+            server.shutdown()
+            server.server_close()
+            thread.join(timeout=2)
+        self.assertLess(time.monotonic() - started, 0.7)
 
     def test_attached_cancel_interrupts_slow_model_transport(self):
         _SlowOllama.calls = 0
@@ -182,6 +235,24 @@ class RuntimeAndRegistryIntegrationTests(unittest.TestCase):
         self.assertLess(time.monotonic() - started, 0.7)
         self.assertIn("discards its result", captured.exception.next_step)
         self.assertTrue(runtime.telemetry()["cancellation_attached"])
+
+    def test_shared_deadline_interrupts_slow_model_transport(self):
+        _SlowOllama.calls = 0
+        server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), _SlowOllama)
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        runtime = LocalRuntime(port=server.server_address[1])
+        runtime.set_deadline(time.monotonic() + 0.08)
+        started = time.monotonic()
+        try:
+            with self.assertRaises(OllamaError) as captured:
+                runtime.request("/api/tags")
+        finally:
+            server.shutdown()
+            server.server_close()
+            thread.join(timeout=2)
+        self.assertEqual(captured.exception.code, "deadline_exceeded")
+        self.assertLess(time.monotonic() - started, 0.7)
 
     def test_pre_cancelled_model_request_fails_before_network(self):
         cancel = threading.Event()
