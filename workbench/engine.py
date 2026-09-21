@@ -160,7 +160,7 @@ def validate_url(url):
     return parsed
 
 
-def _resolve_bounded(resolver, host, port, deadline):
+def _resolve_bounded(resolver, host, port, deadline, cancel=None):
     if deadline is None:
         return resolver(host, port, type=socket.SOCK_STREAM)
     result_queue = queue.Queue(maxsize=1)
@@ -168,31 +168,33 @@ def _resolve_bounded(resolver, host, port, deadline):
     def worker():
         try:
             result_queue.put((True, resolver(host, port, type=socket.SOCK_STREAM)), block=False)
-        except BaseException as exc:  # transfer resolver failure to the calling assessment thread
+        except BaseException as exc:
             try:
                 result_queue.put((False, exc), block=False)
             except queue.Full:
                 pass
 
     threading.Thread(target=worker, name="hackgpt-bounded-resolver", daemon=True).start()
-    try:
-        ok, value = result_queue.get(timeout=deadline.remaining())
-    except queue.Empty as exc:
-        raise DeadlineExceeded("DNS resolution exceeded the assessment deadline") from exc
+    while True:
+        if cancel is not None and cancel.is_set():
+            raise Cancelled()
+        try:
+            ok, value = result_queue.get(timeout=min(0.05, deadline.remaining()))
+            break
+        except queue.Empty:
+            continue
     if not ok:
         raise value
     return value
 
 
-def public_addresses(host, port, resolver=None, deadline=None):
-    """Resolve once and reject *all* mixed/private results before opening a socket."""
+def public_addresses(host, port, resolver=None, deadline=None, cancel=None):
     resolver = resolver or socket.getaddrinfo
-    results = _resolve_bounded(resolver, host, port, deadline)
+    results = _resolve_bounded(resolver, host, port, deadline, cancel)
     addresses = []
     for result in results:
         raw = result[4][0]
         address = ipaddress.ip_address(raw)
-        # IPv6 translation/tunnel addresses complicate private-range enforcement.
         if not address.is_global or (address.version == 6 and (address.ipv4_mapped or address.sixtofour or address.teredo or address in ipaddress.ip_network("64:ff9b::/96"))):
             raise ValueError("Target resolves outside the permitted public address space")
         if raw not in addresses:
@@ -202,12 +204,11 @@ def public_addresses(host, port, resolver=None, deadline=None):
     return addresses
 
 
-def inspect_remote(url, deadline=None):
-    """One HEAD request, no redirects/proxies/body capture; socket pinned after DNS."""
+def inspect_remote(url, deadline=None, cancel=None):
     parsed = validate_url(url)
     host = parsed.hostname.encode("idna").decode("ascii")
     port = parsed.port if parsed.port is not None else (443 if parsed.scheme == "https" else 80)
-    address = public_addresses(host, port, deadline=deadline)[0]
+    address = public_addresses(host, port, deadline=deadline, cancel=cancel)[0]
     timeout = deadline.remaining(8) if deadline is not None else 8
     sock = socket.create_connection((address, port), timeout=timeout)
     connection = http.client.HTTPConnection(host, port, timeout=timeout)
@@ -270,12 +271,13 @@ class Assessment:
         self.requests_used = 0
         self.executed = set()
 
-    def emit(self, kind, message, details=None):
+    def emit(self, kind, message, details=None, *, publish=True):
         previous = self.report["events"][-1]["sha256"] if self.report["events"] else "0" * 64
         event = {"sequence": len(self.report["events"]) + 1, "at": now(), "kind": kind, "message": message, "details": details or {}, "previous_sha256": previous}
         event["sha256"] = digest(event)
         self.report["events"].append(event)
-        self.notify(copy.deepcopy(self.report))
+        if publish:
+            self.notify(copy.deepcopy(self.report))
 
     def checkpoint(self):
         if self.cancel.is_set():
@@ -304,10 +306,8 @@ class Assessment:
             status, headers, _ = lab.request("/", "HEAD")
             result = {"status": status, "headers": headers, "method": "HEAD", "redirect_followed": False, "resolved_ip": "127.0.0.1 (owned ephemeral fixture)"}
         elif self.remote_reader is None:
-            result = inspect_remote(self.scope.target, deadline=self.deadline)
+            result = inspect_remote(self.scope.target, deadline=self.deadline, cancel=self.cancel)
         else:
-            # Test/custom readers are outside the production socket deadline wrapper;
-            # the checkpoint immediately after them still enforces the wall-clock result.
             result = self.remote_reader(self.scope.target)
         self.checkpoint()
         status = result["status"]
@@ -423,7 +423,7 @@ class Assessment:
                 lab.__exit__(None, None, None)
             self.report["finished_at"] = now()
             self.report["http_requests_budgeted"] = self.requests_used
-            self.emit("finished", "Assessment finished", {"status": self.report["status"], "verdict": self.report["verdict"]})
+            self.emit("finished", "Assessment finished", {"status": self.report["status"], "verdict": self.report["verdict"]}, publish=False)
             seal(self.report)
         return copy.deepcopy(self.report)
 
