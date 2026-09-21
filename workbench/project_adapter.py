@@ -77,7 +77,13 @@ class ProjectMetadataAdapter:
     def __init__(self, policy: ProjectScanPolicy | None = None):
         self.policy = policy or ProjectScanPolicy()
 
-    def run(self, root: str | os.PathLike[str], *, asset_key: str) -> dict:
+    @staticmethod
+    def _check_cancel(cancel) -> None:
+        if cancel is not None and cancel.is_set():
+            raise InterruptedError("project metadata scan cancelled")
+
+    def run(self, root: str | os.PathLike[str], *, asset_key: str, cancel=None) -> dict:
+        self._check_cancel(cancel)
         root_path = Path(root)
         if root_path.is_symlink():
             raise ValueError("project root must not be a symlink")
@@ -87,6 +93,7 @@ class ProjectMetadataAdapter:
             raise ValueError("project root is unavailable") from exc
         if not resolved_root.is_dir():
             raise ValueError("project root must be a directory")
+        self._check_cancel(cancel)
 
         findings: list[dict] = []
         notes: list[str] = [
@@ -102,6 +109,7 @@ class ProjectMetadataAdapter:
 
         stack: list[tuple[Path, int]] = [(resolved_root, 0)]
         while stack:
+            self._check_cancel(cancel)
             if time.monotonic() >= expires_at:
                 partial = True
                 notes.append("Cooperative project scan deadline reached before all eligible paths were visited.")
@@ -117,7 +125,9 @@ class ProjectMetadataAdapter:
                 errors += 1
                 partial = True
                 continue
+            self._check_cancel(cancel)
             for entry in entries:
+                self._check_cancel(cancel)
                 if time.monotonic() >= expires_at:
                     partial = True
                     stack.clear()
