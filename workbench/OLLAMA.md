@@ -61,7 +61,7 @@ Each assessment reports its model, processing policy, reported location and expl
 
 Sampling/context/output settings stay bounded (`num_predict: 768`, `num_ctx: 4096`, temperature zero). These are requested daemon options, not proof of provider-side token enforcement. Maximum request/response bytes are 65,536/262,144; maximum messages is 16, with one declared tool per request. Quota/busy responses do not trigger retry, sign-in or model substitution. Error categories distinguish invalid policy/model, unreachable service, auth required, missing model, incompatible capabilities, oversized/malformed/incomplete/truncated output and denied actions. Thinking traces and arbitrary response metadata are not retained.
 
-Socket timeouts remain per blocking operation, not a hard overall deadline; hard cancellation/deadlines are still roadmap priorities. Live provider authentication, cloud inference and GPU/model performance have not been tested in this development environment.
+The current runtime attaches the shared monotonic assessment deadline to DNS/connect/TLS/HTTP/model operations and has cancellation/deadline regression fixtures. DNS cancellation bounds the caller wait, not an already-running OS resolver; filesystem cancellation is cooperative. Live provider authentication, cloud inference and GPU/model performance have not established this milestone.
 
 ## Provider-neutral boundary
 
@@ -69,7 +69,11 @@ This document describes the implemented Ollama adapter, not the permanent topolo
 
 ## Validation boundary
 
-The test suite uses real owned loopback HTTP servers implementing a synthetic Ollama protocol, plus direct unit fixtures. A combined integration test traverses the workbench API, fake cloud-backed gateway, assessment engine, SQLite persistence and export integrity. No live model or cloud account is used. JavaScript tests use DOM/fetch doubles, not browser-to-server E2E. Read [PROGRESS.md](PROGRESS.md) and the exact commit's CI output for observed counts; a configured workflow is not a successful run.
+Protocol tests use owned loopback HTTP servers implementing synthetic Ollama responses plus direct unit fixtures. A combined integration test traverses the API, fake cloud-backed gateway, engine, SQLite and export integrity without a real cloud account. JavaScript DOM/fetch doubles remain separate from the real Chromium browser-to-loopback E2E job.
+
+Historical Evidence Workbench run [35589788372](https://github.com/HostX0/HackGpt/actions/runs/35589788372) also passed the separate **real local-model compatibility probe**, at source head `328bfda14c1e2ea458391e491c575a8ee5303b9e` / PR checkout `87100841867832c72e26073bfc71ad664fe34481`. The fixed Ollama runtime `0.34.2` and `smollm2:135m-instruct-q5_K_M` model were preloaded; the inference daemon was restarted with `OLLAMA_NO_CLOUD=1` on a Docker internal network. A test-only loopback relay permits one explicit private container IP; it is not a production remote-provider adapter. One fixed structured-output inference sent no target, credentials or assessment evidence and executed no tool. Reported usage was 55 prompt / 19 output tokens.
+
+This establishes one small runtime/model compatibility case, not analysis quality, tool-directed assessment performance, every provider, cloud inference or no-egress on every deployment. Read [PROGRESS.md](PROGRESS.md) and the exact commit's CI for current results; neither this historical run nor a configured workflow proves a newer head passed.
 
 ## Primary references
 

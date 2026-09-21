@@ -1,5 +1,15 @@
 # Evidence Workbench review-preview release notes
 
+## Post-merge review-readiness hardening (in progress)
+
+PR #1 merged into the HostX0 fork at `2048e591`; this is not upstream acceptance. The owner resumed development under the unchanged original hourly schedule. Historical implementation and hosted validation below are distinct from the current continuation's unpassed acceptance criteria in ROADMAP.md.
+
+- Repair the shared public-web resolver boundary: reject multicast, IPv6 site-local/zone identifiers and explicit special/transition prefixes, including mixed DNS answers before connection.
+- Pre-cancelled/expired resolution dispatches no fresh resolver work; cancellation remains bounded even when a caller omits an explicit deadline. An OS resolver already running is not forcibly killed.
+- Align current capability/release/model documentation; retain the first-milestone ledger and roadmap byte-for-byte as linked historical files.
+- Repair legacy artifact-action setup and LDAP/PortAudio build prerequisites without dropping test/lint commands. Fork Docker CI is build-only, not publication. Other legacy defects remain separately tracked; setup fixes are not an all-green claim.
+- Add offline scope/cancellation, candidate-lifecycle and documentation/workflow regression coverage. See PROGRESS.md for exact observed results and unavailable integrations.
+
 ## 0.1.0 review preview
 
 This is an isolated contribution under `workbench/`; it does not replace the legacy HackGPT entry points and is not a claim of complete penetration-testing coverage.
@@ -27,10 +37,10 @@ This is an isolated contribution under `workbench/`; it does not replace the leg
 
 - Trivy and Nuclei remain parser-only; ZAP and Nmap execution adapters are not implemented. The Semgrep runner validates one reviewed ruleset/boundary and is not universal language/rule coverage.
 - Authenticated external application test accounts/role runners are not implemented.
-- Live real-model compatibility/performance has not been established by CI protocol doubles.
+- Historical run `35589788372` passed one real local Ollama `0.34.2` / `smollm2:135m-instruct-q5_K_M` compatibility probe separately from protocol doubles. Quality/GPU/cloud-provider benchmarking remains unestablished.
 - The current real browser E2E is Chromium on GitHub-hosted Ubuntu; it is not a multi-browser compatibility claim and does not replace manual assistive-technology review.
-- Cross-platform fresh-checkout smoke now covers GitHub-hosted Ubuntu/macOS/Windows, but a signed release-grade installer/container package is not yet produced.
-- Release-level validation aggregation exists, but cryptographic release signing/key management remains unimplemented. Hashes are integrity aids, not author signatures.
+- Historical package run `35589788385` tested the exact same portable source archive on Ubuntu/macOS/Windows before provenance/SBOM attestations. No native installer or bundled scanner/container image is produced.
+- GitHub/Sigstore build-provenance and SBOM attestations exist for the historical portable package. These are not signed assessment reports, platform code-signing certificates or a security certification; report checksums remain unsigned.
 - Any future executable third-party runner needs its own pinned version/image, checksum, license, sandbox boundary, owned integration fixtures and SBOM/release evidence before it can be described as shipped.
 - Application-level encryption at rest and multi-user/public hosting are unsupported.
 

@@ -1,121 +1,93 @@
 # HackGPT Evidence Workbench
 
-**Local-first assessment studio · version 0.1.0 · experimental foundation**
+**Local-first assessment studio · version 0.1.0 · experimental bounded review release**
 
-A new, isolated contribution in the **HostX0/HackGpt** fork. It does not replace or import the legacy application. It prioritizes reproducible evidence, explicit coverage and honest conclusions over broad, unverified feature claims.
+An isolated contribution in **HostX0/HackGpt**. It does not replace or import the legacy application. Contribution initiated by **HostX0 (Abdulazeez)** with AI-assisted implementation and review. Original HackGPT attribution and the existing [LICENSE](../LICENSE) are preserved; this contribution does not assert that the repository is MIT-licensed.
 
-Contribution initiated by **HostX0 (Abdulazeez)**, with AI-assisted implementation and review. Original HackGPT attribution is preserved. The repository's existing [LICENSE](../LICENSE) remains applicable; this contribution does not assert that the repository is MIT-licensed.
+PR #1 was merged into this fork, not accepted upstream. The first bounded milestone has historical passing evidence; the owner-authorized **review-readiness hardening** continuation remains in progress. Read [PROGRESS.md](PROGRESS.md) for exact revisions/results and [ROADMAP.md](ROADMAP.md) for cumulative acceptance criteria. A passing historical run is not evidence for an untested newer commit.
 
-## Run
+## Run without an AI account or legacy installer
 
-Use **Python 3.11 or newer**. No pip packages, root privileges, model download, external scanner installation or cloud account are required for the native checks and synthetic fixture.
+Python **3.11 or newer** is required. Native checks and the owned synthetic fixture need no pip packages, root privileges, model download, external scanner installation or cloud account.
 
 ```bash
-git clone --branch feat/evidence-workbench https://github.com/HostX0/HackGpt.git
+git clone --branch main https://github.com/HostX0/HackGpt.git
 cd HackGpt
 python -m workbench
 ```
 
-Use `python3 -m workbench` where Python is named `python3`. Open the **private launch URL printed in the terminal**. It contains a session token in the URL fragment, which the frontend removes after reading. Do not share that launch URL. The service binds only to `127.0.0.1:8765`; do not expose it publicly or through a tunnel.
+For a proposed follow-up PR, check out its exact reviewed head before testing its changes. Use `python3` where that is the Python command. Open the **private launch URL printed in the terminal**; its fragment contains a session token which the frontend removes after reading. Never share the launch URL. The service binds only to `127.0.0.1:8765`; do not expose it publicly or through a tunnel.
 
 ```bash
 python -m workbench --port 8766 --data-dir ./local-workbench-data
 ```
 
-**Do not run the legacy installer or Docker configuration for this new workbench.** Those entry points have different dependencies and behavior.
+**Do not run the legacy installer, root Dockerfile or enterprise compose stack for this workbench.** They have separate dependencies and behavior. The portable source package also starts with `python -m workbench` from its extracted root; it is not a native installer.
 
-## Modes and current capabilities
+## Implemented capabilities and their limits
 
-| Mode | Implemented now | Boundary |
+| Capability | Implemented | Boundary |
 |---|---|---|
-| Analyst | One HTTP metadata request; optional model interpretation through the currently implemented Ollama adapter; validated report | No exploitation; missing headers do not establish practical impact. |
-| Controlled verification | Baseline plus an independently checked authorization/data canary in an ephemeral synthetic lab; optional bounded model selection of the approved action | Proof applies only to the deliberately vulnerable local fixture, never to an external website. |
+| Analyst assessment | One HTTP HEAD metadata response, optional validated Ollama commentary, integrity-checked report | Missing headers are observations, not exploit proof. |
+| Controlled verification | Disposable owned lab, independent denied control, fresh synthetic canary | Applies only to that lab; no external exploit verification. |
+| Read-only project checks | Metadata-only native adapter and reviewed Semgrep CE 1.177.0 container runner | Semgrep uses one repository-authored offline ruleset and an exact image digest; no broad language/rule coverage claim. |
+| Bounded web adapter | One explicitly scoped HEAD request through DNS-pinned sockets | No redirects, bodies, authentication, arbitrary ports or broad dynamic scanning. |
+| Execution review | Typed plan, exact digest approval, durable adapter lifecycle and candidate-only receipt through API/GUI | Model output cannot change authorization, scope, commands or budgets. Adapter receipts remain a separate audit trail, not automatically merged into assessment findings. |
+| Retesting | API/GUI comparison and evidence-linked remediation recheck | `still_present`, `new`, `not_reproduced`, `not_retested`; absence never means fixed. |
+| Reviewer export | JSON/Markdown and unsigned checksummed review ZIP | Internal assessment exports are sensitive, not a universally sanitized customer handover or signed report. |
+| Release validation | Real Chromium E2E, three-OS checkout/package smoke, one real local-model compatibility probe | See exact historical runs below; not universal compatibility or security certification. |
 
-Controlled mode requires separate approval. With AI disabled, the approved synthetic proof runs deterministically. With AI enabled, the model can request the single approved action or stop. A skipped action remains inconclusive. It cannot choose a new target, supply command arguments, access a shell or files, or remove the budget.
+Trivy and Nuclei are **parser-only**. ZAP and Nmap execution adapters are **not implemented**. Semgrep is **not bundled** and the runtime never pulls an image automatically. Its reviewed pin, source checksum, license and sandbox are documented in [ADAPTERS.md](ADAPTERS.md) and `tooling/semgrep-1.177.0.json`.
 
-For public websites, external verification is currently **skipped / not implemented**. A lab result is never substituted for external-target evidence.
+Public-web scope rejects non-global addresses, multicast, deprecated IPv6 site-local addresses, zone identifiers and explicitly excluded transition/special-purpose ranges. Some special-purpose anycast addresses are globally reachable but intentionally unsupported by this conservative policy; this is not a general routability classifier. A mixed DNS answer containing a denied address fails before any connection. No hostname grants permission to assess unrelated CDN/shared infrastructure.
 
-### Synthetic proof walkthrough
+### Owned synthetic walkthrough
 
-Select **Built-in synthetic lab**, then **Controlled verification**. Enter a non-secret authorization reference, confirm permission and approval, and start the assessment.
+Select **Built-in synthetic lab**, then **Controlled verification**. Enter a non-secret authorization reference and confirm both authorization and verification approval. With AI disabled, the approved proof runs deterministically. With AI enabled, only the single approved action or stop is available; skipping remains inconclusive.
 
-The engine starts a disposable HTTP fixture on loopback. A control route rejects unauthenticated access; a deliberately vulnerable route returns designated synthetic records containing a fresh `HACKGPT-SYNTHETIC-*` canary without credentials. The verifier checks both responses and records row count, schema/types and content digests. Ordinary fixture values are omitted from exported proof. A corrected fixture denies the read and produces no data summary. This demonstrates a data-boundary proof pattern without sampling real customer rows or exporting reusable credentials.
+The ephemeral loopback fixture has a denied control and a deliberately vulnerable route with designated synthetic records. The proof retains row count, schema/types, content digests and a fresh `HACKGPT-SYNTHETIC-*` canary rather than ordinary record values. The corrected fixture denies the read. Neither outcome describes an outside website or proves access to a real customer database. Maximum native assessment budget is three HTTP requests, with one assessment/adapter execution lane at a time.
 
-### Included
+## AI is optional, local-first and provider-agnostic
 
-- Responsive browser interface: session unlock, scope form, execution modes, live timeline, findings, coverage, AI commentary, history and JSON/Markdown exports.
-- Native HTTP metadata inspection: one HEAD request, no body capture or redirects, public web ports 80/443, private-address rejection and DNS-pinned sockets.
-- Synthetic verification with a denied control, fresh canary and privacy-preserving data summary; maximum three native HTTP requests and one assessment worker at a time.
-- Finding fingerprints, independent evidence hashes, ordered hash-linked events and finalized report checksums.
-- SQLite history, integrity validation on persistence/export and restrictive file permissions where supported.
-- Versioned scanner-result contract (`hackgpt.adapter-result/v1`) that forces imported findings to `candidate`; an adapter cannot self-promote a result to independently verified.
-- Conservative retest comparison with `still_present`, `new`, `not_reproduced` and `not_retested`; absence alone never means fixed.
-- Portable unsigned evidence-review ZIP bundles with JSON/Markdown and a checksummed manifest.
-- Optional Ollama interpretation and allowlisted lab action selection; runtime-validated JSON and no fabricated fallback.
-- Token-authenticated API, strict Host/Origin validation, no CORS enablement, CSP/no-store responses, body limits and cancellation checkpoints.
+Ollama is the **only implemented AI adapter**, our reference for private local operation, not a mandatory gateway for future providers. Model-neutral evidence/action/report interfaces permit reviewed self-hosted or third-party adapters without changing tool authority. There are no automatic downloads, sign-ins, provider/model substitutions or fallback. Deterministic no-AI operation remains available.
 
-**Not included yet:** executable ZAP, Nuclei, Semgrep, Trivy or Nmap runners; authenticated external application scans; private-network target scopes; external exploit verification; broad business-logic tests; multi-user hosting; report signing; PDF export; cross-platform fresh-install packaging; an all-tools installer. The bounded workbench now has a shared assessment deadline plus interruption recovery, but filesystem cancellation remains cooperative at metadata boundaries rather than a claim of instant OS-syscall preemption.
+The adapter connects only to the operator-managed daemon at `127.0.0.1:11434`, with an optional `HACKGPT_OLLAMA_PORT` override. **Localhost transport is not proof of local inference.** Local-only is the default processing policy, not a mandatory product-wide deployment policy. Cloud-backed models require explicit **Allow cloud processing for this assessment** approval. Consent resets on model/scope changes and after submission; it never expands assessment scope. Dispatched requests cannot be unsent.
 
-## AI architecture: local-first, provider-neutral contracts
+The current minimized AI context may include environment/mode, rule/finding IDs, severities, proof states, remediation, check outcomes and limitations. It omits target URLs, authorization notes, raw evidence, HTTP body/header values and credentials. This is a restricted projection, not universal secret detection. Any future provider needs engagement-specific destination/field disclosure, redaction review and isolated credentials. Metadata reports location; strong no-egress claims require enforcement and measurement. For a stronger local-only deployment, configure the running Ollama daemon with `OLLAMA_NO_CLOUD=1`, restart it and apply independent egress controls.
 
-The workbench's evidence, action and report contracts are **not tied to where inference runs**. Ollama is the **only AI adapter implemented in this preview**, and it remains our reference path for operator-controlled local inference. It is not a permanent product-wide gateway requirement. Future reviewed adapters may support self-hosted inference or third-party APIs without changing target authorization, action allowlists, evidence authority or report semantics.
+**Detect** and **Check model** do not infer. **Test response** explicitly sends fixed synthetic prompts and may consume usage, but executes no tool and sends no assessment data. Missing token usage is unknown, not zero; billing cost is not invented. One small real local model has historical compatibility evidence, not an assessment-quality/GPU benchmark. Cloud inference has not established this milestone. See [OLLAMA.md](OLLAMA.md) for endpoint schemas, response validation and exact limitations.
 
-The current Ollama adapter connects to the operator's daemon at `127.0.0.1:11434` (port configurable with `HACKGPT_OLLAMA_PORT`). A local gateway connection does **not** mean the selected model runs locally. Select an exact model already available through that daemon; there are no automatic downloads, account sign-ins, provider substitutions or cloud fallbacks.
+## Evidence, reliability and storage
 
-The default processing policy is **Local only**. Enable **Allow cloud processing for this assessment** to use a cloud-backed Ollama model. This consent does not expand target scope or tool permissions. Normalized rule IDs, severities, proof states, remediation, check outcomes and limitations may leave the device. Target URLs, authorization notes, credentials and raw evidence are omitted by the current native context builder. This is minimization, not a universal secret-detection guarantee for future adapters. Customer/provider policies and usage limits still apply.
+Reports have finding/evidence hashes, ordered hash-linked events and a final integrity checksum. Integrity is checked before persistence/export. Running checkpoints and durable final publication distinguish interruption and storage failure; a memory-only fallback is explicitly `not_durable`, not a successful durable export. The shared monotonic deadline/cancellation path covers native DNS, TCP connect, TLS, response and the current Ollama transport. DNS cancellation bounds the caller's wait; it cannot kill an OS resolver already running. Filesystem cancellation remains cooperative at metadata boundaries.
 
-Cloud approval is not saved globally. The GUI resets it when the selected model or assessment scope changes and after a run is submitted. In-flight requests cannot be unsent; an active run uses its recorded configuration and can be cancelled at checkpoints. For a stronger local-only deployment, configure the **running Ollama daemon** with `OLLAMA_NO_CLOUD=1`, restart it and apply appropriate egress controls. Model metadata is not egress attestation.
+`candidate` is imported output, `observed_only` is a native observation, and `verified_in_lab` is only an owned synthetic proof. Completion means selected checks finished, not that a target is safe. Failed/skipped/inconclusive coverage stays visible. Reports default to `~/.hackgpt-workbench` and are **not encrypted at rest**; protect device storage and retention. Never put secrets in authorization references.
 
-**Detect** lists policy-eligible model names without changing the selected model. **Check model** inspects metadata without inference. **Test response** explicitly sends fixed synthetic prompts to check response/tool contracts; it sends no assessment content, executes no tool and can consume model usage. Neither check measures assessment quality, GPU performance or vulnerability coverage.
+Checksums are unsigned integrity aids, not authorship proof: a writer with complete access can recompute them. Package provenance/SBOM attestations are separate from assessment-report signing.
 
-Capabilities are checked independently of execution location. Current Ollama documentation says cloud models do not support server-constrained structured outputs; the cloud path therefore requests the same JSON contract in a trusted prompt and validates the response in application code. Invalid/truncated output remains an AI error, never a fabricated finding. A model that supports analysis but not tools can still be used in Analyst mode.
+**No findings is not a security guarantee. A failed or skipped verification does not prove that exploitation is impossible.**
 
-Reports retain the chosen processing policy, model, reported execution location, request attempts and token counts **when returned by the daemon**. Missing usage is unknown, not zero; no price or billing estimate is invented. See [OLLAMA.md](OLLAMA.md) for the exact implemented adapter contract and limitations. Live local/cloud model inference has not yet been validated; automated model tests use synthetic loopback protocol fixtures.
-
-## Reviewer APIs and evidence
-
-Finalized intact reports can be exported as JSON/Markdown and, through the authenticated loopback API, as `export.bundle.zip`. The bundle contains an unsigned checksum manifest. This makes review more portable; it is not a digital signature or authorship attestation.
-
-The compare endpoint accepts two stored finalized runs and reports conservative change states. A prior finding absent from a later run is `not_reproduced` only when the scope is comparable and the mapped check completed. Otherwise it is `not_retested`. The workbench never labels a finding fixed solely because it disappeared.
-
-The adapter-result contract is execution-neutral. It is deliberately implemented before scanner execution so future parsers/runners cannot redefine the evidence model. Real scanner adapters remain a roadmap item and must declare coverage, permissions/effect and versions before execution is added.
-
-## Interpreting results
-
-`candidate` is imported scanner evidence that has not been independently verified. `observed_only` is a native observation, not proof of exploitation. `verified_in_lab` is restricted to the synthetic fixture. A run can be completed, partial, errored or cancelled. Completion means the selected checks finished, not that the whole target is secure.
-
-**No findings is not a security guarantee. A failed or skipped verification does not prove that exploitation is impossible.** Coverage and unsupported tests remain visible.
-
-Checksums are unsigned: they detect changes relative to a trusted digest and internal inconsistencies, not authorship. Someone with complete write access can recompute all hashes.
-
-Reports default to `~/.hackgpt-workbench` and are **not encrypted at rest** in this preview. Treat the database/exports as sensitive, use an encrypted device and manage retention deliberately. Authorization references must not contain secrets.
-
-## Validation
+## Reproduce validation
 
 ```bash
 python -m unittest discover -s workbench/tests -v
 python -m compileall -q workbench
 node --check workbench/static/app.js
-node --test workbench/tests/test_ollama_ui.cjs
+node --check workbench/static/adapter.js
+node --test workbench/tests/*.cjs
+python -m workbench.tests.fresh_install_smoke
 ```
 
-Node is only needed for JavaScript syntax and behavior tests, not application runtime. The GitHub Actions workbench workflow runs on Python 3.11, 3.12 and 3.13 without a legacy installer or external scans. Validation counts and exact run limitations are recorded in [PROGRESS.md](PROGRESS.md).
+Node is test-only, not an application runtime dependency. Protocol mocks and DOM/fetch tests are not live-model inference or browser E2E. Optional pinned Semgrep integration is explicitly skipped when its reviewed Docker image/runtime is unavailable; do not count that as passing execution.
 
-The initial development session also ran offline Chromium layout/interaction checks at 1440, 768 and 390 pixels with mocked fetch transport and real synthetic-lab report data. That harness is not included in this contribution. These checks are **not browser-to-server E2E**. The checked-in native tests separately exercise the actual loopback HTTP API, storage and exports.
+Historical source head `328bfda14c1e2ea458391e491c575a8ee5303b9e` used PR checkout `87100841867832c72e26073bfc71ad664fe34481`:
+- [Evidence Workbench run 35589788372](https://github.com/HostX0/HackGpt/actions/runs/35589788372): native Python 3.11/3.12/3.13, real local model, pinned Semgrep, Chromium-to-loopback E2E and Ubuntu/macOS/Windows checkout smoke.
+- [Package run 35589788385](https://github.com/HostX0/HackGpt/actions/runs/35589788385): the same portable archive bytes tested on Ubuntu/macOS/Windows before GitHub/Sigstore provenance and SBOM attestations. Not Windows/macOS platform signing or a native installer.
 
-## Release gates and remaining engineering
+Those runs do not certify newer changes or the legacy application. Legacy CI has independent failures and inherited advisory checks that suppress exit codes; its green jobs are not security/compliance certification. See the current ledger instead of assuming repository-wide success.
 
-The standard-library HTTP server is intended here for a local single-user preview, not public production hosting. Multi-user isolation and a production service need separate engineering and review.
+## Reviewer navigation
 
-The bounded reliability gate now uses one monotonic assessment deadline across DNS resolution, pending TCP connect, TLS handshake, slow HTTP response and the current Ollama transport, with owned cancellation/deadline fixtures for each phase. Final report publication is sealed before durable exposure, storage failure is explicit, and restart recovery cannot turn an interrupted run into completed. Filesystem cancellation is cooperative at metadata boundaries, not an assertion that every blocking OS call is instantly preemptible. Real third-party scanner execution, browser-to-server E2E/accessibility, real-model compatibility, cross-platform fresh-install validation, signing and release-grade packaging remain material gaps.
+Start with [PROGRESS.md](PROGRESS.md), then [ROADMAP.md](ROADMAP.md). Review `engine.py`/`network_transport.py` for scope and deadlines, `registry.py`/`adapter_lifecycle.py` for finite execution and exact approval, and `contracts.py`/`retest.py` for observation authority and conservative comparisons. [ADAPTERS.md](ADAPTERS.md), [THREAT_MODEL.md](THREAT_MODEL.md), [REGRESSION_LABS.md](REGRESSION_LABS.md) and [RELEASE_NOTES.md](RELEASE_NOTES.md) document coverage. [PRODUCT_DIRECTION.md](PRODUCT_DIRECTION.md) describes direction rather than shipped claims.
 
-[ROADMAP.md](ROADMAP.md) defines measurable cumulative Gates A–E. Missing gates are not treated as accessories, and the sprint should not stop early until the declared milestone's gates actually pass. [PRODUCT_DIRECTION.md](PRODUCT_DIRECTION.md) defines the professional assessment lifecycle and evidence/privacy principles.
-
-Successful workbench CI produces a revision-bound review artifact with tracked source, the existing LICENSE, checksums and test logs. The Python 3.13 job also generates a scoped machine-readable release manifest, a CycloneDX SBOM for the isolated shipped workbench component, and JSON/Markdown sample reports from the owned synthetic authorization lab. See [THREAT_MODEL.md](THREAT_MODEL.md), [REGRESSION_LABS.md](REGRESSION_LABS.md) and [RELEASE_NOTES.md](RELEASE_NOTES.md). These artifacts are not an executable release, digital signature or security certification.
-
-## References
-
-- https://docs.ollama.com/capabilities/tool-calling
-- https://docs.ollama.com/capabilities/structured-outputs
-- https://docs.ollama.com/faq
-- https://docs.python.org/3/library/http.server.html
+Not implemented: authenticated real-role execution, external exploit verification, private-network target scopes, broad business-logic tests, multi-user/public hosting, application encryption at rest, signed assessment reports, PDF handover, native installers and broader provider/model quality evaluation. These are real future capabilities, not universal-completeness claims or guaranteed upstream acceptance.
