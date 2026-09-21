@@ -1,6 +1,11 @@
-# Scanner adapter boundary
+# Scanner and execution adapter boundary
 
-This document describes the **implemented parse/review boundary**, not scanner execution. The workbench can now normalize selected scanner result formats offline, but it does not yet launch Semgrep, Trivy, Nuclei, ZAP, Nmap or any other third-party scanner.
+The workbench now has two separate implemented boundaries:
+
+- an offline parse/review boundary for selected third-party scanner result formats; and
+- a typed native execution boundary with a metadata-only project adapter and a one-request web-header adapter.
+
+The workbench still does **not** launch Semgrep, Trivy, Nuclei, ZAP, Nmap or another third-party scanner. The native adapters below are deliberately narrow and cannot turn their own observations into independently verified findings.
 
 ## Why parsing comes before execution
 
@@ -37,18 +42,31 @@ Unexpected allows become **candidate** access-control observations. A confirmed 
 
 This is groundwork for designated test-account matrices in owned synthetic fixtures. It is not an authenticated external scanner and does not store credentials.
 
-## Execution adapters are still a separate milestone
+## Implemented native execution declarations and adapters
 
-Gate C is **not** complete. Before a scanner may be launched by the workbench, its runner must additionally have:
+`execution_contracts.py` adds `hackgpt.execution-declaration/v1`. It is a closed declaration of required authority, not a permission grant. A declaration records the adapter/version, launcher class, effect level, filesystem/network authority, whether subprocesses/writes/symlinks are involved, hard object/request/time limits and a coverage unit. Unknown fields such as an arbitrary `command` are rejected. Native Python adapters cannot declare subprocess execution; read-only adapters cannot declare writes; network-none adapters must have a zero request budget.
+
+Two native adapters currently implement this declaration:
+
+| Adapter | Authority | What it does | What it deliberately does not do |
+|---|---|---|---|
+| `native-project-metadata/1` | read-only filesystem metadata, no network, no subprocess, no writes, no symlink following | Traverses bounded project filenames and reports candidate observations for filenames commonly associated with environment/credential/key material | Reads no file content or secret value, executes no scanner, follows no symlink |
+| `native-web-headers/1` | passive scoped-target network, exactly one request, no filesystem/subprocess/write authority | Issues one scoped HEAD request through the existing DNS-pinned/no-redirect/body-free reader and reports candidate HTML hardening-header observations | Sends no payload/body, follows no redirect, reads no response body, stores no cookie/header outside the small allowlist |
+
+Both adapters feed `hackgpt.adapter-result/v1`, so their observations remain `candidate`. Filename presence or a missing header is not exploit proof. Tests use vulnerable/corrected synthetic fixtures and also exercise fail-closed input/authority boundaries.
+
+## Remaining Gate C work
+
+Gate C is **materially advanced but is not declared complete by this contribution**. The native adapters establish the typed execution shape and bounded project/web examples, but the product still needs runner/orchestration integration and production-path fixture coverage before broad execution claims. Third-party scanners additionally require:
 
 - a pinned/reviewed binary or image and license notice;
-- typed configuration rather than model-generated shell strings;
+- typed fixed arguments rather than model-generated shell strings;
 - independently enforced file/network/target/path/effect/request boundaries;
 - cancellation and hard deadline behavior;
-- vulnerable and corrected owned fixtures;
+- vulnerable and corrected owned integration fixtures;
 - exact coverage/error accounting;
 - secret-safe logs and exports;
-- cross-version regression tests for its parser/runner pair.
+- cross-version regression tests for each parser/runner pair.
 
 The model may later select from approved adapter actions, but model output never becomes execution authority.
 
