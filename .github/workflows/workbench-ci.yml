@@ -56,7 +56,7 @@ jobs:
           git archive --format=tar HEAD workbench .github/workflows/workbench-ci.yml LICENSE > _review/workbench-source.tar
           git rev-parse HEAD > _review/REVISION.txt
           (cd _review && sha256sum workbench-source.tar > SHA256SUMS)
-          printf '%s\n' 'Review source for the exact checked-out revision, not a binary release or security certification.' 'This matrix job passed compile, Python loopback/unit tests, JavaScript syntax, DOM/fetch-double tests and release-evidence generation.' 'Separate jobs in this workflow exercise a real system browser against the loopback UI, run checkout smoke tests on Ubuntu, macOS and Windows, and execute the pinned Semgrep CE image only against owned synthetic vulnerable/fixed fixtures.' 'The release-evidence directory contains a scoped machine-readable manifest, CycloneDX SBOM and a report generated from the owned synthetic authorization lab.' 'No live Ollama inference, cloud model request or external assessment target was used.' 'No root .env, reports, credentials, untracked runtime files or legacy installer are included.' > _review/VALIDATION.txt
+          printf '%s\n' 'Review source for the exact checked-out revision, not a binary release or security certification.' 'This matrix job passed compile, Python loopback/unit tests, JavaScript syntax, DOM/fetch-double tests and release-evidence generation.' 'Separate jobs in this workflow exercise a real system browser against the loopback UI, run checkout smoke tests on Ubuntu, macOS and Windows, execute the pinned Semgrep CE image only against owned synthetic vulnerable/fixed fixtures, and validate one real small local Ollama model with a fixed assessment-data-free prompt.' 'The release-evidence directory contains a scoped machine-readable manifest, CycloneDX SBOM and a report generated from the owned synthetic authorization lab.' 'No cloud model request or external assessment target was used.' 'No root .env, reports, credentials, untracked runtime files or legacy installer are included.' > _review/VALIDATION.txt
       - name: Upload successful review bundle
         if: success() && matrix.python == '3.13'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
@@ -124,6 +124,84 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
+  live-local-model:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      OLLAMA_IMAGE: ollama/ollama:0.34.2
+      HACKGPT_LIVE_OLLAMA_MODEL: smollm2:135m-instruct-q5_K_M
+      HACKGPT_LIVE_OLLAMA_DIGEST_PREFIX: a703ae7fccb0
+      HACKGPT_LIVE_OLLAMA_DEADLINE_SECONDS: '60'
+      HACKGPT_LIVE_OLLAMA_EVIDENCE: _live_model_review/live-model-validation.json
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Pull fixed Ollama runtime tag and preload fixed small model
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p _live_model_review
+          docker pull "$OLLAMA_IMAGE"
+          docker image inspect "$OLLAMA_IMAGE" --format '{{index .RepoDigests 0}}' | tee _live_model_review/ollama-runtime-image.txt
+          docker volume create hackgpt-ollama-models >/dev/null
+          docker run -d --name hackgpt-ollama-seed \
+            -e OLLAMA_HOST=0.0.0.0:11434 \
+            -v hackgpt-ollama-models:/root/.ollama \
+            "$OLLAMA_IMAGE" serve >/dev/null
+          for attempt in $(seq 1 60); do
+            if docker exec hackgpt-ollama-seed ollama list >/dev/null 2>&1; then break; fi
+            if [ "$attempt" = 60 ]; then docker logs hackgpt-ollama-seed; exit 1; fi
+            sleep 1
+          done
+          docker exec hackgpt-ollama-seed ollama pull "$HACKGPT_LIVE_OLLAMA_MODEL"
+          docker exec hackgpt-ollama-seed ollama list | tee _live_model_review/preloaded-models.txt
+          docker rm -f hackgpt-ollama-seed >/dev/null
+      - name: Restart preloaded daemon on an internal-only Docker network
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker network create --internal hackgpt-ollama-internal >/dev/null
+          docker run -d --name hackgpt-ollama-live \
+            --network hackgpt-ollama-internal \
+            -p 127.0.0.1:11434:11434 \
+            -e OLLAMA_HOST=0.0.0.0:11434 \
+            -e OLLAMA_NO_CLOUD=1 \
+            -v hackgpt-ollama-models:/root/.ollama \
+            "$OLLAMA_IMAGE" serve >/dev/null
+          docker network inspect hackgpt-ollama-internal --format '{{.Internal}}' | grep -qx true
+          for attempt in $(seq 1 60); do
+            if python - <<'PY'
+          import json, urllib.request
+          with urllib.request.urlopen('http://127.0.0.1:11434/api/tags', timeout=2) as response:
+              value = json.load(response)
+          assert isinstance(value.get('models'), list)
+          PY
+            then break; fi
+            if [ "$attempt" = 60 ]; then docker logs hackgpt-ollama-live; exit 1; fi
+            sleep 1
+          done
+      - name: Run real assessment-data-free workbench inference compatibility probe
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m workbench.tests.live_ollama_validation
+          docker inspect hackgpt-ollama-live --format '{{json .NetworkSettings.Networks}}' > _live_model_review/container-networks.json
+          printf '%s\n' 'The model was downloaded during CI setup, before validation.' 'Validation then used the preloaded model through an Ollama daemon attached only to a Docker --internal network, with OLLAMA_NO_CLOUD=1.' 'The workbench sent one fixed synthetic structured-output prompt containing no target, evidence, authorization, credentials or customer data.' 'No tool call was required or executed. This is compatibility evidence for one model/runtime combination, not a quality benchmark or universal provider claim.' > _live_model_review/BOUNDARY.txt
+      - name: Upload live local-model compatibility evidence
+        if: success()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: workbench-live-model-${{ github.sha }}
+          path: _live_model_review/
+          if-no-files-found: error
+          retention-days: 7
+      - name: Stop local inference container
+        if: always()
+        shell: bash
+        run: docker rm -f hackgpt-ollama-live hackgpt-ollama-seed >/dev/null 2>&1 || true
+
   browser-e2e:
     runs-on: ubuntu-latest
     timeout-minutes: 8
@@ -177,12 +255,13 @@ jobs:
 
   validation-summary:
     if: always()
-    needs: [native-tests, semgrep-container, browser-e2e, fresh-install]
+    needs: [native-tests, semgrep-container, live-local-model, browser-e2e, fresh-install]
     runs-on: ubuntu-latest
     timeout-minutes: 3
     env:
       NATIVE_RESULT: ${{ needs.native-tests.result }}
       SEMGREP_RESULT: ${{ needs.semgrep-container.result }}
+      MODEL_RESULT: ${{ needs.live-local-model.result }}
       BROWSER_RESULT: ${{ needs.browser-e2e.result }}
       FRESH_RESULT: ${{ needs.fresh-install.result }}
     steps:
@@ -195,6 +274,7 @@ jobs:
           results = {
               "native_python_matrix": os.environ["NATIVE_RESULT"],
               "pinned_semgrep_owned_fixture": os.environ["SEMGREP_RESULT"],
+              "real_local_model_compatibility": os.environ["MODEL_RESULT"],
               "real_browser_loopback_e2e": os.environ["BROWSER_RESULT"],
               "fresh_checkout_os_matrix": os.environ["FRESH_RESULT"],
           }
@@ -213,13 +293,16 @@ jobs:
                   "third_party_scanner_execution": "Semgrep CE 1.177.0 pinned container on owned synthetic project fixtures only",
                   "scanner_container_network": "none",
                   "external_assessment_target": False,
-                  "live_model_inference": False,
+                  "live_model_inference": "one preloaded SmolLM2 135M local structured-output compatibility probe; no assessment data or tool execution",
+                  "live_model_network": "Docker internal-only network after model preload; OLLAMA_NO_CLOUD=1",
               },
               "all_required_jobs_passed": passed,
               "limitations": [
                   "This is GitHub Actions validation evidence, not a cryptographic release signature.",
                   "The Semgrep image pull is a CI setup step; adapter execution itself refuses automatic pulls and disables container networking.",
                   "Semgrep validation covers only the repository-authored local rule set and owned synthetic vulnerable/fixed fixtures, not arbitrary third-party rules or projects.",
+                  "The live-model job validates one small local model/runtime combination and fixed structured-output contract; it is not a quality, GPU, tool-calling or provider-wide benchmark.",
+                  "The local model is downloaded before the daemon is restarted on an internal-only Docker network; the workbench compatibility prompt contains no assessment data.",
                   "Browser coverage is the documented hosted Chromium path, not a multi-browser certification.",
                   "Fresh-checkout smoke is not a signed installer attestation.",
               ],
@@ -242,10 +325,13 @@ jobs:
         run: |
           test "$NATIVE_RESULT" = success
           test "$SEMGREP_RESULT" = success
+          test "$MODEL_RESULT" = success
           test "$BROWSER_RESULT" = success
           test "$FRESH_RESULT" = success
 
   # Browser and assessment tests contact only owned loopback fixtures. The Semgrep
   # integration job pulls one immutable reviewed image during CI setup, then the adapter
   # itself runs with --pull never and --network none against owned local fixtures only.
+  # The live-model job downloads one public model during setup, then restarts the daemon
+  # on a Docker --internal network and sends one fixed assessment-data-free probe.
   # No external assessment targets, real credentials, cloud inference or paid services are used.
