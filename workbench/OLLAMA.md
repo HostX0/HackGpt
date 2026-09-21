@@ -1,6 +1,6 @@
 # Ollama-only AI contract
 
-**Status: implemented client and readiness contracts; live model inference not validated in this contribution.**
+**Status: implemented local client, readiness checks and bounded synthetic inference self-test; live inference against a real installed model has not been validated by this contribution.**
 
 The Evidence Workbench uses **Ollama as its only AI provider**. There are no hosted-provider credentials, remote endpoint fields, cloud fallback, silent model substitution or automatic model downloads. Native deterministic checks can run with AI disabled; this is not a second AI provider. The isolated workbench does not import the legacy application. Legacy provider code elsewhere in the repository remains untouched.
 
@@ -13,6 +13,16 @@ The Evidence Workbench uses **Ollama as its only AI provider**. There are no hos
 5. A stale, missing, incompatible or unreachable model produces a named error and next action. The workbench never changes the user's chosen model to hide a failure.
 
 Metadata checking sends no assessment prompt and does not test model accuracy, structured-output quality, tokenization, available GPU memory or speed. A completion-capable model can still return invalid JSON, time out or run out of resources; those failures remain visible. Deterministic findings do not depend on model claims.
+
+## Assessment-data-free inference self-test
+
+The runtime also exposes an authenticated `POST /api/models/self-test` compatibility probe. It accepts only an exact `model` name and optional boolean `require_tools`.
+
+The probe is intentionally separate from an assessment. It sends a **fixed synthetic prompt** containing no target, authorization reference, findings, evidence, credentials, user content or scanner output. It verifies that the selected local model can return one exact structured JSON value. When `require_tools` is true, it sends a second fixed prompt declaring a single `workbench_self_test` no-op function and requires exactly one empty-argument call. The workbench does **not execute that tool call**; there is no execution callback in the probe.
+
+A passing result reports `state: inference_compatible`, `inference_tested: true`, `structured_output_tested: true`, whether tool calling was exercised, and `assessment_data_sent: false`. A mismatch fails closed with `self_test_failed`. This means only that the installed local model followed the narrow workbench protocol at that moment. It is **not** a security finding, quality benchmark, GPU benchmark, proof of reliable future outputs or attestation that the Ollama daemon cannot use the network.
+
+The GUI does not yet require this probe to start an assessment; current preflight still uses metadata/capability checks. A later UI step can expose the self-test explicitly without silently sending inference prompts.
 
 ## Local transport and its limits
 
@@ -32,6 +42,7 @@ The client filters cloud-tagged entries and checks `remote_model` / `remote_host
 | Chat messages | At most 16 |
 | Planning | At most two model decisions and one approved synthetic action |
 | Tools | At most one declared tool, with fixed name and arguments checked by the engine |
+| Self-test | One structured-output request; optional second inert tool-call request; no assessment data or execution callback |
 | Output / context setting | `num_predict: 768`, `num_ctx: 4096`, temperature zero |
 | Model residency request | `keep_alive: 2m` |
 | Socket timeout | 3 seconds for metadata; 90 seconds for chat |
@@ -46,18 +57,20 @@ The authenticated local API exposes:
 
 - `GET /api/models`: catalog or a categorized diagnostic, without inference.
 - `POST /api/models/check`: accepts only `model` and optional boolean `require_tools`; returns metadata or HTTP 422 with a stable error code.
+- `POST /api/models/self-test`: accepts the same narrow fields and performs only the fixed compatibility inference described above.
 
-Codes distinguish unreachable service, timeout, busy service, invalid port/name/catalog, missing model, missing capabilities, unsupported completion/tools, blocked cloud model, redirect, unsupported authentication, oversized context/response and incomplete/invalid output. Responses do not echo daemon error bodies, prompts, model outputs or secrets. No automatic retry or provider fallback hides an error.
+Codes distinguish unreachable service, timeout, busy service, invalid port/name/catalog, missing model, missing capabilities, unsupported completion/tools, blocked cloud model, redirect, unsupported authentication, oversized context/response, incomplete/invalid output and self-test contract failure. Responses do not echo daemon error bodies, prompts, model outputs or secrets. No automatic retry or provider fallback hides an error.
 
 ## Validation and review
 
-The added Python tests use a real loopback HTTP **protocol fixture**, not a running Ollama model. They exercise routing, response limits, errors, local-alias/capability gates and bounded chat contracts. Frontend tests use Node's built-in test runner with DOM/fetch doubles: model detection, readiness, stale-response invalidation, preflight rejection, native-only operation and double-submit prevention. They are not browser layout or browser-to-server E2E tests.
+The protocol tests use real loopback HTTP **fixtures**, not a running Ollama model. They exercise routing, response limits, errors, local-alias/capability gates and bounded chat contracts. Self-test unit/API tests use controlled model doubles and the real loopback workbench API; they verify that no target/evidence fields enter the fixed prompt, malformed structured/tool responses fail closed, the no-op tool is never executed, extra API fields are rejected and Ollama failures remain categorized. Frontend tests use Node's built-in test runner with DOM/fetch doubles: model detection, readiness, stale-response invalidation, preflight rejection, native-only operation and double-submit prevention. They are not browser layout or browser-to-server E2E tests.
 
-See [PROGRESS.md](PROGRESS.md) for exact local and hosted test outcomes. No model quality, GPU benchmark, successful live inference, universal offline assurance or production readiness is claimed.
+See [PROGRESS.md](PROGRESS.md) for exact local and hosted test outcomes. No model quality, GPU benchmark, successful live inference against a real installed model, universal offline assurance or production readiness is claimed.
 
 ## Primary references
 
 - Ollama model listing: https://docs.ollama.com/api/tags
+- Ollama model details: https://docs.ollama.com/api-reference/show-model-details
 - Ollama chat contract: https://docs.ollama.com/api/chat
 - Tool calls: https://docs.ollama.com/capabilities/tool-calling
 - Structured output: https://docs.ollama.com/capabilities/structured-outputs
