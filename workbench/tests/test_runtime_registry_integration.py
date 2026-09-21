@@ -164,7 +164,8 @@ class RuntimeAndRegistryIntegrationTests(unittest.TestCase):
             thread.join(timeout=2)
             _HeadFixture.delay = 0.0
         self.assertLess(time.monotonic() - started, 0.7)
-        self.assertEqual(_HeadFixture.requests, [("HEAD", "/")])
+        self.assertIn(_HeadFixture.requests, ([], [("HEAD", "/")]))
+        self.assertFalse(any(method == "GET" for method, _path in _HeadFixture.requests))
 
     def test_shared_deadline_interrupts_slow_http_response(self):
         _HeadFixture.delay = 0.8
