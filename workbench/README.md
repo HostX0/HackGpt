@@ -54,7 +54,7 @@ The engine starts a disposable HTTP fixture on loopback. A control route rejects
 - Optional Ollama interpretation and allowlisted lab action selection; runtime-validated JSON and no fabricated fallback.
 - Token-authenticated API, strict Host/Origin validation, no CORS enablement, CSP/no-store responses, body limits and cancellation checkpoints.
 
-**Not included yet:** executable ZAP, Nuclei, Semgrep, Trivy or Nmap adapters; authenticated external application scans; private-network target scopes; external exploit verification; broad business-logic tests; multi-user hosting; report signing; PDF export; hard end-to-end deadlines; crash-safe restart recovery; an all-tools installer.
+**Not included yet:** executable ZAP, Nuclei, Semgrep, Trivy or Nmap runners; authenticated external application scans; private-network target scopes; external exploit verification; broad business-logic tests; multi-user hosting; report signing; PDF export; cross-platform fresh-install packaging; an all-tools installer. The bounded workbench now has a shared assessment deadline plus interruption recovery, but filesystem cancellation remains cooperative at metadata boundaries rather than a claim of instant OS-syscall preemption.
 
 ## AI architecture: local-first, provider-neutral contracts
 
@@ -107,11 +107,11 @@ The initial development session also ran offline Chromium layout/interaction che
 
 The standard-library HTTP server is intended here for a local single-user preview, not public production hosting. Multi-user isolation and a production service need separate engineering and review.
 
-Cancellation happens at checkpoints, not by instantly interrupting active I/O. Per-socket timeouts exist, but the system resolver, slow reads and model calls are not yet covered by one enforceable wall-clock deadline. Atomic terminal-status publication, interruption/restart recovery, real scanner execution, browser E2E/accessibility and fresh-install packaging remain material release gaps.
+The bounded reliability gate now uses one monotonic assessment deadline across DNS resolution, pending TCP connect, TLS handshake, slow HTTP response and the current Ollama transport, with owned cancellation/deadline fixtures for each phase. Final report publication is sealed before durable exposure, storage failure is explicit, and restart recovery cannot turn an interrupted run into completed. Filesystem cancellation is cooperative at metadata boundaries, not an assertion that every blocking OS call is instantly preemptible. Real third-party scanner execution, browser-to-server E2E/accessibility, real-model compatibility, cross-platform fresh-install validation, signing and release-grade packaging remain material gaps.
 
 [ROADMAP.md](ROADMAP.md) defines measurable cumulative Gates A–E. Missing gates are not treated as accessories, and the sprint should not stop early until the declared milestone's gates actually pass. [PRODUCT_DIRECTION.md](PRODUCT_DIRECTION.md) defines the professional assessment lifecycle and evidence/privacy principles.
 
-Successful workbench CI produces a revision-bound review artifact with tracked source, the existing LICENSE, checksums and test logs. It is not an executable release or a security certification.
+Successful workbench CI produces a revision-bound review artifact with tracked source, the existing LICENSE, checksums and test logs. The Python 3.13 job also generates a scoped machine-readable release manifest, a CycloneDX SBOM for the isolated shipped workbench component, and JSON/Markdown sample reports from the owned synthetic authorization lab. See [THREAT_MODEL.md](THREAT_MODEL.md), [REGRESSION_LABS.md](REGRESSION_LABS.md) and [RELEASE_NOTES.md](RELEASE_NOTES.md). These artifacts are not an executable release, digital signature or security certification.
 
 ## References
 
