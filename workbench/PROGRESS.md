@@ -62,3 +62,23 @@ Keep developing, testing and uploading without requiring the owner to install or
 ### Not validated / still pending
 
 No live Ollama inference, GPU/model performance, cloud-egress attestation, new browser layout/E2E run, external target or third-party scanner execution was performed. Protocol fixtures and DOM doubles are not replacements for those tests. The new model metadata endpoint has safe validation and uses the already-authenticated local handler, but broader real-browser integration remains pending. Hard total deadlines, cancellation/restart behavior and atomic durable finalization remain the next reliability priorities. Upstream submission and maintainer acceptance have not occurred.
+
+## 2026-09-21 — Contribution 03: Assessment-data-free Ollama inference self-test
+
+### Implemented
+
+- Added a bounded compatibility probe that uses only fixed synthetic prompts. It never receives an assessment target, authorization reference, finding, evidence, credential, scanner output or arbitrary user content.
+- The first probe requires one exact structured JSON response. Optional tool compatibility uses a second fixed prompt and a single `workbench_self_test` function with empty arguments. The returned tool call is validated but **never executed**; the self-test has no execution callback.
+- Added `Ollama.self_test()` and an authenticated loopback `POST /api/models/self-test` endpoint. Its body is closed to `model` and optional boolean `require_tools`; extra fields such as a target are rejected before model access.
+- Passing output is explicitly labeled `inference_compatible`, records `assessment_data_sent: false`, and does not become assessment evidence or a security verdict. Mismatches fail closed with `self_test_failed`.
+- Updated [OLLAMA.md](OLLAMA.md) to distinguish model metadata readiness, synthetic inference compatibility, real assessment inference, and daemon/network-egress attestation.
+
+### Validation performed in this development run
+
+- **9 focused Python unit tests passed locally on Python 3.13** for the new self-test module/wrapper. They cover fixed structured output, no assessment fields in the prompt, strict boolean options, inert tool declaration, malformed/missing/wrong tool calls, model-metadata failure before any prompt, and the public `Ollama.self_test()` wrapper.
+- `python -m compileall -q workbench` passed in the reconstructed local slice containing the new module/wrapper and test dependencies.
+- Four additional loopback API tests were added to the repository for authentication, closed request fields, strict `require_tools`, safe Ollama error propagation and ensuring the probe does not start an assessment. They were **not separately executed in the partial local slice** because the full repository was not materialized there; hosted Evidence Workbench CI is expected to discover them along with the complete existing suite. An actual hosted result must be checked before claiming they passed.
+
+### Deliberate limits
+
+This contribution still does **not** claim successful inference against a real installed Ollama model or measure GPU capacity, speed, model quality or future reliability. A self-test pass is not evidence that the daemon is offline: operators must configure the running Ollama service with `OLLAMA_NO_CLOUD=1`, restart it, and use separate egress controls when a stronger offline guarantee is required. The new backend endpoint is intentionally not wired to an automatic GUI inference action yet; model metadata preflight remains non-inference. No external targets were contacted and no exploit action was added.
