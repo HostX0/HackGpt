@@ -233,3 +233,36 @@ Feature commits: `ffb7961ce19ed6003012cd5976b016116e8157e9` and `1c85853a1c4ad1a
 - **Gate D now passes its declared bounded criteria**: four-state conservative comparison is implemented; safe checksummed reviewer bundles already exist; remediation guidance/evidence is linked to the exact recheck without claiming it was applied; and changed-scope/failed/unmapped coverage remains non-closing.
 - Gate D passing does not mean reports are cryptographically signed or that a human remediation action was independently attested. Those stronger release/reviewer properties remain later work.
 - Gate B remains incomplete, and Gates C/E remain incomplete, so the sprint is not eligible for early completion.
+
+## 2026-09-21 — Contribution 09: Typed native execution boundary and bounded project/web adapters
+
+### Implemented
+
+Feature commit: `57dfcfede62e87b2485f5238533ca2c63e81ce2d`.
+
+- Added `hackgpt.execution-declaration/v1`, a closed execution-authority declaration independent of model output. It records adapter identity, launcher class, effect level, filesystem/network authority, subprocess/write/symlink flags, object/request/time limits and coverage unit. Unknown fields such as arbitrary command strings fail closed.
+- Added `native-project-metadata/1`, a read-only native project adapter. It inventories bounded filenames only: no file-content reads, no network, no subprocesses, no writes and no symlink following. Candidate observations identify filenames commonly associated with environment/credential/key material without reading or exporting the underlying values.
+- Added `native-web-headers/1`, a passive one-request web adapter. Its production path reuses the existing explicit-URL, DNS-pinned, HEAD-only, no-redirect/body-free reader; normalized evidence retains only a small hardening-header observation and cannot self-promote past `candidate`.
+- Both adapters keep execution authority separate from `hackgpt.adapter-result/v1`, preserving the existing parser/result API rather than embedding new execution fields into it.
+- Added explicit policies and coverage accounting for configured bounds. Reaching a file/depth/deadline bound becomes partial coverage rather than a successful complete scan. Non-2xx web responses likewise remain partial/inconclusive for the intended HTML representation.
+
+### Validation actually performed
+
+- Downloaded the prior successful hosted review artifact for branch head `7ef166f70c96df78d01b74f49ebd314544fdaad4` and reconstructed its exact tracked workbench source locally; this avoids attributing tests to the older blocked/unpublished draft.
+- After layering only this contribution's six new source/test files onto that source, `python -m compileall -q workbench` passed.
+- The complete local workbench Python suite passed **251 tests** in 21.945 seconds on the available Python 3.13 environment. JavaScript syntax and all **23** existing DOM/fetch contract tests passed as well; these are not browser-to-server E2E.
+- Hosted **Evidence Workbench** run `35564908833` completed successfully for feature head `57dfcfede62e87b2485f5238533ca2c63e81ce2d` on Python **3.11, 3.12 and 3.13**. The Python 3.13 revision-bound review artifact records **251 Python tests passed** in 26.203 seconds and **23 JavaScript tests passed**. The artifact's `REVISION.txt` is the exact feature head for this push.
+- The new slice includes 8 execution-declaration tests, 11 project-adapter tests and 11 web-adapter tests. Project tests cover no secret-content reads, symlink/exclusion/file-cap bounds and stable asset-scoped fingerprints. Web tests cover vulnerable/corrected synthetic HTML responses, non-2xx/non-HTML coverage, no query-bearing target, no response-body/raw field, approved-header allowlisting and strict HEAD/no-redirect semantics.
+- The web logic fixtures use an injected owned reader; they do not yet prove the production socket path against a loopback web fixture.
+- No external target, third-party scanner binary, real credential, customer data, live model or paid service was used.
+
+### Release-gate impact and remaining blockers
+
+- Gate C advances from parse-only foundations to two real bounded native execution adapters plus a versioned execution-authority declaration. The declared vulnerable/corrected logic fixtures now exist for both a read-only project adapter and a bounded web adapter.
+- **Gate C is not declared passed yet.** The adapters are not yet wired through a common workbench execution registry/UI lifecycle; the web adapter still needs production-path owned network fixture coverage; external scanners still need pinned versions/licenses/packaging and parser/runner integration before they can be advertised as executable.
+- Gate B remains incomplete for connect/TLS/slow-response/model cancellation and additional concurrency/failure paths. Gate E remains incomplete for live-model testing, browser-to-server E2E/accessibility, fresh-install/package/SBOM and release-quality evidence.
+- Gates A and D remain passing within their existing bounded definitions; this contribution does not weaken their evidence/retest rules.
+
+### Safety/product interpretation
+
+This slice increases execution structure without adding exploit authority. The project adapter cannot read secrets; the web adapter sends one HEAD request and cannot read bodies or follow redirects. Neither adapter accepts model-generated shell commands or marks its own findings verified.
