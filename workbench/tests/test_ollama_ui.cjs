@@ -48,7 +48,8 @@ const finalReport = {id: 'fixture', status: 'completed', target: 'lab', verdict:
 
 test('initial page does not connect to any AI provider automatically', () => {
   const h = harness(); assert.equal(h.requests.length, 0);
-  assert.match(html, /AI PROVIDER: OLLAMA ONLY/);
+  assert.match(html, /CURRENT AI ADAPTER:\s*OLLAMA/);
+  assert.doesNotMatch(html, /AI PROVIDER:\s*OLLAMA ONLY/);
 });
 
 test('native-only form clearly disables model checks', () => {
