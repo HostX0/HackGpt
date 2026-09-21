@@ -16,7 +16,9 @@ scikit-learn>=1.3.0
 matplotlib>=3.7.0
 seaborn>=0.12.0
 plotly>=5.17.0
-tensorflow>=2.13.0
+# TensorFlow does not publish Python 3.14 wheels; keep it on supported runtimes
+# instead of making the Kali rolling Docker build impossible on Python 3.14.
+tensorflow>=2.13.0; python_version < "3.14"
 torch>=2.0.0
 transformers>=4.35.0
 
