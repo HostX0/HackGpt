@@ -329,3 +329,35 @@ Feature commits in this slice include `0af2bf2b7a2a506fb9ce51ba2d5b631e90178c98`
 ### Safety/product interpretation
 
 This slice closes reliability gaps without adding destructive security behavior. It does not execute external scanners, attack an outside target, deploy a payload, harvest credentials, dump a database, sample ordinary customer rows, persist access or enable lateral movement.
+
+## 2026-09-21 — Contribution 12: Adapter planning and budget-accounted execution receipts
+
+### Implemented
+
+Feature commits in this slice: `56c3ba166ec2141bfcd20c317ee680d7232c87f4`, `efb3d57a986ba0eb4fef41d140b4bb13f348f4cf`, `c390380a24df9da58e72dfaa691ad09c26f695f3`, hardening commit `f78cd11046502a20f71ba379bae8a2aa4dd352d5`, documentation commit `1aaf81304de483027ee7c7c33ba15298519f5fb4`, and roadmap status commit `31444b34515f0be91eef56efcb0b965a2990047b`.
+
+- Added `hackgpt.execution-receipt/v1`, a versioned review contract that binds the already reviewed execution declaration to a minimized request summary, observed object/request/elapsed-time usage and the normalized candidate-only adapter result.
+- Added `ExecutionRegistry.plan()` as an I/O-free preflight. It validates the same typed adapter request and operator authority ceiling used by execution. Project plans retain only an asset key and sanitized root basename rather than the full local path; web plans preserve the exact approved URL plus fixed `HEAD`, no-redirect and no-response-body behavior.
+- Added `ExecutionRegistry.execute_with_receipt()` without removing or changing the existing `execute()` API. The project adapter accounts eligible filesystem objects and zero network requests. The native web adapter accounts exactly one request for completed/partial executions. Elapsed time is observational metadata rather than a fabricated performance guarantee.
+- Receipt validation rejects object/request usage above the execution declaration, adapter identity/version mismatches, self-verified findings and sensitive/execution fields such as password, token, cookie, authorization, secret, command, argv or environment in the request summary.
+- Hardened planning validation so web URLs and asset keys are validated before reader I/O, and project asset keys are bounded text. Non-printable project basename characters are normalized in the preview rather than retained raw.
+- Updated [ADAPTERS.md](ADAPTERS.md) and [ROADMAP.md](ROADMAP.md) to describe the new planning/receipt boundary and keep Gate C explicitly incomplete until these receipts are persisted/surfaced through the durable assessment/API/GUI lifecycle and third-party runners are pinned/licensed/tested.
+
+### Validation actually observed
+
+- Added **9 new Python tests** covering I/O-free project planning, full-path minimization, project object accounting without retaining a real fixture secret value, exact single-request web accounting, operator policy denial before I/O, rejection of self-verified findings, rejection of over-budget usage, rejection of sensitive/execution summary fields, pre-cancel behavior and nonnegative elapsed-time recording.
+- Hosted **Evidence Workbench** run `35573191621` completed successfully for feature head `1aaf81304de483027ee7c7c33ba15298519f5fb4` on Python **3.11, 3.12 and 3.13**. The Python 3.13 job ran **288 Python tests in 26.356s** and all passed; JavaScript syntax and all **23 JavaScript DOM/fetch contract tests** also passed. The 3.13 job produced the revision-bound source review artifact.
+- The Python 3.13 log contains one non-fatal `ResourceWarning` associated with an existing synthetic Ollama self-test socket fixture. The test passed, but the warning remains a cleanup issue rather than being hidden or reclassified as success evidence.
+- The hosted checkout used GitHub's PR merge revision `740dc8cc91b29fc2e9b6c112d934af99173c3b25`, while workflow metadata records feature head `1aaf81304de483027ee7c7c33ba15298519f5fb4`; both identities are retained explicitly.
+- No external assessment target, third-party scanner binary, live model inference, real credential, customer row, paid model/API or public service was used.
+
+### Release-gate impact and remaining blockers
+
+- Gates A, B and D remain passing within their declared bounded criteria.
+- Gate C advances materially because authority preview and observed budget accounting are now versioned, test-backed and independent of model output. **Gate C still does not pass**: execution receipts are not yet persisted inside the durable assessment record or exposed through authenticated API/GUI review controls, and reviewed third-party scanner runners still need pinned versions, licenses, least-privilege packaging and parser/runner integration fixtures.
+- Gate E remains materially incomplete for real-model compatibility, browser-to-server E2E/accessibility, fresh-install/cross-platform packaging, SBOM/licensing evidence, threat-model/sample-report/regression-lab release material and signing.
+- The sprint is therefore not eligible for early completion.
+
+### Safety/product interpretation
+
+This contribution adds observability and accountability around already bounded native adapters; it does not add broader exploitation authority. It does not execute Semgrep/Trivy/Nuclei/ZAP/Nmap, expose reusable secrets, broaden target scope, read project secret contents, harvest credentials or turn candidate observations into verified findings.
