@@ -14,7 +14,7 @@ from pathlib import Path
 
 from . import __version__
 from .bundle import build_bundle
-from .engine import Assessment, Scope, markdown, verify_integrity
+from .engine import Assessment, Scope, digest, markdown, now, seal, verify_integrity
 from .ollama import Ollama, OllamaError
 from .retest import compare_reports
 
@@ -24,24 +24,88 @@ class Busy(Exception):
 
 
 class Store:
+    """SQLite report store with a separate checkpoint table for in-flight work."""
+
     def __init__(self, directory):
         directory = Path(directory)
         directory.mkdir(parents=True, exist_ok=True, mode=0o700)
         self.path = directory / "reports.sqlite3"
         with closing(sqlite3.connect(self.path)) as connection:
             connection.execute("CREATE TABLE IF NOT EXISTS reports (id TEXT PRIMARY KEY, started TEXT NOT NULL, content TEXT NOT NULL)")
+            connection.execute("CREATE TABLE IF NOT EXISTS active_runs (id TEXT PRIMARY KEY, started TEXT NOT NULL, content TEXT NOT NULL)")
             connection.commit()
         try:
             self.path.chmod(0o600)
         except OSError:
             pass
 
-    def save(self, report):
-        if not verify_integrity(report):
-            raise ValueError("Refusing to persist a report with invalid integrity")
+    def save_active(self, report):
+        if not isinstance(report, dict) or report.get("status") != "running" or not isinstance(report.get("id"), str):
+            raise ValueError("Only running report snapshots may be checkpointed")
+        raw = json.dumps(report)
+        if len(raw.encode()) > 2_000_000:
+            raise ValueError("Running report snapshot is too large")
         with closing(sqlite3.connect(self.path, timeout=5)) as connection:
-            connection.execute("INSERT OR REPLACE INTO reports VALUES (?, ?, ?)", (report["id"], report["started_at"], json.dumps(report)))
+            connection.execute("INSERT OR REPLACE INTO active_runs VALUES (?, ?, ?)", (report["id"], report["started_at"], raw))
             connection.commit()
+
+    def finalize(self, report):
+        """Atomically publish an intact terminal report and retire its active checkpoint."""
+        if not verify_integrity(report) or report.get("status") == "running":
+            raise ValueError("Refusing to finalize a running or invalid report")
+        with closing(sqlite3.connect(self.path, timeout=5)) as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            connection.execute("INSERT OR REPLACE INTO reports VALUES (?, ?, ?)", (report["id"], report["started_at"], json.dumps(report)))
+            connection.execute("DELETE FROM active_runs WHERE id = ?", (report["id"],))
+            connection.commit()
+
+    def save(self, report):
+        """Compatibility alias used by existing tests/callers."""
+        self.finalize(report)
+
+    def recover_interrupted(self):
+        """Convert trustworthy stale running checkpoints into explicit interrupted reports."""
+        recovered = 0
+        with closing(sqlite3.connect(self.path, timeout=5)) as connection:
+            rows = connection.execute("SELECT id, content FROM active_runs ORDER BY started").fetchall()
+            for run_id, raw in rows:
+                try:
+                    report = json.loads(raw)
+                    if not isinstance(report, dict) or report.get("id") != run_id or report.get("status") != "running":
+                        raise ValueError("invalid active snapshot")
+                    # A temporary seal validates the stored event/evidence chains without
+                    # claiming the running snapshot was previously finalized.
+                    candidate = copy.deepcopy(report)
+                    seal(candidate)
+                    if not verify_integrity(candidate):
+                        raise ValueError("active snapshot integrity chain mismatch")
+                    report["status"] = "interrupted"
+                    report["verdict"] = "inconclusive"
+                    report["finished_at"] = now()
+                    previous = report["events"][-1]["sha256"] if report.get("events") else "0" * 64
+                    event = {
+                        "sequence": len(report.get("events", [])) + 1,
+                        "at": now(),
+                        "kind": "interrupted",
+                        "message": "Recovered after an unclean workbench stop; completion is not assumed.",
+                        "details": {"recovered_after_restart": True},
+                        "previous_sha256": previous,
+                    }
+                    event["sha256"] = digest(event)
+                    report.setdefault("events", []).append(event)
+                    report.setdefault("limitations", []).append("This run was interrupted before durable finalization and was recovered from a running checkpoint.")
+                    seal(report)
+                    if not verify_integrity(report):
+                        raise ValueError("recovered report failed integrity validation")
+                    connection.execute("INSERT OR REPLACE INTO reports VALUES (?, ?, ?)", (run_id, report["started_at"], json.dumps(report)))
+                    connection.execute("DELETE FROM active_runs WHERE id = ?", (run_id,))
+                    recovered += 1
+                except (ValueError, TypeError, json.JSONDecodeError):
+                    # Corrupt checkpoint data is not promoted into a report. Remove it so a
+                    # damaged row cannot be repeatedly presented as recoverable evidence.
+                    connection.execute("DELETE FROM active_runs WHERE id = ?", (run_id,))
+            connection.commit()
+        return recovered
 
     def get(self, run_id):
         with closing(sqlite3.connect(self.path)) as connection:
@@ -67,11 +131,13 @@ class Store:
 class State:
     def __init__(self, directory):
         self.store = Store(directory)
+        self.recovered_interruptions = self.store.recover_interrupted()
         self.lock = threading.Lock()
         self.active = None
         self.live = None
         self.cancel = threading.Event()
         self.worker = None
+        self.checkpoint_persistence_failed = False
 
     def start(self, data):
         scope = Scope.parse(data)
@@ -82,7 +148,14 @@ class State:
             assessment = Assessment(scope, cancel=self.cancel, notify=self.update)
             self.active = assessment.report["id"]
             self.live = copy.deepcopy(assessment.report)
+            self.checkpoint_persistence_failed = False
             run_id = self.active
+            try:
+                self.store.save_active(self.live)
+            except Exception:
+                self.active = None
+                self.live = None
+                raise
             self.worker = threading.Thread(target=self.run, args=(assessment,), daemon=True)
             self.worker.start()
         return run_id
@@ -90,14 +163,20 @@ class State:
     def update(self, report):
         with self.lock:
             self.live = report
+        if report.get("status") == "running":
+            try:
+                self.store.save_active(report)
+            except Exception:
+                # Continue the bounded assessment in memory, but never claim durable state.
+                with self.lock:
+                    self.checkpoint_persistence_failed = True
 
     def run(self, assessment):
         report = assessment.run()
         try:
-            self.store.save(report)
+            self.store.finalize(report)
         except Exception:
-            report["persistence_error"] = "Report could not be saved. Export it before closing the workbench."
-            from .engine import seal
+            report["persistence_error"] = "Report could not be durably finalized. Export it before closing the workbench; restart recovery may contain only the last running checkpoint."
             seal(report)
         with self.lock:
             self.live = report
@@ -197,7 +276,7 @@ class Handler(BaseHTTPRequestHandler):
                 filename, kind = static[self.path]
                 return self.reply(200, (Path(__file__).parent / "static" / filename).read_bytes(), kind)
             if self.path == "/api/health":
-                return self.reply(200, {"version": __version__, "local_only": True, "local_only_scope": "server_binding", "ai_processing_policies": ["local_only", "cloud_allowed"], "third_party_adapters": "not_integrated", "review_features": ["coverage_aware_retest", "evidence_bundle"], "active_run": self.server.state.active})
+                return self.reply(200, {"version": __version__, "local_only": True, "local_only_scope": "server_binding", "ai_processing_policies": ["local_only", "cloud_allowed"], "third_party_adapters": "not_integrated", "review_features": ["coverage_aware_retest", "evidence_bundle"], "recovered_interruptions": self.server.state.recovered_interruptions, "active_run": self.server.state.active})
             if self.path == "/api/models":
                 try:
                     return self.reply(200, Ollama("").diagnostics())
@@ -278,7 +357,7 @@ class Handler(BaseHTTPRequestHandler):
         except Busy as exc:
             self.reply(409, {"error": str(exc)})
         except (ValueError, TypeError, UnicodeDecodeError):
-            self.reply(400, {"error": "Invalid request. Check the URL, authorization, mode approval and local model selection."})
+            self.reply(400, {"error": "Invalid request. Check the URL, authorization, mode approval and model selection."})
         except Exception:
             self.reply(500, {"error": "Unable to start assessment"})
 
@@ -298,7 +377,9 @@ def main():
     print("Open locally: http://127.0.0.1:" + str(args.port) + "/#token=" + token)
     print("Keep this launch URL private. Loopback only; do not expose through a tunnel.")
     print("Native checks are ready. External scanners are NOT bundled in this milestone.")
-    print("Ollama models may be local or cloud-backed with explicit cloud approval in the form. Local-only remains the default privacy policy.")
+    print("The current Ollama adapter supports local or explicitly approved cloud-backed models; product evidence/action contracts are provider-neutral.")
+    if state.recovered_interruptions:
+        print(f"Recovered {state.recovered_interruptions} interrupted run(s) from durable checkpoints; none were marked completed.")
     try:
         server.serve_forever()
     except KeyboardInterrupt:
