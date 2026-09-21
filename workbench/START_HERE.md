@@ -40,7 +40,7 @@ AI can currently choose the finite approved synthetic-lab action or stop and sup
 
 Native metadata checks need no external scanner. The reviewed Semgrep runner needs its exact separately provisioned image; startup does not pull it. Other scanner execution is limited as documented in [README.md](README.md) and [ADAPTERS.md](ADAPTERS.md). No model may introduce a shell command, expand scope or override approval/budgets.
 
-Reports and adapter execution receipts remain available in the existing interface. Receipts are a separate audit trail, not automatically merged assessment findings. Internal exports may contain sensitive assessment information and are not universally sanitized client handovers. No findings does not mean safe; no reproduction alone does not mean fixed.
+Reports and adapter execution receipts remain available in the existing interface. Receipts are a separate audit trail. After a completed receipt, **Add to report** explicitly creates a normal review/export report without rerunning the adapter or AI. **View linked report** opens that report in the existing evidence panel; observations stay candidates. It cannot interrupt an active assessment or model test. Internal exports may contain sensitive assessment information and are not universally sanitized client handovers. No findings does not mean safe; no reproduction alone does not mean fixed.
 
 ## 5. Duplicate startup and recovery
 
@@ -49,3 +49,9 @@ This launcher takes an advisory local OS lock **before** report recovery. A seco
 The original `python -m workbench`, `workbench.server`, `workbench.workspace_server` entry points and embedding APIs are deliberately unchanged. **They do not participate in this new lock.** Do not mix them with the managed launcher against the same data directory. This is not multi-user/distributed locking, malicious-local-user protection or a guarantee for network filesystems. Reports are not encrypted at rest.
 
 See [PROGRESS.md](PROGRESS.md) for exact local/hosted evidence and remaining compatibility work. The inherited enterprise installer/CI remains separate; do not run it to start this Workbench.
+
+## 6. Slow requests and reconnecting
+
+Adapter inputs lock as soon as planning starts, so the displayed target stays aligned with the request being reviewed. Reset waits for pending approval or report linking. A partial/error/skipped adapter result remains visible even when receipt persistence succeeded; a completed HTTP request is not proof that the assessment completed.
+
+After an interrupted connection, **Check run status** reads the existing adapter record without retrying execution. Unknown or executing states keep new execution disabled. Stop requests remain requests until the service confirms the terminal outcome. For the assessment panel, **Refresh** reconnects an unconfirmed run rather than starting another one. Late responses from an earlier selection cannot replace the current comparison or rename an export to a different report.
