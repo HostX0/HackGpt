@@ -16,6 +16,7 @@ from .engine import validate_url
 from .execution_contracts import ExecutionDeclaration
 from .execution_receipts import EXECUTION_RECEIPT_SCHEMA, normalize_execution_receipt
 from .project_adapter import ProjectMetadataAdapter, ProjectScanPolicy
+from .semgrep_runner import SemgrepContainerAdapter, SemgrepPolicy
 from .web_adapter import WebHeaderAdapter, WebHeaderPolicy
 
 _ALLOWED_EFFECTS = ("read_only", "passive", "active_bounded")
@@ -29,6 +30,11 @@ def _safe_text(value: Any, name: str, maximum: int) -> str:
     if not value or len(value) > maximum or any(ord(ch) < 32 or ord(ch) == 127 for ch in value):
         raise ValueError(f"invalid {name}")
     return value
+
+
+def _project_label(root: str | Path) -> str:
+    raw_label = Path(root).name or "project-root"
+    return "".join(ch if 32 <= ord(ch) < 127 else "?" for ch in raw_label)[:160] or "project-root"
 
 
 @dataclass(frozen=True)
@@ -57,43 +63,42 @@ class RegistryPolicy:
 
 
 class ExecutionRegistry:
-    """Finite native adapter registry; no dynamic extension or shell authority."""
+    """Finite reviewed adapter registry; no dynamic extension or shell authority."""
 
     def __init__(self, policy: RegistryPolicy | None = None):
         self.policy = policy or RegistryPolicy()
         self._factories = {
             "native-project-metadata": self._project,
             "native-web-headers": self._web,
+            "semgrep-project-local": self._semgrep,
         }
 
     def describe(self) -> list[dict[str, Any]]:
         declarations = [
             ProjectMetadataAdapter().execution_declaration(),
             WebHeaderAdapter().execution_declaration(),
+            SemgrepContainerAdapter().execution_declaration(),
         ]
         return [declaration for declaration in declarations if self.policy.permits(declaration)]
 
     def plan(self, adapter_id: str, request: Any) -> dict[str, Any]:
-        """Validate typed adapter configuration and return a sanitized authority preview.
-
-        Planning performs no adapter I/O. In particular, project roots are reduced to a
-        basename label so a review surface does not need to retain the operator's full
-        local filesystem path.
-        """
+        """Validate typed adapter configuration and return a sanitized authority preview."""
         if not isinstance(adapter_id, str) or adapter_id not in self._factories:
             raise ValueError("adapter is not in the reviewed execution registry")
         if not isinstance(request, dict):
             raise ValueError("adapter request must be an object")
+
         if adapter_id == "native-project-metadata":
             adapter, root = self._project_adapter(request)
-            raw_label = Path(root).name or "project-root"
-            label = "".join(ch if 32 <= ord(ch) < 127 else "?" for ch in raw_label)[:160] or "project-root"
             summary = {
                 "adapter_id": adapter_id,
                 "asset_key": request["asset_key"],
-                "project_label": label,
+                "project_label": _project_label(root),
                 "full_path_included": False,
             }
+        elif adapter_id == "semgrep-project-local":
+            adapter, root = self._semgrep_adapter(request)
+            summary = adapter.plan_metadata(root, asset_key=request["asset_key"])
         else:
             adapter = self._web_adapter(request)
             summary = {
@@ -161,6 +166,26 @@ class ExecutionRegistry:
         self._authorize(adapter.execution_declaration())
         return adapter, root
 
+    def _semgrep_adapter(self, request: dict[str, Any]) -> tuple[SemgrepContainerAdapter, str | Path]:
+        allowed = {"root", "asset_key", "max_files", "max_depth", "timeout_seconds", "max_target_bytes"}
+        if set(request) - allowed:
+            raise ValueError("Semgrep adapter request contains unsupported fields")
+        if "root" not in request or "asset_key" not in request:
+            raise ValueError("Semgrep adapter requires root and asset_key")
+        root = request["root"]
+        if not isinstance(root, (str, Path)):
+            raise ValueError("Semgrep project root must be a filesystem path")
+        _safe_text(request["asset_key"], "asset_key", 160)
+        policy = SemgrepPolicy(
+            max_files=request.get("max_files", 250),
+            max_depth=request.get("max_depth", 12),
+            timeout_seconds=request.get("timeout_seconds", 90),
+            max_target_bytes=request.get("max_target_bytes", 500_000),
+        )
+        adapter = SemgrepContainerAdapter(policy)
+        self._authorize(adapter.execution_declaration())
+        return adapter, root
+
     def _web_adapter(self, request: dict[str, Any]) -> WebHeaderAdapter:
         if set(request) - {"target", "asset_key", "timeout_seconds"}:
             raise ValueError("web adapter request contains unsupported fields")
@@ -175,6 +200,12 @@ class ExecutionRegistry:
 
     def _project(self, request: dict[str, Any], *, cancel=None, web_reader=None) -> dict[str, Any]:
         adapter, root = self._project_adapter(request)
+        if cancel is not None and cancel.is_set():
+            raise InterruptedError("adapter execution cancelled before start")
+        return adapter.run(root, asset_key=request["asset_key"], cancel=cancel)
+
+    def _semgrep(self, request: dict[str, Any], *, cancel=None, web_reader=None) -> dict[str, Any]:
+        adapter, root = self._semgrep_adapter(request)
         if cancel is not None and cancel.is_set():
             raise InterruptedError("adapter execution cancelled before start")
         return adapter.run(root, asset_key=request["asset_key"], cancel=cancel)
