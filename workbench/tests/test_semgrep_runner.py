@@ -106,7 +106,7 @@ class SemgrepRunnerTests(unittest.TestCase):
         self.assertNotIn("--privileged", command)
         mounts = [command[index + 1] for index, value in enumerate(command[:-1]) if value == "-v"]
         self.assertTrue(any(value.endswith(":/src:ro") for value in mounts))
-        self.assertTrue(any(value.endswith(":/rules/workbench.yml:ro") for value in mounts))
+        self.assertTrue(any(value.endswith(":/workbench.yml:ro") for value in mounts))
         self.assertIn("SEMGREP_SEND_METRICS=off", command)
         self.assertIn("SEMGREP_ENABLE_VERSION_CHECK=0", command)
         self.assertIn("SEMGREP_VERSION_CACHE_PATH=/tmp/semgrep_version", command)
