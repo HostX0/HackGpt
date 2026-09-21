@@ -1,10 +1,11 @@
 # Scanner and execution adapter boundary
 
-The workbench now has three separate implemented boundaries:
+The workbench now has four separate implemented boundaries:
 
 - an offline parse/review boundary for selected third-party scanner result formats;
-- a typed native execution boundary with a metadata-only project adapter and a one-request web-header adapter; and
-- a versioned planning/receipt boundary that records sanitized scope previews, declared authority and bounded observed usage without granting verification authority.
+- a typed native execution boundary with a metadata-only project adapter and a one-request web-header adapter;
+- a versioned planning/receipt boundary that records sanitized scope previews, declared authority and bounded observed usage without granting verification authority; and
+- a durable plan/approval/execution lifecycle that persists minimized authority records, binds approval to an exact request digest, and exposes the reviewed flow through the authenticated loopback API and GUI.
 
 The workbench still does **not** launch Semgrep, Trivy, Nuclei, ZAP, Nmap or another third-party scanner. The native adapters below are deliberately narrow and cannot turn their own observations into independently verified findings.
 
@@ -56,7 +57,7 @@ Two native adapters currently implement this declaration:
 
 Both adapters feed `hackgpt.adapter-result/v1`, so their observations remain `candidate`. Filename presence or a missing header is not exploit proof. Tests use vulnerable/corrected synthetic fixtures and also exercise fail-closed input/authority boundaries.
 
-## Planning and execution receipts
+## Planning, durable approval and execution receipts
 
 `ExecutionRegistry.plan()` validates one reviewed typed request against the operator-owned authority ceiling **without executing adapter I/O**. The preview is intentionally minimized:
 
@@ -64,28 +65,38 @@ Both adapters feed `hackgpt.adapter-result/v1`, so their observations remain `ca
 - web scans retain the exact approved URL plus the fixed `HEAD` / no-redirect / no-body behavior;
 - arbitrary commands, argv, environment fields and dynamic adapter identifiers are not part of the planning surface.
 
-`execution_receipts.py` adds `hackgpt.execution-receipt/v1`. `ExecutionRegistry.execute_with_receipt()` combines the reviewed declaration, minimized request summary, normalized candidate-only result and bounded observed usage. The current native adapters account:
+`execution_receipts.py` adds `hackgpt.execution-receipt/v1`. `ExecutionRegistry.execute_with_receipt()` combines the reviewed declaration, minimized request summary, normalized candidate-only result and bounded observed usage. Receipt validation rejects object/request usage above the declaration's hard limits, adapter identity mismatches, self-verified findings and sensitive/execution fields such as passwords, tokens, cookies, authorization values, commands or argv at **any nesting depth** in the request summary.
+
+`adapter_lifecycle.py` adds `hackgpt.adapter-lifecycle/v1` and persists the reviewed sequence:
+
+`planned -> approved -> executing -> completed | failed | cancelled | interrupted`
+
+The lifecycle stores the minimized plan plus SHA-256 of the exact typed request, **not the raw request itself**. Approval is bound to the exact plan digest. Execution re-plans and re-hashes the resubmitted request before any adapter I/O; a changed root, URL, asset key or bound is rejected before execution. Plan fields become immutable after creation. Records are hash-sealed, terminal failures retain stable error codes rather than raw exception strings, and startup recovery converts stale `executing` records into explicit `interrupted` state rather than successful completion.
+
+The loopback-only `workspace_server.py` exposes authenticated plan/approve/execute/cancel/read routes and serializes the reviewed-adapter execution lane against ordinary assessment starts. The GUI exposes the same exact authority preview. Inputs are frozen after planning; execution stays disabled until the exact plan digest is approved. Completed receipts show usage, coverage and candidate findings without changing verification authority.
+
+Current native adapter accounting includes:
 
 - eligible filesystem objects tested;
 - scoped network requests (zero for the project adapter, exactly one for a completed/partial native web-header run); and
 - elapsed adapter execution time in milliseconds.
 
-Receipt validation rejects object/request usage above the declaration's hard limits, adapter identity mismatches, self-verified findings and sensitive/execution fields such as passwords, tokens, cookies, authorization values, commands or argv in the request summary.
-
-A receipt is review metadata, not a security verdict. It does not prove that every possible object was covered, it does not attest OS-level egress, and it does not upgrade candidate findings. The next lifecycle step is to persist these receipts inside durable assessment runs and expose the same preview/accounting through authenticated API/GUI controls.
+A receipt is review metadata, not a security verdict. It does not prove that every possible object was covered, it does not attest OS-level egress, and it does not upgrade candidate findings.
 
 ## Remaining Gate C work
 
-Gate C is **materially advanced but is not declared complete by this contribution**. The native adapters establish the typed execution shape and bounded project/web examples; planning and receipts add a reviewable budget/accounting contract. The product still needs durable assessment-lifecycle/API/GUI execution using these receipts before broad execution claims. Third-party scanners additionally require:
+Gate C is **materially advanced but is not declared complete**. Durable plan/approval/execution/receipt wiring now exists in storage, authenticated API and GUI for the two reviewed native adapters. The remaining gate blocker is reviewed third-party runner packaging/integration. Each third-party scanner additionally requires:
 
-- a pinned/reviewed binary or image and license notice;
+- a pinned/reviewed binary or image, checksum and license notice;
 - typed fixed arguments rather than model-generated shell strings;
 - independently enforced file/network/target/path/effect/request boundaries;
 - cancellation and hard deadline behavior;
 - vulnerable and corrected owned integration fixtures;
 - exact coverage/error accounting;
-- secret-safe logs and exports;
+- secret-safe logs and exports; and
 - cross-version regression tests for each parser/runner pair.
+
+Do not call a parser an executable scanner adapter and do not call a host process read-only merely because its intended command is read-only. A real runner must have an independently enforced sandbox/mount/network boundary before that claim is made.
 
 The model may later select from approved adapter actions, but model output never becomes execution authority.
 
@@ -97,4 +108,4 @@ Checked 2026-09-21:
 - Trivy currently documents JSON as a supported report format for its scanners and supports writing JSON reports to a file: https://trivy.dev/docs/dev/guide/configuration/reporting/
 - Nuclei's current public documentation evolves independently of this parser. The JSONL parser is fixture-driven and deliberately does not claim complete scan coverage from a finding stream. Its assumptions must be revalidated against the pinned Nuclei version before an execution runner is added: https://docs.projectdiscovery.io/tools/nuclei/input-formats
 
-Exact observed validation for each contribution is recorded in [PROGRESS.md](PROGRESS.md).
+Exact observed validation for each contribution is recorded in [PROGRESS.md](PROGRESS.md) and the PR validation checkpoints.
