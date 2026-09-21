@@ -14,6 +14,7 @@ import re
 import secrets
 import threading
 from pathlib import Path
+from socketserver import TCPServer
 
 from . import __version__
 from .adapter_lifecycle import AdapterLifecycle
@@ -186,6 +187,11 @@ class WorkbenchHandler(Handler):
 
 class WorkbenchServer(LocalServer):
     """Base loopback server plus one serialized reviewed-adapter execution lane."""
+
+    def server_bind(self):
+        """Bind loopback without HTTPServer's reverse-DNS lookup."""
+        TCPServer.server_bind(self)
+        self.server_name, self.server_port = self.server_address[:2]
 
     def __init__(self, address, state, token):
         super().__init__(address, state, token)
