@@ -174,7 +174,11 @@ class StartupTests(unittest.TestCase):
         reader.start()
         token = None
         try:
-            until = time.monotonic() + 10
+            # Hosted macOS arm64 can take longer than ten seconds to start a fresh
+            # interpreter/server process. Keep the same real readiness assertion,
+            # but allow startup latency without weakening the duplicate-start or
+            # assessment/history checks that follow.
+            until = time.monotonic() + 30
             while time.monotonic() < until:
                 try:
                     line = lines.get(timeout=0.2)
