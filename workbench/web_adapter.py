@@ -10,8 +10,9 @@ from dataclasses import dataclass
 from typing import Callable, Any
 
 from .contracts import ADAPTER_SCHEMA, normalize_adapter_result
-from .engine import Deadline, inspect_remote, validate_url
+from .engine import Deadline, validate_url
 from .execution_contracts import EXECUTION_SCHEMA, normalize_execution_declaration
+from .network_transport import inspect_remote
 
 ADAPTER_ID = "native-web-headers"
 ADAPTER_VERSION = "1"
