@@ -178,6 +178,7 @@ class SemgrepContainerAdapter:
             f"Semgrep CE {SEMGREP_VERSION} executed from a digest-pinned preinstalled container.",
             "Container network was disabled and the project plus repository-authored rules were mounted read-only.",
             "The scanner process used the calling Linux operator UID/GID so host file permissions remain authoritative.",
+            "Semgrep metrics and version checks were disabled, with writable cache/log paths confined to the ephemeral tmpfs.",
             "The eligible-file preflight is an upper bound; Semgrep may skip unsupported or ignored files.",
             "Raw source snippets and metavariable values were discarded before the normalized result was returned.",
         ])
@@ -259,13 +260,18 @@ class SemgrepContainerAdapter:
             "--security-opt", "no-new-privileges", "--pids-limit", "128",
             "--memory", "1024m", "--cpus", "1",
             "--tmpfs", "/tmp:rw,noexec,nosuid,nodev,size=256m,mode=1777",
-            "-e", "SEMGREP_SEND_METRICS=off", "-e", "HOME=/tmp",
+            "-e", "SEMGREP_SEND_METRICS=off",
+            "-e", "SEMGREP_ENABLE_VERSION_CHECK=0",
+            "-e", "SEMGREP_VERSION_CACHE_PATH=/tmp/semgrep_version",
+            "-e", "SEMGREP_LOG_FILE=/tmp/semgrep.log",
+            "-e", "XDG_CACHE_HOME=/tmp/.cache",
+            "-e", "HOME=/tmp",
             "-v", f"{root}:/src:ro",
             "-v", f"{RULES_PATH.resolve()}:/rules/workbench.yml:ro",
             "-w", "/src",
             SEMGREP_IMAGE,
             "semgrep", "scan", "--config", "/rules/workbench.yml", "--json", "--metrics", "off",
-            "--max-target-bytes", str(self.policy.max_target_bytes),
+            "--disable-version-check", "--max-target-bytes", str(self.policy.max_target_bytes),
         ]
         for excluded in sorted(DEFAULT_EXCLUDED_DIRS):
             command.extend(["--exclude", excluded])
