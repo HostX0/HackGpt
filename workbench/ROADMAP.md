@@ -42,7 +42,7 @@ These gates determine whether a review milestone is genuinely complete. They are
 - Fresh-install smoke tests pass on the documented platforms with pinned dependencies/tool licenses and an SBOM.
 - Threat model, sample reports, regression lab catalog and release notes clearly separate implemented, experimental and unsupported coverage.
 
-**Current state at feature head `1c85853a`: Gates A and D pass their declared bounded criteria in the dedicated workbench test boundary.** Gate A remains evidence-first: intact final reports, visible incomplete coverage, candidate-only scanner imports and synthetic denied-control/canary proof. Gate D now has conservative four-state comparison, checksummed safe reviewer bundles, and explicit recheck bindings that carry prior evidence/remediation hashes while preserving changed scope and failed/unmapped coverage; the binding deliberately records `remediation_applied=unknown` rather than inventing closure. Hosted Evidence Workbench CI run `35561727602` passed on Python 3.11–3.13 for this head; its Python 3.13 job ran **221 Python tests** and **23 JavaScript contract tests** successfully. Gate B advanced materially in Contribution 07 but is **still not complete** because cancellation has not yet been exercised across every connect/TLS/response/model phase and test-only injected readers are not a production hard-deadline guarantee. Gates C and E remain materially incomplete, so the project is **not** eligible for an early “only polish remains” stop.
+**Current state after Contribution 09: Gates A and D pass their declared bounded criteria in the dedicated workbench test boundary.** Gate A remains evidence-first and Gate D remains conservatively retest-aware. Gate B is **still not complete** because cancellation has not yet been exercised across every connect/TLS/response/model phase and injected readers are not a production hard-deadline guarantee. Gate C now has a closed `hackgpt.execution-declaration/v1` authority contract plus bounded native project-metadata and one-request web-header adapters; vulnerable/corrected synthetic logic fixtures pass, but runner/orchestration integration, production-path web fixture coverage and third-party scanner pinning/licensing remain before Gate C is declared complete. Gate E remains materially incomplete. The project is therefore **not** eligible for an early “only polish remains” stop.
 
 ## 1. Complete the reliability boundary
 
@@ -59,11 +59,12 @@ Acceptance: Gate B.
 
 ## 2. Stable adapter and finding contracts
 
-Implemented foundations: `hackgpt.adapter-result/v1`, deterministic fingerprints, candidate-only import authority, privacy-minimizing offline parsers for Semgrep JSON, Trivy JSON and Nuclei JSONL, malformed/truncated/oversized input tests, and explicit coverage caveats. See [ADAPTERS.md](ADAPTERS.md).
+Implemented foundations: `hackgpt.adapter-result/v1`, deterministic fingerprints, candidate-only import authority, privacy-minimizing offline parsers for Semgrep JSON, Trivy JSON and Nuclei JSONL, malformed/truncated/oversized input tests, explicit coverage caveats, and the closed `hackgpt.execution-declaration/v1` authority contract. The current native project/web adapters declare and enforce no-subprocess/no-write boundaries plus explicit object/request/time budgets. See [ADAPTERS.md](ADAPTERS.md).
 
 Next work:
-- Define the typed **execution** protocol with declared network/filesystem permissions, effect level, scope capability and coverage units.
-- Pin/review each executable scanner version, license and packaging boundary before launch support.
+- Integrate declarations through a small workbench-controlled execution registry/orchestrator instead of direct ad-hoc construction.
+- Pin/review each external scanner version, license and packaging boundary before launch support.
+- Add production-path owned fixtures for the network adapter and parser/runner pairs for third-party tools.
 - Keep severity separate from confidence, proof state, exploitability assumptions and business impact.
 - Preserve adapter-specific minimization tests as richer outputs are added.
 
@@ -71,13 +72,17 @@ Acceptance: malformed/truncated fixtures cannot invent verified findings; contra
 
 ## 3. Project-code checks first
 
-Integrate narrowly configured local code/dependency/secret checks after reviewing tool/rule licenses. Mount source read-only, redact secrets by default and disclose exact files/languages/rules covered. Do not send source, credentials or raw secrets to inference by default. Any external processing needs adapter-specific minimization and disclosure rather than a generic cloud checkbox.
+The first native project execution adapter is now implemented as a metadata-only boundary: it inventories bounded filenames without reading content, following symlinks, using subprocesses/network, or writing to the project. Vulnerable/corrected filename fixtures pass, but this is not a replacement for Semgrep/Trivy code/dependency/secret analysis.
+
+Next work: integrate narrowly configured local code/dependency/secret checks after reviewing tool/rule licenses. Mount source read-only, redact secrets by default and disclose exact files/languages/rules covered. Do not send source, credentials or raw secrets to inference by default. Any external processing needs adapter-specific minimization and disclosure rather than a generic cloud checkbox.
 
 Acceptance: vulnerable and corrected fixtures, pinned versions, offline behavior and explicit errors.
 
 ## 4. Controlled web assessment adapters
 
-Add reviewed ZAP/Nuclei-style integrations with target/path allowlists, request budgets and safe profiles. Do not equate a hostname with permission for a CDN/shared IP. Disable uncontrolled callbacks/out-of-band behavior by default. Process runners consume typed configs, never model-generated shell strings.
+A first bounded native web execution adapter now exists: one explicit URL, one HEAD request, no redirects, no response body, no filesystem/subprocess/write authority, and candidate-only hardening-header observations. Its vulnerable/corrected logic fixtures pass. This does not yet constitute ZAP/Nuclei execution or broad application coverage.
+
+Next work: add production-path owned network fixtures, then reviewed ZAP/Nuclei-style integrations with target/path allowlists, request budgets and safe profiles. Do not equate a hostname with permission for a CDN/shared IP. Disable uncontrolled callbacks/out-of-band behavior by default. Process runners consume typed configs, never model-generated shell strings.
 
 Acceptance: isolated tests prove no unintended external target and enforce effect/network boundaries outside the model.
 
