@@ -161,8 +161,11 @@ def validate_url(url):
 
 
 def _resolve_bounded(resolver, host, port, deadline, cancel=None):
-    if deadline is None:
-        return resolver(host, port, type=socket.SOCK_STREAM)
+    # A caller omitting a deadline must not lose cancellation or wait indefinitely.
+    deadline = deadline or Deadline(8)
+    if cancel is not None and cancel.is_set():
+        raise Cancelled()
+    deadline.remaining()  # Do not dispatch fresh DNS work after the budget expires.
     result_queue = queue.Queue(maxsize=1)
 
     def worker():
@@ -188,14 +191,35 @@ def _resolve_bounded(resolver, host, port, deadline, cancel=None):
     return value
 
 
+# Conservative public-web policy, not a general IANA routability classifier.
+# Some special-purpose anycast assignments are globally reachable but intentionally
+# outside this adapter's scope. Keep these exclusions stable across Python versions.
+# Sources: IANA IPv4/IPv6 Special-Purpose Address Registries (reviewed 2026-09-21).
+_PUBLIC_WEB_EXCLUDED_NETWORKS = tuple(ipaddress.ip_network(prefix) for prefix in (
+    "192.0.0.0/24", "192.88.99.0/24", "64:ff9b::/96", "64:ff9b:1::/48",
+    "2001::/23", "2002::/16", "3fff::/20", "5f00::/16",
+))
+
+
 def public_addresses(host, port, resolver=None, deadline=None, cancel=None):
     resolver = resolver or socket.getaddrinfo
+    deadline = deadline or Deadline(8)
     results = _resolve_bounded(resolver, host, port, deadline, cancel)
     addresses = []
     for result in results:
+        if cancel is not None and cancel.is_set():
+            raise Cancelled()
+        deadline.remaining()
         raw = result[4][0]
+        if not isinstance(raw, str) or "%" in raw:
+            raise ValueError("Target resolves outside the permitted public address space")
         address = ipaddress.ip_address(raw)
-        if not address.is_global or (address.version == 6 and (address.ipv4_mapped or address.sixtofour or address.teredo or address in ipaddress.ip_network("64:ff9b::/96"))):
+        excluded = any(address in network for network in _PUBLIC_WEB_EXCLUDED_NETWORKS
+                       if address.version == network.version)
+        if (not address.is_global or address.is_multicast or address.is_reserved
+                or excluded or (address.version == 6 and (
+                    address.is_site_local or address.ipv4_mapped
+                    or address.sixtofour or address.teredo))):
             raise ValueError("Target resolves outside the permitted public address space")
         if raw not in addresses:
             addresses.append(raw)
