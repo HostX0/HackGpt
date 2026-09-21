@@ -1,9 +1,20 @@
 import os
 import tempfile
+import threading
 import unittest
 from pathlib import Path
 
 from workbench.project_adapter import ProjectMetadataAdapter, ProjectScanPolicy
+
+
+class _StepCancel:
+    def __init__(self, trigger_at):
+        self.trigger_at = trigger_at
+        self.calls = 0
+
+    def is_set(self):
+        self.calls += 1
+        return self.calls >= self.trigger_at
 
 
 class ProjectMetadataAdapterTests(unittest.TestCase):
@@ -124,6 +135,25 @@ class ProjectMetadataAdapterTests(unittest.TestCase):
             first = adapter.run(root, asset_key="project-a")
             second = adapter.run(root, asset_key="project-b")
         self.assertNotEqual(first["findings"][0]["fingerprint"], second["findings"][0]["fingerprint"])
+
+    def test_pre_cancelled_scan_stops_before_filesystem_walk(self):
+        cancel = threading.Event()
+        cancel.set()
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / ".env").write_text("SHOULD_NOT_BE_CLASSIFIED")
+            with self.assertRaises(InterruptedError):
+                ProjectMetadataAdapter().run(root, asset_key="project-fixture", cancel=cancel)
+
+    def test_cooperative_cancel_stops_during_metadata_walk(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            for index in range(20):
+                (root / f"file-{index:02}.txt").write_text("x")
+            cancel = _StepCancel(trigger_at=5)
+            with self.assertRaises(InterruptedError):
+                ProjectMetadataAdapter().run(root, asset_key="project-fixture", cancel=cancel)
+        self.assertGreaterEqual(cancel.calls, 5)
 
 
 if __name__ == "__main__":
