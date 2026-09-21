@@ -16,7 +16,7 @@ from .engine import validate_url
 from .execution_contracts import ExecutionDeclaration
 from .execution_receipts import EXECUTION_RECEIPT_SCHEMA, normalize_execution_receipt
 from .project_adapter import ProjectMetadataAdapter, ProjectScanPolicy
-from .semgrep_runner import SemgrepContainerAdapter, SemgrepPolicy
+from .semgrep_runner import SemgrepContainerAdapter, SemgrepPolicy, semgrep_tool_public_metadata
 from .web_adapter import WebHeaderAdapter, WebHeaderPolicy
 
 _ALLOWED_EFFECTS = ("read_only", "passive", "active_bounded")
@@ -82,7 +82,7 @@ class ExecutionRegistry:
         return [declaration for declaration in declarations if self.policy.permits(declaration)]
 
     def plan(self, adapter_id: str, request: Any) -> dict[str, Any]:
-        """Validate typed adapter configuration and return a sanitized authority preview."""
+        """Validate typed configuration and return a sanitized, I/O-free authority preview."""
         if not isinstance(adapter_id, str) or adapter_id not in self._factories:
             raise ValueError("adapter is not in the reviewed execution registry")
         if not isinstance(request, dict):
@@ -98,7 +98,22 @@ class ExecutionRegistry:
             }
         elif adapter_id == "semgrep-project-local":
             adapter, root = self._semgrep_adapter(request)
-            summary = adapter.plan_metadata(root, asset_key=request["asset_key"])
+            tool = semgrep_tool_public_metadata()
+            summary = {
+                "adapter_id": adapter_id,
+                "asset_key": request["asset_key"],
+                "project_label": _project_label(root),
+                "full_path_included": False,
+                "tool": tool["id"],
+                "tool_version": tool["version"],
+                "image_digest": tool["container"]["manifest_digest"],
+                "ruleset": "repository-authored/workbench-v1",
+                "container_network": "none",
+                "source_mount": "read-only",
+                "automatic_pull": False,
+                "max_files": adapter.policy.max_files,
+                "max_target_bytes": adapter.policy.max_target_bytes,
+            }
         else:
             adapter = self._web_adapter(request)
             summary = {
