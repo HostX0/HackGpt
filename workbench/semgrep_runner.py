@@ -177,6 +177,7 @@ class SemgrepContainerAdapter:
         coverage["notes"].extend([
             f"Semgrep CE {SEMGREP_VERSION} executed from a digest-pinned preinstalled container.",
             "Container network was disabled and the project plus repository-authored rules were mounted read-only.",
+            "The scanner process used the calling Linux operator UID/GID so host file permissions remain authoritative.",
             "The eligible-file preflight is an upper bound; Semgrep may skip unsupported or ignored files.",
             "Raw source snippets and metavariable values were discarded before the normalized result was returned.",
         ])
@@ -249,12 +250,15 @@ class SemgrepContainerAdapter:
     def _build_command(self, docker: str, root: Path, container_name: str) -> list[str]:
         if not RULES_PATH.is_file():
             raise RuntimeError("repository-authored Semgrep rules are missing")
+        if not hasattr(os, "getuid") or not hasattr(os, "getgid"):
+            raise RuntimeError("Semgrep container execution requires Linux UID/GID mapping")
         command = [
             docker, "run", "--rm", "--pull", "never", "--name", container_name,
+            "--user", f"{os.getuid()}:{os.getgid()}",
             "--network", "none", "--read-only", "--cap-drop", "ALL",
             "--security-opt", "no-new-privileges", "--pids-limit", "128",
             "--memory", "1024m", "--cpus", "1",
-            "--tmpfs", "/tmp:rw,noexec,nosuid,nodev,size=256m",
+            "--tmpfs", "/tmp:rw,noexec,nosuid,nodev,size=256m,mode=1777",
             "-e", "SEMGREP_SEND_METRICS=off", "-e", "HOME=/tmp",
             "-v", f"{root}:/src:ro",
             "-v", f"{RULES_PATH.resolve()}:/rules/workbench.yml:ro",
