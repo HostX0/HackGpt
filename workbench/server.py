@@ -23,6 +23,12 @@ class Busy(Exception):
     pass
 
 
+def durable_for_review(report):
+    """Legacy finalized rows remain reviewable; explicit memory-only results do not."""
+    durability = report.get("durability") if isinstance(report, dict) else None
+    return not isinstance(durability, dict) or durability.get("status") == "durable"
+
+
 class Store:
     """SQLite report store with a separate checkpoint table for in-flight work."""
 
@@ -73,8 +79,6 @@ class Store:
                     report = json.loads(raw)
                     if not isinstance(report, dict) or report.get("id") != run_id or report.get("status") != "running":
                         raise ValueError("invalid active snapshot")
-                    # A temporary seal validates the stored event/evidence chains without
-                    # claiming the running snapshot was previously finalized.
                     candidate = copy.deepcopy(report)
                     seal(candidate)
                     if not verify_integrity(candidate):
@@ -94,6 +98,12 @@ class Store:
                     event["sha256"] = digest(event)
                     report.setdefault("events", []).append(event)
                     report.setdefault("limitations", []).append("This run was interrupted before durable finalization and was recovered from a running checkpoint.")
+                    report["durability"] = {
+                        "status": "durable",
+                        "storage": "sqlite",
+                        "terminal_publication": "restart_recovery_transaction",
+                        "checkpoint_gap_observed": False,
+                    }
                     seal(report)
                     if not verify_integrity(report):
                         raise ValueError("recovered report failed integrity validation")
@@ -101,8 +111,6 @@ class Store:
                     connection.execute("DELETE FROM active_runs WHERE id = ?", (run_id,))
                     recovered += 1
                 except (ValueError, TypeError, json.JSONDecodeError):
-                    # Corrupt checkpoint data is not promoted into a report. Remove it so a
-                    # damaged row cannot be repeatedly presented as recoverable evidence.
                     connection.execute("DELETE FROM active_runs WHERE id = ?", (run_id,))
             connection.commit()
         return recovered
@@ -161,25 +169,53 @@ class State:
         return run_id
 
     def update(self, report):
+        # Progress snapshots are publishable only while they are explicitly running.
+        # Terminal state is published by run() after durable commit succeeds or after
+        # the result is explicitly marked memory-only.
+        if not isinstance(report, dict) or report.get("status") != "running":
+            return
         with self.lock:
-            self.live = report
-        if report.get("status") == "running":
-            try:
-                self.store.save_active(report)
-            except Exception:
-                # Continue the bounded assessment in memory, but never claim durable state.
-                with self.lock:
+            if self.active != report.get("id"):
+                return
+            self.live = copy.deepcopy(report)
+        try:
+            self.store.save_active(report)
+        except Exception:
+            with self.lock:
+                if self.active == report.get("id"):
                     self.checkpoint_persistence_failed = True
 
     def run(self, assessment):
         report = assessment.run()
-        try:
-            self.store.finalize(report)
-        except Exception:
-            report["persistence_error"] = "Report could not be durably finalized. Export it before closing the workbench; restart recovery may contain only the last running checkpoint."
-            seal(report)
         with self.lock:
-            self.live = report
+            checkpoint_gap = bool(self.checkpoint_persistence_failed)
+
+        durable = copy.deepcopy(report)
+        durable["durability"] = {
+            "status": "durable",
+            "storage": "sqlite",
+            "terminal_publication": "after_atomic_commit",
+            "checkpoint_gap_observed": checkpoint_gap,
+        }
+        seal(durable)
+        try:
+            self.store.finalize(durable)
+            published = durable
+        except Exception:
+            published = copy.deepcopy(report)
+            published["durability"] = {
+                "status": "not_durable",
+                "storage": "memory_only",
+                "terminal_publication": "after_persistence_failure",
+                "checkpoint_gap_observed": checkpoint_gap,
+                "reason": "terminal_persistence_failed",
+            }
+            published.setdefault("limitations", []).append(
+                "Terminal persistence failed. This intact result is memory-only and cannot be exported or compared as durable review evidence."
+            )
+            seal(published)
+        with self.lock:
+            self.live = published
             self.active = None
 
     def get(self, run_id):
@@ -290,16 +326,17 @@ class Handler(BaseHTTPRequestHandler):
                 current = self.server.state.get(compare_match[2])
                 if previous is None or current is None:
                     return self.reply(404, {"error": "Run not found"})
-                if not verify_integrity(previous) or not verify_integrity(current):
-                    return self.reply(409, {"error": "Only finalized, intact reports can be compared"})
+                if (not verify_integrity(previous) or not verify_integrity(current)
+                        or not durable_for_review(previous) or not durable_for_review(current)):
+                    return self.reply(409, {"error": "Only durable, finalized, intact reports can be compared"})
                 return self.reply(200, compare_reports(previous, current))
             bundle_match = re.fullmatch(r"/api/runs/([a-f0-9]{32})/export\.bundle\.zip", self.path)
             if bundle_match:
                 report = self.server.state.get(bundle_match[1])
                 if report is None:
                     return self.reply(404, {"error": "Run not found"})
-                if report["status"] == "running" or not verify_integrity(report):
-                    return self.reply(409, {"error": "Only finalized, intact reports can be exported"})
+                if report["status"] == "running" or not verify_integrity(report) or not durable_for_review(report):
+                    return self.reply(409, {"error": "Only durable, finalized, intact reports can be exported"})
                 raw = build_bundle(report, markdown(report))
                 return self.reply(200, raw, "application/zip", "hackgpt-" + bundle_match[1] + "-evidence.zip")
             match = re.fullmatch(r"/api/runs/([a-f0-9]{32})(?:/export\.(json|md))?", self.path)
@@ -308,8 +345,8 @@ class Handler(BaseHTTPRequestHandler):
                 if report is None:
                     return self.reply(404, {"error": "Run not found"})
                 if match[2]:
-                    if report["status"] == "running" or not verify_integrity(report):
-                        return self.reply(409, {"error": "Only finalized, intact reports can be exported"})
+                    if report["status"] == "running" or not verify_integrity(report) or not durable_for_review(report):
+                        return self.reply(409, {"error": "Only durable, finalized, intact reports can be exported"})
                     extension = match[2]
                     raw = markdown(report).encode() if extension == "md" else json.dumps(report, indent=2).encode()
                     kind = "text/markdown; charset=utf-8" if extension == "md" else "application/json"
