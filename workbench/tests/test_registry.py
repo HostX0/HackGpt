@@ -6,6 +6,16 @@ from pathlib import Path
 from workbench.registry import ExecutionRegistry, RegistryPolicy
 
 
+class _StepCancel:
+    def __init__(self, trigger_at):
+        self.trigger_at = trigger_at
+        self.calls = 0
+
+    def is_set(self):
+        self.calls += 1
+        return self.calls >= self.trigger_at
+
+
 class ExecutionRegistryTests(unittest.TestCase):
     def test_describe_returns_only_reviewed_native_adapters(self):
         declarations = ExecutionRegistry().describe()
@@ -79,6 +89,20 @@ class ExecutionRegistryTests(unittest.TestCase):
                 web_reader=lambda target: calls.append(target),
             )
         self.assertEqual(calls, [])
+
+    def test_project_cancellation_is_propagated_beyond_registry_preflight(self):
+        cancel = _StepCancel(trigger_at=4)
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            for index in range(10):
+                (root / f"file-{index}.txt").write_text("x")
+            with self.assertRaises(InterruptedError):
+                ExecutionRegistry().execute(
+                    "native-project-metadata",
+                    {"root": directory, "asset_key": "fixture"},
+                    cancel=cancel,
+                )
+        self.assertGreaterEqual(cancel.calls, 4)
 
     def test_invalid_policy_is_rejected(self):
         for kwargs in ({"max_effect": "unbounded"}, {"allow_filesystem": 1}, {"allow_network": None}):
