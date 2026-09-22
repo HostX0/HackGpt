@@ -98,6 +98,21 @@ class ReleaseEvidenceTests(unittest.TestCase):
         self.assertFalse(Path(runner["pin_path"]).is_absolute())
         self.assertFalse(Path(runner["rules_path"]).is_absolute())
 
+    def test_pull_request_package_validation_does_not_request_attestation_write_authority(self):
+        workflow = self.root.parent / ".github" / "workflows" / "workbench-release-package.yml"
+        if not workflow.is_file():
+            self.skipTest("repository workflow is intentionally absent from the portable Workbench archive")
+        text = workflow.read_text(encoding="utf-8")
+        self.assertIn("pull_request:", text)
+        self.assertIn("package-smoke:", text)
+        self.assertIn("attest-package:", text)
+        attest = text.split("  attest-package:\n", 1)[1]
+        self.assertIn("    if: github.event_name != 'pull_request'\n", attest)
+        self.assertIn("      id-token: write\n", attest)
+        self.assertIn("      attestations: write\n", attest)
+        self.assertNotIn("id-token: write", text.split("  attest-package:\n", 1)[0])
+        self.assertNotIn("attestations: write", text.split("  attest-package:\n", 1)[0])
+
 
 if __name__ == "__main__":
     unittest.main()
