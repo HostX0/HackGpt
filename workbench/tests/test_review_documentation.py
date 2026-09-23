@@ -139,9 +139,7 @@ class ReviewDocumentationTests(unittest.TestCase):
         self.assertNotIn("apt-get install", code_quality)
         self.assertNotIn("pip install -r requirements.txt", code_quality)
         self.assertIn("QUALITY_PYTHON_VERSION: '3.11'", enterprise)
-        self.assertIn(
-            "python-version: ${{ env.QUALITY_PYTHON_VERSION }}", code_quality
-        )
+        self.assertIn("python-version: ${{ env.QUALITY_PYTHON_VERSION }}", code_quality)
         self.assertIn("mkdir -p .ci/black", code_quality)
         self.assertIn(
             "python --version 2>&1 | tee .ci/black/python-version.txt", code_quality
