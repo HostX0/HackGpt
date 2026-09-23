@@ -1,3 +1,4 @@
+import ast
 import importlib.util
 from pathlib import Path
 
@@ -14,6 +15,17 @@ def _requirements(path="requirements.txt"):
         for line in (ROOT / path).read_text(encoding="utf-8").splitlines()
         if line.strip() and not line.lstrip().startswith("#")
     ]
+
+
+def _direct_imports(path):
+    tree = ast.parse((ROOT / path).read_text(encoding="utf-8"))
+    imports = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            imports.update(alias.name.split(".", 1)[0] for alias in node.names)
+        elif isinstance(node, ast.ImportFrom) and node.module:
+            imports.add(node.module.split(".", 1)[0])
+    return imports
 
 
 def test_tensorflow_is_kept_where_supported_but_does_not_block_python_314():
@@ -68,6 +80,7 @@ def test_python38_ci_profile_excludes_unused_full_stack_cvss_dependency():
     }
     assert "cvsslib" not in module.CORE_IMPORTS
     assert canonicalize_name("cvsslib") not in profile
+    assert "cvsslib" not in _direct_imports("hackgpt.py")
     assert canonicalize_name("cvsslib") in {
         canonicalize_name(item.name) for item in _requirements()
     }

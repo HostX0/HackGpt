@@ -54,7 +54,6 @@ try:
     import speech_recognition as sr
     import pyttsx3
     import pypandoc
-    import cvsslib
     from flask import Flask, render_template, request, jsonify, session
     from flask_cors import CORS
     import redis

@@ -2,33 +2,36 @@
 
 ## Active milestone: review-readiness hardening (in progress)
 
-This is the live continuation ledger for the fork-only follow-up PR. PR #1 was merged into **HostX0/HackGpt** at `2048e59143b568fa80c1736a3d02921491252eef`; it was not submitted or accepted upstream. Historical ledgers remain preserved in [PROGRESS_HISTORY.md](PROGRESS_HISTORY.md), [PROGRESS_CONTINUATION_HISTORY_2026-09-23.md](PROGRESS_CONTINUATION_HISTORY_2026-09-23.md) and [ROADMAP_BASELINE.md](ROADMAP_BASELINE.md). The current file is intentionally concise and is not a rewrite of those historical records.
+This is the live continuation ledger for the fork-only follow-up PR. PR #1 was merged into **HostX0/HackGpt** at `2048e59143b568fa80c1736a3d02921491252eef`; it was not submitted or accepted upstream. Historical ledgers remain preserved in [PROGRESS_HISTORY.md](PROGRESS_HISTORY.md), [PROGRESS_CONTINUATION_HISTORY_2026-09-23.md](PROGRESS_CONTINUATION_HISTORY_2026-09-23.md) and [ROADMAP_BASELINE.md](ROADMAP_BASELINE.md). The current file is intentionally concise and does not replace those records.
 
-The product direction remains practical and bounded: preserve the legacy application and the Evidence Workbench, repair retained shipping paths, keep deterministic no-AI operation, require independent finite tool approval, and report limitations rather than universal coverage. No owner-side installation/testing is required for this continuation.
+The product direction remains practical and bounded: preserve the legacy application and Evidence Workbench, repair retained shipping paths, keep deterministic no-AI operation, require independent finite tool approval, and report limitations rather than universal coverage. No owner-side installation/testing is required for this continuation.
 
-## Current reproduced state before this repair
+## Exact hosted state at source `89b9c8334f5215faf498a2cff87adcf98f667f99`
 
-The exact source head examined for this round was `bd2d0503122069535fe7af59ba9632b541c7947a`; GitHub generated PR checkout `f8a2a47d97a66a6d7ae033a4dacdb81a53104266` against fork main `2048e59143b568fa80c1736a3d02921491252eef`.
+Fork main was rechecked at `2048e59143b568fa80c1736a3d02921491252eef`; PR #2 remained open and unmerged. The exact source-head workflows completed as follows:
 
-Hosted results at that source head:
+- **Evidence Workbench `35854576182`: success.** The repaired UTF-8 ledger passed the native Workbench lanes together with the existing browser/model/Semgrep/fresh-install validation. This is revision-bound evidence, not a universal compatibility or security claim.
+- **Workbench Startup `35854576064`: success.** This validates the managed launcher path for this source only; unchanged legacy/embedding entry points still do not participate in its cooperating-process lock.
+- **Release Package `35854576110`: success.** The portable source package passed its configured validation. It remains a portable source archive, not a signed native Windows/macOS installer or signed assessment handover.
+- **Basic CI `35854576194`: success.** The retained basic installation/import/lint/Docker path is green at this exact source. Advisory security output remains advisory rather than certification.
+- **Enterprise CI `35854576104`: failure.** Code Quality passed fail-closed Black 26.5.1, Flake8, MyPy and Pylint. The Python 3.11 full dependency lane passed installation, unit tests and integration tests. The Python 3.8 `legacy-core` lane passed setup, native prerequisites, its bounded dependency installation and unit tests, then failed at the integration step. Downstream Enterprise Docker/performance therefore cannot be counted as current-head passes.
 
-- **Basic CI `35853090283`: success.** The deterministic installation readiness check, legacy import smoke, lint, Docker build and Docker `--help` smoke all passed. Its Bandit job remains an advisory report, not a clean-security certification.
-- **Workbench Startup `35853089986`: success.** This validates the managed startup checks for that source head only; the cooperating-process lock does not cover unchanged legacy/embedding entry points or distributed storage.
-- **Release Package `35853089980`: success.** The exact portable source archive passed Ubuntu/macOS/Windows package smoke. It remains a source archive, not a signed Windows/macOS native installer.
-- **Evidence Workbench `35853090121`: failure.** Browser E2E, real local-model compatibility, pinned Semgrep-container validation and fresh-install smoke on Ubuntu/macOS/Windows succeeded, but the native Python 3.11/3.12/3.13 lanes all failed in `test_current_doc_links_resolve_inside_portable_component`. The exact error was a UTF-8 decode failure in `workbench/PROGRESS.md` at byte position 3315 (`0x9d`). This is a documentation-byte defect in the current source, not an application or browser failure, and it still makes the aggregate Workbench workflow red.
-- **Enterprise CI `35853090163`: failure.** Code Quality passed fail-closed Black 26.5.1, Flake8, MyPy and Pylint. Python 3.9/3.10/3.11 full dependency unit/integration lanes passed. The Python 3.8 legacy-core lane installed its bounded profile and passed 26 unit tests, then failed both integration tests because `hackgpt.py` still imports `cvsslib` directly while `cvsslib>=1.0.0` has no Python 3.8 distribution. Docker/performance were consequently skipped. Security-report jobs are advisory evidence, not certification.
+The current source-level cause of the Python 3.8 integration mismatch is narrow and reproducible: `requirements-ci-py38.txt` deliberately omits `cvsslib`, because that distribution has no Python 3.8 release, and `test_installation.py::CORE_IMPORTS` already excludes it, but retained `hackgpt.py` still directly imports `cvsslib`. Repository inspection confirms that direct import is unused by `hackgpt.py`. Full `requirements.txt` still contains `cvsslib>=1.0.0` for supported full-stack runtimes, and the Python 3.9-3.11 Enterprise lanes continue to install the full requirements.
 
-These observations supersede older failure descriptions for this exact source only. In particular, the old LDAP/PortAudio setup, missing test paths, artifact-v3, psutil/aiohttp and Black-format blockers must not be described as current blockers unless they regress in a newer run.
+These results supersede older failure descriptions for this exact source only. Old LDAP/PortAudio setup, missing test paths, artifact-v3, psutil/aiohttp, Black-format and invalid-UTF-8 defects must not be described as current blockers unless they regress on a newer source.
 
 ## Current repair candidate
 
-This round repairs the source-integrity defect that made every native Workbench lane fail before the rest of its review-documentation assertions could complete:
+This candidate removes only the unused direct `import cvsslib` from retained `hackgpt.py`. It does **not** remove the dependency from `requirements.txt`, change any public entry point, weaken the Python 3.8 integration test, fake a package, or reduce the full Python 3.9-3.11 dependency matrix.
 
-- Replace the corrupted current `PROGRESS.md` byte stream with UTF-8 text while preserving links to the immutable historical ledgers instead of attempting to recover or reinterpret corrupted bytes.
-- Keep the existing link-resolution and claim regressions unchanged; no assertion is weakened or skipped.
-- Keep the still-unresolved Python 3.8 `cvsslib` import blocker explicit rather than mixing it with the Workbench documentation repair.
+A regression in `tests/unit/test_requirements_compat.py` now parses `hackgpt.py` with Python's AST and binds four facts together:
 
-Local candidate validation is run against the exact portable Workbench tree extracted from Release Package run `35853089980`, with only the candidate `PROGRESS.md` bytes changed for the published repair. The existing review-documentation link-resolution assertion passed against the clean document and `python -m compileall -q workbench` succeeded. A wider local Workbench discovery run exceeded the available local execution window while still progressing and produced no observed failure before timeout; it is not counted as a full pass. The exact published commit and its hosted runs must be recorded after publication; local success is not a substitute for current-head hosted validation.
+1. `cvsslib` is not declared as a Python 3.8 core import.
+2. `cvsslib` is not installed by the bounded Python 3.8 CI profile.
+3. `hackgpt.py` does not directly import `cvsslib` again.
+4. `cvsslib` remains present in the full product requirements.
+
+The change is intentionally narrow because no use of `cvsslib` exists in the retained entry point. Fresh hosted validation at the publication commit is still required before claiming that the Python 3.8 integration lane, Enterprise Docker or aggregate Enterprise workflow is repaired.
 
 ## Preserved reliability and execution boundaries
 
@@ -38,12 +41,12 @@ AI remains optional and provider-neutral at the evidence/action/report boundary.
 
 Autonomous tests use owned synthetic fixtures, denied controls and redacted canaries only. No external target, real credential/customer row, payload deployment, persistence, lateral movement, paid inference, public deployment or upstream outreach is part of this work.
 
-## Active blockers after this candidate
+## Remaining validation and product work
 
-1. **Hosted current-head Workbench proof is still required.** The repaired document bytes must pass native Python 3.11/3.12/3.13 together with the existing browser/model/Semgrep/fresh-install jobs at the exact published head.
-2. **Python 3.8 legacy import remains unresolved until code is repaired and retested.** The bounded profile correctly excludes `cvsslib` because no matching Python 3.8 package exists, but `hackgpt.py` still has an unused direct `import cvsslib`. A follow-up must remove or otherwise narrow that import without removing `cvsslib` from full product requirements, faking the dependency in CI or weakening the legacy import test.
-3. **Enterprise aggregate/Docker follow-through depends on the Python 3.8 lane.** Current Python 3.9/3.10/3.11 and code-quality evidence is green, but the whole Enterprise workflow is not.
-4. Advisory security reports and non-validating compliance/performance placeholders remain exactly that; they are not clean scans, benchmarks or certifications.
+1. **Retest the exact publication head.** Workbench, Startup, Release Package and Basic CI must remain green after this source repair; historical success does not certify a newer commit.
+2. **Re-run Enterprise Python 3.8.** Its real unit and integration steps must pass with the bounded profile before Docker/performance and the Enterprise aggregate can be treated as repaired.
+3. **Do not convert informational jobs into claims.** Advisory security reports and non-validating compliance/performance placeholders remain evidence gaps, not clean scans, benchmarks or certifications.
+4. **Gates A-E remain cumulative.** Missing adapters, broader model-quality evidence, native signed installers and wider accessibility/reviewer validation remain outstanding as documented in [ROADMAP.md](ROADMAP.md); one CI repair does not make the product universally complete.
 
 ## Verification discipline
 
