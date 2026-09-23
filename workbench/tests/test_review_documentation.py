@@ -87,7 +87,15 @@ class ReviewDocumentationTests(unittest.TestCase):
             self.assertIn('actions/upload-artifact@v4', doc)
             for package in ('libldap2-dev', 'libsasl2-dev', 'portaudio19-dev', 'python3-dev'):
                 self.assertIn(package, doc)
-        self.assertEqual(enterprise.count('name: Install native build prerequisites'), 2)
+
+        code_quality = enterprise[enterprise.index('  code-quality:'):enterprise.index('  test-suite:')]
+        test_suite = enterprise[enterprise.index('  test-suite:'):enterprise.index('  docker-build:')]
+        self.assertEqual(enterprise.count('name: Install native build prerequisites'), 1)
+        self.assertNotIn('apt-get install', code_quality)
+        self.assertNotIn('pip install -r requirements.txt', code_quality)
+        self.assertIn('name: Install native build prerequisites', test_suite)
+        self.assertIn('pip install -r requirements.txt', test_suite)
+
         for command in ('python test_installation.py', 'from hackgpt import HackGPT, AIEngine, ToolManager',
                         'flake8 hackgpt.py --count --select=E9,F63,F7,F82', 'docker run --rm hackgpt:test --help'):
             self.assertIn(command, basic)
