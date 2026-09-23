@@ -18,7 +18,7 @@ from pathlib import Path
 from socketserver import TCPServer
 
 from . import __version__
-from .adapter_lifecycle import AdapterLifecycle
+from .adapter_lifecycle import AdapterLifecycle, AdapterLifecyclePersistenceError
 from .adapter_report import build_adapter_report
 from .registry import ExecutionRegistry, RegistryPolicy
 from .server import Handler, LocalServer, State
@@ -237,6 +237,13 @@ class WorkbenchHandler(Handler):
             )
         except PermissionError as exc:
             self.reply(403, {"error": str(exc)})
+        except AdapterLifecyclePersistenceError:
+            self.reply(
+                503,
+                {
+                    "error": "Adapter execution ended without a durably published terminal record. Check run status; do not automatically re-execute."
+                },
+            )
         except (ValueError, TypeError, UnicodeDecodeError) as exc:
             self.reply(400, {"error": str(exc)})
         except Exception:

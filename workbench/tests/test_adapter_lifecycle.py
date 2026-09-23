@@ -1,11 +1,13 @@
 import json
 import sqlite3
 import tempfile
+import threading
 import unittest
 from pathlib import Path
 
 from workbench.adapter_lifecycle import (
     AdapterLifecycle,
+    AdapterLifecyclePersistenceError,
     request_digest,
     verify_lifecycle_record,
 )
@@ -65,6 +67,21 @@ class FakeRegistry:
         summary = self.plan(adapter_id, request)["request_summary"]
         if self.mutate_receipt:
             summary = {**summary, "project_label": "other"}
+        return receipt(summary)
+
+
+class BlockingRegistry(FakeRegistry):
+    def __init__(self):
+        super().__init__()
+        self.started = threading.Event()
+        self.release = threading.Event()
+
+    def execute_with_receipt(self, adapter_id, request, **kwargs):
+        self.executions += 1
+        self.started.set()
+        if not self.release.wait(2):
+            raise TimeoutError("synthetic blocking registry timeout")
+        summary = self.plan(adapter_id, request)["request_summary"]
         return receipt(summary)
 
 
@@ -181,6 +198,94 @@ class AdapterLifecycleTests(unittest.TestCase):
         recovered = reopened.get(record["id"])
         self.assertEqual(recovered["status"], "interrupted")
         self.assertEqual(recovered["outcome"], {"code": "interrupted_after_restart"})
+
+    def test_concurrent_execute_reaches_registry_once(self):
+        registry = BlockingRegistry()
+        life = AdapterLifecycle(self.db, registry)
+        record = life.plan("fake-safe", self.request)
+        life.approve(record["id"], record["plan_sha256"])
+        result = []
+        errors = []
+
+        def first():
+            try:
+                result.append(life.execute(record["id"], "fake-safe", self.request))
+            except Exception as exc:  # pragma: no cover - assertion below reports it
+                errors.append(exc)
+
+        worker = threading.Thread(target=first)
+        worker.start()
+        self.assertTrue(registry.started.wait(1))
+        with self.assertRaises(ValueError):
+            life.execute(record["id"], "fake-safe", self.request)
+        self.assertEqual(registry.executions, 1)
+        registry.release.set()
+        worker.join(timeout=2)
+        self.assertFalse(worker.is_alive())
+        self.assertEqual(errors, [])
+        self.assertEqual(result[0]["status"], "completed")
+        self.assertEqual(life.get(record["id"])["status"], "completed")
+
+    def test_successful_execution_storage_fault_is_interrupted_not_failed(self):
+        registry = FakeRegistry()
+        life = AdapterLifecycle(self.db, registry)
+        record = life.plan("fake-safe", self.request)
+        life.approve(record["id"], record["plan_sha256"])
+        original = life.store.replace
+        failed_once = False
+
+        def fail_completed_once(lifecycle_id, expected_status, candidate):
+            nonlocal failed_once
+            if (
+                expected_status == "executing"
+                and candidate.get("status") == "completed"
+                and not failed_once
+            ):
+                failed_once = True
+                raise OSError("synthetic terminal persistence failure")
+            return original(lifecycle_id, expected_status, candidate)
+
+        life.store.replace = fail_completed_once
+        with self.assertRaises(AdapterLifecyclePersistenceError):
+            life.execute(record["id"], "fake-safe", self.request)
+        stored = life.get(record["id"])
+        self.assertEqual(registry.executions, 1)
+        self.assertEqual(stored["status"], "interrupted")
+        self.assertEqual(stored["outcome"], {"code": "terminal_persistence_failed"})
+        self.assertIsNone(stored["receipt"])
+
+    def test_failed_execution_with_terminal_storage_fault_stays_non_successful(self):
+        registry = FakeRegistry(error=PermissionError("synthetic policy denial"))
+        life = AdapterLifecycle(self.db, registry)
+        record = life.plan("fake-safe", self.request)
+        life.approve(record["id"], record["plan_sha256"])
+        original = life.store.replace
+        failed_once = False
+
+        def fail_failed_once(lifecycle_id, expected_status, candidate):
+            nonlocal failed_once
+            if (
+                expected_status == "executing"
+                and candidate.get("status") == "failed"
+                and not failed_once
+            ):
+                failed_once = True
+                raise OSError("synthetic failure-state persistence error")
+            return original(lifecycle_id, expected_status, candidate)
+
+        life.store.replace = fail_failed_once
+        with self.assertRaises(AdapterLifecyclePersistenceError):
+            life.execute(record["id"], "fake-safe", self.request)
+        stored = life.get(record["id"])
+        self.assertEqual(stored["status"], "interrupted")
+        self.assertEqual(
+            stored["outcome"],
+            {
+                "code": "terminal_persistence_failed",
+                "prior_outcome_code": "policy_denied",
+            },
+        )
+        self.assertIsNone(stored["receipt"])
 
     def test_request_digest_accepts_path_and_rejects_opaque_objects(self):
         first = request_digest({"root": Path("/tmp/project"), "asset_key": "a"})

@@ -33,6 +33,10 @@ _ALLOWED_STATES = {
 _MAX_RECORD_BYTES = 2_000_000
 
 
+class AdapterLifecyclePersistenceError(RuntimeError):
+    """A terminal adapter outcome could not be durably recorded."""
+
+
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
 
@@ -357,24 +361,56 @@ class AdapterLifecycle:
                 or receipt["request_summary"] != record["request_summary"]
             ):
                 raise ValueError("execution receipt does not match the approved plan")
-            completed = copy.deepcopy(executing)
-            completed["status"] = "completed"
-            completed["updated_at"] = _now()
-            completed["receipt"] = receipt
-            completed["outcome"] = {"code": "completed_with_candidate_result"}
-            return self.store.replace(lifecycle_id, "executing", completed)
         except Exception as exc:
+            outcome_code = _failure_code(exc)
             terminal = copy.deepcopy(executing)
             terminal["status"] = (
                 "cancelled" if isinstance(exc, InterruptedError) else "failed"
             )
             terminal["updated_at"] = _now()
-            terminal["outcome"] = {"code": _failure_code(exc)}
+            terminal["outcome"] = {"code": outcome_code}
             try:
                 self.store.replace(lifecycle_id, "executing", terminal)
+            except Exception as persistence_exc:
+                uncertain = copy.deepcopy(executing)
+                uncertain["status"] = "interrupted"
+                uncertain["updated_at"] = _now()
+                uncertain["outcome"] = {
+                    "code": "terminal_persistence_failed",
+                    "prior_outcome_code": outcome_code,
+                }
+                try:
+                    self.store.replace(lifecycle_id, "executing", uncertain)
+                except Exception:
+                    pass
+                raise AdapterLifecyclePersistenceError(
+                    "adapter execution ended but its terminal state could not be durably recorded"
+                ) from persistence_exc
+            raise
+
+        completed = copy.deepcopy(executing)
+        completed["status"] = "completed"
+        completed["updated_at"] = _now()
+        completed["receipt"] = receipt
+        completed["outcome"] = {"code": "completed_with_candidate_result"}
+        try:
+            return self.store.replace(lifecycle_id, "executing", completed)
+        except Exception as persistence_exc:
+            # The adapter returned, but without a durable receipt we must not claim a
+            # durable success or invite an automatic retry. Preserve an explicit
+            # interrupted state when storage recovers; otherwise restart recovery
+            # will convert the still-executing row to interrupted.
+            uncertain = copy.deepcopy(executing)
+            uncertain["status"] = "interrupted"
+            uncertain["updated_at"] = _now()
+            uncertain["outcome"] = {"code": "terminal_persistence_failed"}
+            try:
+                self.store.replace(lifecycle_id, "executing", uncertain)
             except Exception:
                 pass
-            raise
+            raise AdapterLifecyclePersistenceError(
+                "adapter execution returned but its terminal receipt could not be durably recorded"
+            ) from persistence_exc
 
     def get(self, lifecycle_id: str) -> dict[str, Any] | None:
         return self.store.get(lifecycle_id)

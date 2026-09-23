@@ -2,13 +2,14 @@
 
 ## Post-merge review-readiness hardening (in progress)
 
-PR #1 merged into the HostX0 fork at `2048e591`; this is not upstream acceptance. The owner resumed development under the unchanged original hourly schedule. Historical implementation and hosted validation below are distinct from the current continuation's unpassed acceptance criteria in ROADMAP.md.
+PR #1 merged into the HostX0 fork at `2048e591`; this is not upstream acceptance. The owner resumed development and explicitly extended the same bounded hourly window on 2026-09-23 without resetting or duplicating it. Historical implementation and hosted validation below are distinct from the current continuation's unpassed acceptance criteria in ROADMAP.md.
 
 - Repair the shared public-web resolver boundary: reject multicast, IPv6 site-local/zone identifiers and explicit special/transition prefixes, including mixed DNS answers before connection.
 - Pre-cancelled/expired resolution dispatches no fresh resolver work; cancellation remains bounded even when a caller omits an explicit deadline. An OS resolver already running is not forcibly killed.
 - Align current capability/release/model documentation; retain the first-milestone ledger and roadmap byte-for-byte as linked historical files.
 - Repair legacy artifact-action setup and LDAP/PortAudio build prerequisites without dropping test/lint commands. Fork Docker CI is build-only, not publication. Other legacy defects remain separately tracked; setup fixes are not an all-green claim.
 - Add offline scope/cancellation, candidate-lifecycle and documentation/workflow regression coverage. See PROGRESS.md for exact observed results and unavailable integrations.
+- Harden adapter terminal publication: one approved lifecycle cannot execute concurrently twice; a terminal SQLite failure can no longer be mislabeled as an adapter execution failure or durable success. The recoverable state is `interrupted`, no receipt is exposed, and the API directs the operator to check status rather than automatically retry.
 
 ## 0.1.0 review preview
 

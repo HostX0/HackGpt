@@ -65,10 +65,38 @@ No external assessment target, real customer data/credentials, live external sca
 
 The formatter/runtime blocker is therefore closed by hosted evidence, but **whole-repository green status is not yet established**. PR #2 remains open and unmerged while the exact current Basic/Enterprise runtime and Docker paths finish or expose the next concrete blocker.
 
+
+## Current reliability candidate: exact-once execution and terminal-storage truthfulness
+
+This candidate is based on source `1f18fef08f6cd1290ba3f8a6b15eb6f13846115e`. Its exact current Workbench bytes were taken from Release Package run `35823563700`, generated PR checkout `cf3ff5e903c1c37ef5b001cc3c1c2379d8a4ee31`, artifact `10734560859`; the package itself had already passed its Ubuntu/macOS/Windows smoke jobs before this candidate was edited locally.
+
+The reliability change closes a concrete ambiguity in the reviewed adapter lifecycle rather than widening execution authority:
+
+- Two concurrent callers against one approved lifecycle cannot both reach the execution registry; the second caller is rejected after the first transition to `executing`.
+- Adapter execution/receipt validation errors still persist their real bounded outcome when storage is healthy.
+- If that terminal write fails, a recoverable second write records `interrupted` with `terminal_persistence_failed` instead of pretending the adapter itself failed. A known pre-persistence outcome may be retained only as a code such as `policy_denied`; no raw exception or request path is stored.
+- If an adapter returns successfully but the durable completed receipt cannot be committed, no receipt is exposed and no durable success is claimed. The lifecycle becomes `interrupted` when the fallback write succeeds; if storage remains unavailable, the existing restart recovery converts the still-`executing` row to interrupted evidence.
+- The HTTP layer returns a bounded 503 persistence error telling the operator to **Check run status** and not automatically re-execute. The existing frontend already performs a read-only status recovery rather than retrying the tool.
+
+Focused local validation on Linux/Python 3.13 against that exact packaged Workbench plus this candidate:
+
+- `test_adapter_lifecycle`, `test_adapter_api`, and `test_adapter_lifecycle_registry`: **21 passed, 0 failed/skipped** in 3.607s.
+- `test_adapter_ui.cjs`: **6 passed, 0 failed/skipped**; DOM/fetch contracts only, not browser E2E.
+- `compileall` for the changed lifecycle/server/test modules passed.
+- A complete local Workbench discovery was attempted but did not finish inside the execution-tool limit, so it is **not** counted as a full-suite pass. No external target, live scanner target, model call, customer row or credential was used.
+
+Fresh hosted state of the unmodified base `1f18fef...` at the latest pre-publication read:
+
+- Evidence Workbench `35823563686`: **success**.
+- Release Package `35823563700`: **success**; on this pull request the package/smoke path runs but trusted Sigstore attestation is intentionally not treated as an external-PR signing success.
+- Workbench Startup `35823563640`: **success**.
+- Basic CI `35823563775`: **success**.
+- Enterprise `35823563635`: still **in progress**. Code Quality plus Python 3.9, 3.10 and 3.11 test jobs were successful; Python 3.8 was still in dependency installation at the latest read. Downstream Enterprise completion is therefore not claimed, and none of these base results validate the unpublished candidate.
+
 ## Current gate impact
 
 - **A — evidence/document consistency:** advanced. Current claims distinguish baseline failures, source commits, hosted jobs and incomplete lanes. Historical records remain preserved.
-- **B — reliability:** previously published cancellation/recovery/storage protections remain; this CI slice does not claim new runtime reliability coverage.
+- **B — reliability:** materially advanced by the candidate's exact-once concurrent lifecycle fixture and explicit terminal-persistence-failure path. A successful adapter return without a durable receipt is now treated as interrupted/unknown review evidence, never durable success; hosted current-head validation is still pending.
 - **C — adapter/scope:** unchanged and preserved; no authority or scanner surface was expanded.
 - **D — reviewer evidence:** advanced by revision-bound CI/formatter diagnostics without relabeling repair artifacts as successful validation.
 - **E — usable release/build compatibility:** materially advanced. Black runtime installation, exact formatting and the full Enterprise code-quality job now pass, while current Basic/Enterprise runtime and Docker completion remain required before a whole-project pass.

@@ -197,6 +197,60 @@ class AdapterApiTests(unittest.TestCase):
         self.assertEqual(status, 400)
         self.assertIn("completed", payload["error"])
 
+    def test_terminal_storage_fault_returns_recoverable_status_without_retry(self):
+        project = Path(self.tmp.name) / "project-storage-fault"
+        project.mkdir()
+        request = {
+            "root": str(project),
+            "asset_key": "asset-storage-fault",
+            "max_files": 20,
+            "max_depth": 4,
+            "timeout_seconds": 5,
+        }
+        status, planned = self.call(
+            "POST",
+            "/api/adapters/plan",
+            {"adapter_id": "native-project-metadata", "request": request},
+        )
+        self.assertEqual(status, 201)
+        status, _ = self.call(
+            "POST",
+            f"/api/adapter-runs/{planned['id']}/approve",
+            {"plan_sha256": planned["plan_sha256"]},
+        )
+        self.assertEqual(status, 200)
+
+        store = self.server.adapter_lifecycle.store
+        original = store.replace
+        failed_once = False
+
+        def fail_completed_once(lifecycle_id, expected_status, candidate):
+            nonlocal failed_once
+            if (
+                expected_status == "executing"
+                and candidate.get("status") == "completed"
+                and not failed_once
+            ):
+                failed_once = True
+                raise OSError("synthetic terminal persistence failure")
+            return original(lifecycle_id, expected_status, candidate)
+
+        store.replace = fail_completed_once
+        status, payload = self.call(
+            "POST",
+            f"/api/adapter-runs/{planned['id']}/execute",
+            {"adapter_id": "native-project-metadata", "request": request},
+        )
+        self.assertEqual(status, 503)
+        self.assertIn("Check run status", payload["error"])
+        self.assertNotIn(str(project), payload["error"])
+
+        status, stored = self.call("GET", f"/api/adapter-runs/{planned['id']}")
+        self.assertEqual(status, 200)
+        self.assertEqual(stored["status"], "interrupted")
+        self.assertEqual(stored["outcome"], {"code": "terminal_persistence_failed"})
+        self.assertNotIn("receipt", stored)
+
     def test_changed_request_is_rejected_after_approval(self):
         project = Path(self.tmp.name) / "project-a"
         project.mkdir()
