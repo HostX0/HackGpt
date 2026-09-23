@@ -136,12 +136,24 @@ jobs:
         path: pylint-report.json
 
   test-suite:
-    name: 🧪 Test Suite
+    name: 🧪 Test Suite (${{ matrix.python-version }}, ${{ matrix.dependency-scope }})
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        python-version: ['3.8', '3.9', '3.10', '3.11']
+        include:
+          - python-version: '3.8'
+            requirements-file: requirements-ci-py38.txt
+            dependency-scope: legacy-core
+          - python-version: '3.9'
+            requirements-file: requirements.txt
+            dependency-scope: full
+          - python-version: '3.10'
+            requirements-file: requirements.txt
+            dependency-scope: full
+          - python-version: '3.11'
+            requirements-file: requirements.txt
+            dependency-scope: full
     steps:
     - uses: actions/checkout@v4
 
@@ -155,9 +167,9 @@ jobs:
         sudo apt-get update
         sudo apt-get install -y nmap nikto gobuster libldap2-dev libsasl2-dev portaudio19-dev python3-dev
 
-    - name: Install dependencies
+    - name: Install dependencies (${{ matrix.dependency-scope }})
       run: |
-        pip install -r requirements.txt
+        pip install -r "${{ matrix.requirements-file }}"
         pip install pytest pytest-cov pytest-xdist
 
     - name: Run unit tests
