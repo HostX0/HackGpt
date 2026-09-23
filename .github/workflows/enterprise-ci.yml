@@ -70,8 +70,32 @@ jobs:
         pip install black flake8 mypy pylint pytest-cov
         pip install -r requirements.txt
 
-    - name: Run Black formatter check
-      run: black --check --diff .
+    - name: Run Black formatter check and capture diagnostics
+      shell: bash
+      run: |
+        set +e
+        mkdir -p .ci/black
+        black --check --diff --color never . 2>&1 | tee .ci/black/black.txt
+        status=${PIPESTATUS[0]}
+        printf '%s\n' "$status" > .ci/black/exit-code.txt
+        exit 0
+
+    - name: Upload Black diagnostics
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: black-diagnostics
+        path: .ci/black/
+        if-no-files-found: error
+
+    - name: Enforce Black formatter check
+      shell: bash
+      run: |
+        status="$(cat .ci/black/exit-code.txt)"
+        if [ "$status" -ne 0 ]; then
+          echo "Black formatting failed; download the black-diagnostics artifact for the exact diff."
+          exit "$status"
+        fi
 
     - name: Run Flake8 linting
       run: flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
