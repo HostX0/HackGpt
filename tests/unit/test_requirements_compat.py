@@ -26,14 +26,13 @@ def test_tensorflow_is_kept_where_supported_but_does_not_block_python_314():
 
 
 def test_python38_ci_profile_covers_declared_legacy_core_imports():
-    spec = importlib.util.spec_from_file_location("installation_contract", INSTALLATION_MODULE)
+    spec = importlib.util.spec_from_file_location(
+        "installation_contract", INSTALLATION_MODULE
+    )
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
 
-    profile = {
-        canonicalize_name(item.name)
-        for item in _requirements("requirements-ci-py38.txt")
-    }
+    profile = {canonicalize_name(item.name) for item in _requirements("requirements-ci-py38.txt")}
     distribution_aliases = {"psycopg2": "psycopg2-binary"}
     expected = {
         canonicalize_name(distribution_aliases.get(name, name))
@@ -44,10 +43,7 @@ def test_python38_ci_profile_covers_declared_legacy_core_imports():
 
 
 def test_python38_ci_profile_excludes_redundant_heavy_optional_ml_stack():
-    profile = {
-        canonicalize_name(item.name)
-        for item in _requirements("requirements-ci-py38.txt")
-    }
+    profile = {canonicalize_name(item.name) for item in _requirements("requirements-ci-py38.txt")}
     assert canonicalize_name("tensorflow") not in profile
     assert canonicalize_name("torch") not in profile
     assert canonicalize_name("transformers") not in profile
