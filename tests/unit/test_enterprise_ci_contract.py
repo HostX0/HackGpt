@@ -8,6 +8,14 @@ def _workflow_text() -> str:
     return ENTERPRISE_WORKFLOW.read_text(encoding="utf-8")
 
 
+def test_black_version_is_pinned_to_published_repair_formatter():
+    workflow = _workflow_text()
+
+    assert "BLACK_VERSION: '26.5.1'" in workflow
+    assert 'pip install "black==${BLACK_VERSION}" flake8 mypy pylint' in workflow
+    assert "black --version" in workflow
+
+
 def test_black_diagnostics_preserve_fail_closed_formatter_gate():
     workflow = _workflow_text()
 

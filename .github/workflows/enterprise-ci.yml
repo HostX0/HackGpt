@@ -11,6 +11,7 @@ on:
 env:
   PYTHON_VERSION: '3.9'
   NODE_VERSION: '18'
+  BLACK_VERSION: '26.5.1'
 
 jobs:
   security-scan:
@@ -61,7 +62,9 @@ jobs:
         python-version: ${{ env.PYTHON_VERSION }}
 
     - name: Install quality tools
-      run: pip install black flake8 mypy pylint
+      run: |
+        pip install "black==${BLACK_VERSION}" flake8 mypy pylint
+        black --version
 
     - name: Run Black formatter check and capture diagnostics
       id: black_check
