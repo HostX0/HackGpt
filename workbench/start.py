@@ -23,6 +23,15 @@ class WorkspaceBusy(RuntimeError):
     """The selected local workspace cannot be exclusively acquired."""
 
 
+class StartupCheckError(RuntimeError):
+    """Stable, non-sensitive failure from one local startup prerequisite check."""
+
+    def __init__(self, check, code):
+        super().__init__(code)
+        self.check = check
+        self.code = code
+
+
 class WorkspaceLock:
     """Process-scoped advisory OS lock, not a stale PID file or distributed lease."""
 
@@ -77,17 +86,28 @@ def check_local_install(directory, port):
     root = Path(__file__).resolve().parent
     for name in ("index.html", "app.js", "adapter.js", "style.css"):
         if not (root / "static" / name).is_file():
-            raise ValueError("Incomplete application files")
-    with closing(sqlite3.connect(":memory:")) as database:
-        if database.execute("SELECT 1").fetchone() != (1,):
-            raise ValueError("SQLite check failed")
-    with tempfile.TemporaryFile(dir=directory, prefix=".starter-check-") as scratch:
-        scratch.write(b"local startup check\n")
-        scratch.flush()
-        os.fsync(scratch.fileno())
+            raise StartupCheckError("application_files", "incomplete_application_files")
+    try:
+        with closing(sqlite3.connect(":memory:")) as database:
+            if database.execute("SELECT 1").fetchone() != (1,):
+                raise StartupCheckError("sqlite_memory", "sqlite_unavailable")
+    except StartupCheckError:
+        raise
+    except Exception as exc:
+        raise StartupCheckError("sqlite_memory", "sqlite_unavailable") from exc
+    try:
+        with tempfile.TemporaryFile(dir=directory, prefix=".starter-check-") as scratch:
+            scratch.write(b"local startup check\n")
+            scratch.flush()
+            os.fsync(scratch.fileno())
+    except Exception as exc:
+        raise StartupCheckError("workspace_write", "workspace_not_writable") from exc
     # Availability at this instant, not a reservation against other applications.
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
-        probe.bind(("127.0.0.1", port))
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
+            probe.bind(("127.0.0.1", port))
+    except Exception as exc:
+        raise StartupCheckError("loopback_port", "loopback_port_unavailable") from exc
     return {
         "schema": "hackgpt.startup-check/v1",
         "status": "passed",
@@ -208,7 +228,12 @@ def main(argv=None):
     except KeyboardInterrupt:
         return 0
     except Exception as exc:
-        code = "workspace_busy" if isinstance(exc, WorkspaceBusy) else "startup_failed"
+        if isinstance(exc, WorkspaceBusy):
+            code, check = "workspace_busy", "workspace_lock"
+        elif isinstance(exc, StartupCheckError):
+            code, check = exc.code, exc.check
+        else:
+            code, check = "startup_failed", "startup"
         if args.json:
             print(
                 json.dumps(
@@ -216,12 +241,24 @@ def main(argv=None):
                         "schema": "hackgpt.startup-check/v1",
                         "status": "failed",
                         "code": code,
+                        "check": check,
                     }
                 )
             )
         elif code == "workspace_busy":
             print(
                 "Workspace is already in use or cannot be locked. Close its other process or choose another --data-dir. Do not delete the lock file.",
+                file=sys.stderr,
+            )
+        elif isinstance(exc, StartupCheckError):
+            hints = {
+                "incomplete_application_files": "Extract the complete application archive and retry.",
+                "sqlite_unavailable": "Use a Python build with working SQLite support.",
+                "workspace_not_writable": "Choose a writable local --data-dir with available space.",
+                "loopback_port_unavailable": "Choose another unused --port on this machine.",
+            }
+            print(
+                "Startup check failed at " + check + ". " + hints.get(code, "Review local prerequisites and retry.") + " No automatic repair was performed.",
                 file=sys.stderr,
             )
         else:

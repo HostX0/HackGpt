@@ -156,10 +156,77 @@ class StartupTests(unittest.TestCase):
                 ["--check-install", "--json", "--data-dir", str(self.directory)]
             )
         self.assertEqual(status, 1)
-        self.assertEqual(json.loads(output.getvalue())["status"], "failed")
+        document = json.loads(output.getvalue())
+        self.assertEqual(document["status"], "failed")
+        self.assertEqual(document["code"], "startup_failed")
+        self.assertEqual(document["check"], "startup")
         self.assertNotIn("sensitive-path-detail", output.getvalue())
         lock = start.WorkspaceLock(self.directory)
         lock.close()
+
+    def test_busy_port_reports_stable_failed_check_without_address_leak(self):
+        with socket.socket() as listener:
+            listener.bind(("127.0.0.1", 0))
+            listener.listen(1)
+            port = listener.getsockname()[1]
+            result = subprocess.run(
+                command(
+                    self.directory,
+                    "--check-install",
+                    "--json",
+                    "--port",
+                    str(port),
+                ),
+                capture_output=True,
+                text=True,
+                timeout=10,
+            )
+        self.assertEqual(result.returncode, 1)
+        document = json.loads(result.stdout)
+        self.assertEqual(document["code"], "loopback_port_unavailable")
+        self.assertEqual(document["check"], "loopback_port")
+        self.assertNotIn(str(self.directory), result.stdout + result.stderr)
+
+    def test_workspace_write_failure_reports_safe_machine_readable_stage(self):
+        with patch.object(
+            start.tempfile,
+            "TemporaryFile",
+            side_effect=OSError("private-workspace-detail"),
+        ), contextlib.redirect_stdout(io.StringIO()) as output:
+            status = start.main(
+                [
+                    "--check-install",
+                    "--json",
+                    "--data-dir",
+                    str(self.directory),
+                    "--port",
+                    str(unused_port()),
+                ]
+            )
+        self.assertEqual(status, 1)
+        document = json.loads(output.getvalue())
+        self.assertEqual(document["code"], "workspace_not_writable")
+        self.assertEqual(document["check"], "workspace_write")
+        self.assertNotIn("private-workspace-detail", output.getvalue())
+
+    def test_incomplete_application_files_have_stable_failure_stage(self):
+        with patch.object(Path, "is_file", return_value=False), contextlib.redirect_stdout(
+            io.StringIO()
+        ) as output:
+            status = start.main(
+                [
+                    "--check-install",
+                    "--json",
+                    "--data-dir",
+                    str(self.directory),
+                    "--port",
+                    str(unused_port()),
+                ]
+            )
+        self.assertEqual(status, 1)
+        document = json.loads(output.getvalue())
+        self.assertEqual(document["code"], "incomplete_application_files")
+        self.assertEqual(document["check"], "application_files")
 
     def test_lock_excludes_second_process_and_releases_without_deleting(self):
         lock = start.WorkspaceLock(self.directory)

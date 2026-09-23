@@ -13,7 +13,7 @@ python workbench/start.py --check-install
 python workbench/start.py --open-browser
 ```
 
-Use `python3` instead of `python` where needed. The check tests application files, SQLite in memory, a temporary workspace write and loopback port availability. It creates the workspace/lock file if absent, but does **not** open, inspect or recover existing reports. A successful check is not a full application, model or security validation.
+Use `python3` instead of `python` where needed. The check tests application files, SQLite in memory, a temporary workspace write and loopback port availability. It creates the workspace/lock file if absent, but does **not** open, inspect or recover existing reports. With `--json`, failures identify a stable non-sensitive `check` and `code` such as `workspace_write` / `workspace_not_writable` or `loopback_port` / `loopback_port_unavailable`; raw filesystem/socket exception text is not returned. A successful check is not a full application, model or security validation.
 
 Windows also has `workbench/start.cmd`. macOS/Linux has `workbench/start.command` (run `sh workbench/start.command` if executable permission was not retained). With no arguments these helpers request the browser; with arguments they pass them unchanged. OS download warnings, Python installation and native code signing are not bypassed. These are launch helpers, not signed native installers.
 

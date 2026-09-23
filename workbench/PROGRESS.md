@@ -102,3 +102,33 @@ Fresh hosted state of the unmodified base `1f18fef...` at the latest pre-publica
 - **E — usable release/build compatibility:** materially advanced. Black runtime installation, exact formatting and the full Enterprise code-quality job now pass, while current Basic/Enterprise runtime and Docker completion remain required before a whole-project pass.
 
 See [ROADMAP.md](ROADMAP.md) for the cumulative acceptance criteria. Portable-source packaging is not a native signed installer, advisory security reports are not certification, and no findings is not a security guarantee.
+
+
+## Current startup-diagnostics candidate: actionable fail-closed preflight
+
+This candidate is based on published source `6af6d78063b8e61381d833740a4fe24d6080ec95` and changes only the dependency-free launcher diagnostics, its startup regressions and matching documentation. It does not open report storage, contact inference, start a scanner, widen adapter authority or perform automatic repair.
+
+The existing `--check-install` preflight already tests application files, in-memory SQLite, a temporary workspace write and loopback-port availability. The candidate makes failures useful to operators and automation without exposing raw local exception details:
+
+- machine-readable failures now include a stable `check` field plus a bounded code: `application_files` / `incomplete_application_files`, `sqlite_memory` / `sqlite_unavailable`, `workspace_write` / `workspace_not_writable`, or `loopback_port` / `loopback_port_unavailable`;
+- workspace-lock contention remains separately reported as `workspace_lock` / `workspace_busy`;
+- unexpected failures remain the generic `startup` / `startup_failed`;
+- human-readable failure text gives one local recovery action for the stable category but never embeds the caught exception, path or socket detail;
+- successful preflight semantics remain unchanged and still do not inspect/recover assessment history.
+
+Focused local validation on Linux/Python 3.13 against the exact current release-package bytes plus this candidate:
+
+- `workbench.tests.test_startup`: **17 passed, 0 failed/skipped** in 8.301s, including new occupied-port, workspace-write and incomplete-files failure fixtures.
+- `workbench.tests.test_startup_trace`: **0 passed, 1 explicit macOS-only skip, 0 failures** on Linux.
+- `python -m workbench.tests.fresh_install_smoke`: passed, completing an owned synthetic assessment and durable export with no external target or live model.
+- `compileall` for the changed launcher/test modules passed.
+
+Fresh hosted state of the unmodified base `6af6d780...` at the latest read:
+
+- Evidence Workbench `35827760430`: **success**.
+- Workbench Startup `35827760479`: **success**.
+- Release Package `35827760428`: **success**.
+- Basic CI `35827760528`: **success**, including legacy readiness/import plus Docker build and Docker smoke.
+- Enterprise `35827760460`: still **in progress**. Code Quality, Security Advisory Reports and Python 3.9/3.10/3.11 unit/integration jobs are successful; Python 3.8 was still installing dependencies at the latest read. A transient job-log download returned `BlobNotFound` while that job was still running, so no root cause is inferred from it.
+
+These base results do not validate this unpublished candidate. Fresh hosted startup/Workbench/package/whole-repository results are required after publication.
