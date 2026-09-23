@@ -268,12 +268,19 @@ def main(argv=None):
             all_issues.extend("{0}: {1}".format(test_name, issue) for issue in issues)
 
     print("\n" + "=" * 52)
-    if all_issues.‚ˆš[
-”™\]Z\™YÚXÚÜÈ˜Z[YˆŠBˆ›Üˆ\ÜİYH[ˆ[Ú\ÜİY\Î‚ˆš[
-ˆHÌH‹™›Ü›X]
-\ÜİYJJBˆ™]\›ˆB‚ˆš[
-”™\]Z\™YÚXÚÜÈ\ÜÙYˆŠBˆYˆ\™ÜË˜ÚN‚ˆš[
-ˆ“Ü[Û˜[ØØ[›™\œËÛ[XH[™^\›˜[›İšY\ˆXØÙ\ÜÈÙ\™H›İ™\]Z\™Yˆ‚ˆ
-Bˆ™]\›ˆ‚‚šYˆ×Û˜[YW×ÈOH—×ÛXZ[—×È‚ˆŞ\Ë™^]
-XZ[Š
-JB
+    if all_issues:
+        print("Required checks failed:")
+        for issue in all_issues:
+            print("  - {0}".format(issue))
+        return 1
+
+    print("Required checks passed.")
+    if args.ci:
+        print(
+            "Optional scanners, Ollama and external provider access were not required."
+        )
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
