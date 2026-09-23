@@ -1,4 +1,5 @@
 """Cancellation-aware, DNS-pinned HTTP metadata transport for bounded web checks."""
+
 from __future__ import annotations
 
 import errno
@@ -13,15 +14,21 @@ from typing import Any
 from . import engine
 
 _PENDING_CONNECT = {
-    value for value in (
+    value
+    for value in (
         getattr(errno, "EINPROGRESS", None),
         getattr(errno, "EWOULDBLOCK", None),
         getattr(errno, "EALREADY", None),
         getattr(errno, "EINTR", None),
-        10035, 10036, 10037,
-    ) if value is not None
+        10035,
+        10036,
+        10037,
+    )
+    if value is not None
 }
-_CONNECTED = {value for value in (0, getattr(errno, "EISCONN", None), 10056) if value is not None}
+_CONNECTED = {
+    value for value in (0, getattr(errno, "EISCONN", None), 10056) if value is not None
+}
 
 
 def _connect_bounded(address: str, port: int, deadline: engine.Deadline, cancel=None):
@@ -58,12 +65,18 @@ def _connect_bounded(address: str, port: int, deadline: engine.Deadline, cancel=
         raise
 
 
-def inspect_remote(url: str, deadline: engine.Deadline | None = None, cancel=None) -> dict[str, Any]:
+def inspect_remote(
+    url: str, deadline: engine.Deadline | None = None, cancel=None
+) -> dict[str, Any]:
     """Inspect one HEAD response using one deadline across DNS, connect, TLS and response."""
     deadline = deadline or engine.Deadline(8)
     parsed = engine.validate_url(url)
     host = parsed.hostname.encode("idna").decode("ascii")
-    port = parsed.port if parsed.port is not None else (443 if parsed.scheme == "https" else 80)
+    port = (
+        parsed.port
+        if parsed.port is not None
+        else (443 if parsed.scheme == "https" else 80)
+    )
     address = engine.public_addresses(host, port, deadline=deadline, cancel=cancel)[0]
     if cancel is not None and cancel.is_set():
         raise engine.Cancelled()
@@ -88,34 +101,60 @@ def inspect_remote(url: str, deadline: engine.Deadline | None = None, cancel=Non
 
     watcher = None
     if cancel is not None:
-        watcher = threading.Thread(target=cancel_watcher, name="hackgpt-http-cancel", daemon=True)
+        watcher = threading.Thread(
+            target=cancel_watcher, name="hackgpt-http-cancel", daemon=True
+        )
         watcher.start()
     connection = http.client.HTTPConnection(host, port, timeout=deadline.remaining(8))
     try:
         if parsed.scheme == "https":
             sock.settimeout(deadline.remaining(8))
-            sock = engine.ssl.create_default_context().wrap_socket(sock, server_hostname=host)
+            sock = engine.ssl.create_default_context().wrap_socket(
+                sock, server_hostname=host
+            )
             holder["socket"] = sock
         sock.settimeout(deadline.remaining(8))
         if cancel is not None and cancel.is_set():
             raise engine.Cancelled()
         connection.sock = sock
-        connection.request("HEAD", parsed.path or "/", headers={"User-Agent": "HackGPT-Workbench/" + engine.__version__, "Connection": "close"})
+        connection.request(
+            "HEAD",
+            parsed.path or "/",
+            headers={
+                "User-Agent": "HackGPT-Workbench/" + engine.__version__,
+                "Connection": "close",
+            },
+        )
         sock.settimeout(deadline.remaining(8))
         response = connection.getresponse()
         if cancel is not None and cancel.is_set():
             raise engine.Cancelled()
         headers = {}
-        allowed = {"content-type", "content-security-policy", "x-frame-options", "strict-transport-security", "x-content-type-options", "referrer-policy"}
+        allowed = {
+            "content-type",
+            "content-security-policy",
+            "x-frame-options",
+            "strict-transport-security",
+            "x-content-type-options",
+            "referrer-policy",
+        }
         for name, value in response.getheaders():
             if name.lower() in allowed:
                 headers[name.lower()] = value[:2048]
-        return {"status": response.status, "headers": headers, "resolved_ip": address, "method": "HEAD", "redirect_followed": False}
+        return {
+            "status": response.status,
+            "headers": headers,
+            "resolved_ip": address,
+            "method": "HEAD",
+            "redirect_followed": False,
+        }
     except (OSError, engine.ssl.SSLError, http.client.HTTPException) as exc:
         if cancel is not None and cancel.is_set():
             raise engine.Cancelled() from exc
         if time.monotonic() >= deadline.expires_at:
-            raise engine.DeadlineExceeded("Assessment wall-clock deadline exceeded") from exc
+            raise engine.DeadlineExceeded(
+                "Assessment wall-clock deadline exceeded"
+            ) from exc
         raise
     finally:
         watcher_stop.set()

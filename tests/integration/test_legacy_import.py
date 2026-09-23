@@ -3,7 +3,6 @@ import subprocess
 import sys
 from pathlib import Path
 
-
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
@@ -26,7 +25,10 @@ def test_ci_installation_profile_is_offline_and_succeeds():
     )
     assert result.returncode == 0, result.stdout + result.stderr
     assert "CI/offline" in result.stdout
-    assert "Optional scanners, Ollama and external provider access were not required." in result.stdout
+    assert (
+        "Optional scanners, Ollama and external provider access were not required."
+        in result.stdout
+    )
 
 
 def test_legacy_entrypoints_import_without_network_calls():

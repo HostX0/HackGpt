@@ -4,24 +4,43 @@ import threading
 import time
 import unittest
 
-from workbench.engine import Assessment, Cancelled, Deadline, Scope, public_addresses, verify_integrity
+from workbench.engine import (
+    Assessment,
+    Cancelled,
+    Deadline,
+    Scope,
+    public_addresses,
+    verify_integrity,
+)
 from workbench.server import State, Store, durable_for_review
 
 
 def scope():
-    return Scope.parse({"target": "https://example.com", "mode": "analyst", "authorized": True,
-                        "authorization": "Reliability publication fixture"})
+    return Scope.parse(
+        {
+            "target": "https://example.com",
+            "mode": "analyst",
+            "authorized": True,
+            "authorization": "Reliability publication fixture",
+        }
+    )
 
 
 def reader(_):
-    return {"status": 200, "headers": {"content-type": "application/json"},
-            "method": "HEAD", "redirect_followed": False}
+    return {
+        "status": 200,
+        "headers": {"content-type": "application/json"},
+        "method": "HEAD",
+        "redirect_followed": False,
+    }
 
 
 class ReliabilityPublicationTests(unittest.TestCase):
     def test_assessment_never_notifies_terminal_unsealed_snapshot(self):
         snapshots = []
-        report = Assessment(scope(), remote_reader=reader, notify=snapshots.append).run()
+        report = Assessment(
+            scope(), remote_reader=reader, notify=snapshots.append
+        ).run()
         self.assertTrue(verify_integrity(report))
         self.assertTrue(snapshots)
         self.assertTrue(all(item["status"] == "running" for item in snapshots))
@@ -38,7 +57,9 @@ class ReliabilityPublicationTests(unittest.TestCase):
             result = state.get(assessment.report["id"])
             self.assertTrue(verify_integrity(result))
             self.assertEqual(result["durability"]["status"], "durable")
-            self.assertEqual(result["durability"]["terminal_publication"], "after_atomic_commit")
+            self.assertEqual(
+                result["durability"]["terminal_publication"], "after_atomic_commit"
+            )
             self.assertFalse(result["durability"]["checkpoint_gap_observed"])
             self.assertTrue(durable_for_review(result))
             self.assertEqual(state.store.get(result["id"]), result)
@@ -59,9 +80,13 @@ class ReliabilityPublicationTests(unittest.TestCase):
             result = state.get(assessment.report["id"])
             self.assertTrue(verify_integrity(result))
             self.assertEqual(result["durability"]["status"], "not_durable")
-            self.assertEqual(result["durability"]["reason"], "terminal_persistence_failed")
+            self.assertEqual(
+                result["durability"]["reason"], "terminal_persistence_failed"
+            )
             self.assertFalse(durable_for_review(result))
-            self.assertTrue(any("memory-only" in item for item in result["limitations"]))
+            self.assertTrue(
+                any("memory-only" in item for item in result["limitations"])
+            )
 
     def test_checkpoint_failure_is_visible_even_when_terminal_commit_succeeds(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -93,7 +118,10 @@ class ReliabilityPublicationTests(unittest.TestCase):
             recovered = state.store.get(running["id"])
             self.assertEqual(recovered["status"], "interrupted")
             self.assertEqual(recovered["durability"]["status"], "durable")
-            self.assertEqual(recovered["durability"]["terminal_publication"], "restart_recovery_transaction")
+            self.assertEqual(
+                recovered["durability"]["terminal_publication"],
+                "restart_recovery_transaction",
+            )
             self.assertTrue(durable_for_review(recovered))
             self.assertTrue(verify_integrity(recovered))
 

@@ -4,6 +4,7 @@ The adapter performs exactly one scoped HEAD request, never follows redirects an
 reads a response body. It is intentionally small: candidate header observations are
 not exploit proof and do not broaden authorization beyond the supplied target URL.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -26,10 +27,16 @@ class WebHeaderPolicy:
     max_requests: int = 1
 
     def __post_init__(self) -> None:
-        if isinstance(self.timeout_seconds, bool) or not isinstance(self.timeout_seconds, int) or not 1 <= self.timeout_seconds <= 60:
+        if (
+            isinstance(self.timeout_seconds, bool)
+            or not isinstance(self.timeout_seconds, int)
+            or not 1 <= self.timeout_seconds <= 60
+        ):
             raise ValueError("timeout_seconds must be an integer from 1 to 60")
         if self.max_requests != 1:
-            raise ValueError("native web header adapter is fixed to exactly one request")
+            raise ValueError(
+                "native web header adapter is fixed to exactly one request"
+            )
 
 
 class WebHeaderAdapter:
@@ -41,23 +48,25 @@ class WebHeaderAdapter:
         self.policy = policy or WebHeaderPolicy()
 
     def execution_declaration(self) -> dict[str, Any]:
-        return normalize_execution_declaration({
-            "schema": EXECUTION_SCHEMA,
-            "adapter": dict(self.identity),
-            "launcher": "native_python",
-            "effect_level": "passive",
-            "filesystem": "none",
-            "network": "scoped_target",
-            "subprocess": False,
-            "writes": False,
-            "follows_symlinks": False,
-            "limits": {
-                "max_objects": 1,
-                "max_requests": 1,
-                "timeout_seconds": self.policy.timeout_seconds,
-            },
-            "coverage_unit": "declared_http_response",
-        })
+        return normalize_execution_declaration(
+            {
+                "schema": EXECUTION_SCHEMA,
+                "adapter": dict(self.identity),
+                "launcher": "native_python",
+                "effect_level": "passive",
+                "filesystem": "none",
+                "network": "scoped_target",
+                "subprocess": False,
+                "writes": False,
+                "follows_symlinks": False,
+                "limits": {
+                    "max_objects": 1,
+                    "max_requests": 1,
+                    "timeout_seconds": self.policy.timeout_seconds,
+                },
+                "coverage_unit": "declared_http_response",
+            }
+        )
 
     def run(
         self,
@@ -74,7 +83,9 @@ class WebHeaderAdapter:
         """
         validate_url(target)
         if reader is None:
-            result = inspect_remote(target, deadline=Deadline(self.policy.timeout_seconds), cancel=cancel)
+            result = inspect_remote(
+                target, deadline=Deadline(self.policy.timeout_seconds), cancel=cancel
+            )
         else:
             result = reader(target)
         result = self._validate_result(result)
@@ -89,9 +100,13 @@ class WebHeaderAdapter:
         adapter_status = "completed"
         if not 200 <= status < 300:
             adapter_status = "partial"
-            notes.append("The scoped response was not 2xx, so HTML hardening coverage is inconclusive for the intended representation.")
+            notes.append(
+                "The scoped response was not 2xx, so HTML hardening coverage is inconclusive for the intended representation."
+            )
         elif "text/html" not in headers.get("content-type", "").lower():
-            notes.append("The scoped response was not identified as HTML; HTML-specific header rules were not applied.")
+            notes.append(
+                "The scoped response was not identified as HTML; HTML-specific header rules were not applied."
+            )
         else:
             rules = (
                 (
@@ -111,23 +126,25 @@ class WebHeaderAdapter:
             )
             for header, rule, title, severity, remediation in rules:
                 if header not in headers:
-                    findings.append({
-                        "rule": rule,
-                        "title": title,
-                        "severity": severity,
-                        "confidence": 0.95,
-                        "external_id": header,
-                        "evidence": {
-                            "method": "HEAD",
-                            "http_status": status,
-                            "absent_header": header,
-                            "scope": "declared response only",
-                            "body_read": False,
-                            "redirect_followed": False,
-                            "impact_proven": False,
-                        },
-                        "remediation": remediation,
-                    })
+                    findings.append(
+                        {
+                            "rule": rule,
+                            "title": title,
+                            "severity": severity,
+                            "confidence": 0.95,
+                            "external_id": header,
+                            "evidence": {
+                                "method": "HEAD",
+                                "http_status": status,
+                                "absent_header": header,
+                                "scope": "declared response only",
+                                "body_read": False,
+                                "redirect_followed": False,
+                                "impact_proven": False,
+                            },
+                            "remediation": remediation,
+                        }
+                    )
 
         payload = {
             "schema": ADAPTER_SCHEMA,
@@ -147,7 +164,11 @@ class WebHeaderAdapter:
         if set(result) - allowed:
             raise ValueError("web adapter reader returned unsupported fields")
         status = result.get("status")
-        if isinstance(status, bool) or not isinstance(status, int) or not 100 <= status <= 599:
+        if (
+            isinstance(status, bool)
+            or not isinstance(status, int)
+            or not 100 <= status <= 599
+        ):
             raise ValueError("web adapter reader returned an invalid status")
         headers = result.get("headers")
         if not isinstance(headers, dict) or len(headers) > 64:
@@ -158,13 +179,26 @@ class WebHeaderAdapter:
                 raise ValueError("web adapter headers must be text")
             lower = name.lower().strip()
             if lower not in {
-                "content-type", "content-security-policy", "x-frame-options",
-                "strict-transport-security", "x-content-type-options", "referrer-policy",
+                "content-type",
+                "content-security-policy",
+                "x-frame-options",
+                "strict-transport-security",
+                "x-content-type-options",
+                "referrer-policy",
             }:
                 raise ValueError("web adapter reader returned an unapproved header")
-            if len(value) > 2048 or any(ord(ch) < 32 and ch not in "\t" for ch in value) or any(ord(ch) == 127 for ch in value):
+            if (
+                len(value) > 2048
+                or any(ord(ch) < 32 and ch not in "\t" for ch in value)
+                or any(ord(ch) == 127 for ch in value)
+            ):
                 raise ValueError("web adapter reader returned an unsafe header value")
             clean_headers[lower] = value
-        if result.get("method") != "HEAD" or result.get("redirect_followed") is not False:
-            raise ValueError("web adapter reader violated the HEAD/no-redirect contract")
+        if (
+            result.get("method") != "HEAD"
+            or result.get("redirect_followed") is not False
+        ):
+            raise ValueError(
+                "web adapter reader violated the HEAD/no-redirect contract"
+            )
         return {"status": status, "headers": clean_headers}

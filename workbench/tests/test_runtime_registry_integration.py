@@ -16,12 +16,14 @@ _REAL_CREATE_CONNECTION = socket.create_connection
 
 
 def external_scope():
-    return Scope.parse({
-        "target": "https://example.com",
-        "mode": "analyst",
-        "authorized": True,
-        "authorization": "registry lifecycle fixture",
-    })
+    return Scope.parse(
+        {
+            "target": "https://example.com",
+            "mode": "analyst",
+            "authorized": True,
+            "authorization": "registry lifecycle fixture",
+        }
+    )
 
 
 class _HeadFixture(http.server.BaseHTTPRequestHandler):
@@ -69,37 +71,58 @@ class RuntimeAndRegistryIntegrationTests(unittest.TestCase):
     def test_external_baseline_uses_registry_adapter_contract(self):
         report = Assessment(
             external_scope(),
-            remote_reader=lambda _: {"status": 200, "headers": {"content-type": "text/html"}},
+            remote_reader=lambda _: {
+                "status": 200,
+                "headers": {"content-type": "text/html"},
+            },
         ).run()
-        checks = [check for check in report["checks"] if check.get("tool") == "native-web-headers"]
+        checks = [
+            check
+            for check in report["checks"]
+            if check.get("tool") == "native-web-headers"
+        ]
         self.assertEqual(len(checks), 1)
         self.assertEqual(checks[0]["status"], "completed")
         self.assertEqual(checks[0]["adapter"]["version"], "1")
         self.assertTrue(report["findings"])
-        self.assertTrue(all(item["verification"] == "candidate" for item in report["findings"]))
-        self.assertTrue(all(item["rule"].startswith("web/") for item in report["findings"]))
+        self.assertTrue(
+            all(item["verification"] == "candidate" for item in report["findings"])
+        )
+        self.assertTrue(
+            all(item["rule"].startswith("web/") for item in report["findings"])
+        )
 
     def test_registry_web_rule_maps_to_comparable_retest_coverage(self):
         prior = {
-            "id": "before", "target": "https://example.com", "environment": "authorized_public_web",
-            "status": "completed", "checks": [],
-            "findings": [{
-                "fingerprint": "f" * 64,
-                "rule": "web/missing-content-security-policy",
-                "title": "CSP missing",
-                "remediation": "Add a scoped CSP",
-                "evidence_sha256": "e" * 64,
-                "id": "old",
-            }],
+            "id": "before",
+            "target": "https://example.com",
+            "environment": "authorized_public_web",
+            "status": "completed",
+            "checks": [],
+            "findings": [
+                {
+                    "fingerprint": "f" * 64,
+                    "rule": "web/missing-content-security-policy",
+                    "title": "CSP missing",
+                    "remediation": "Add a scoped CSP",
+                    "evidence_sha256": "e" * 64,
+                    "id": "old",
+                }
+            ],
         }
         current = {
-            "id": "after", "target": "https://example.com", "environment": "authorized_public_web",
-            "status": "completed", "findings": [],
+            "id": "after",
+            "target": "https://example.com",
+            "environment": "authorized_public_web",
+            "status": "completed",
+            "findings": [],
             "checks": [{"tool": "native-web-headers", "status": "completed"}],
         }
         diff = compare_reports(prior, current)
         self.assertEqual(diff["counts"]["not_reproduced"], 1)
-        self.assertEqual(diff["items"][0]["recheck"]["coverage"]["tool"], "native-web-headers")
+        self.assertEqual(
+            diff["items"][0]["recheck"]["coverage"]["tool"], "native-web-headers"
+        )
 
     def test_partial_registry_result_keeps_assessment_inconclusive(self):
         report = Assessment(
@@ -108,7 +131,9 @@ class RuntimeAndRegistryIntegrationTests(unittest.TestCase):
         ).run()
         self.assertEqual(report["status"], "partial")
         self.assertEqual(report["verdict"], "inconclusive")
-        check = next(item for item in report["checks"] if item["tool"] == "native-web-headers")
+        check = next(
+            item for item in report["checks"] if item["tool"] == "native-web-headers"
+        )
         self.assertEqual(check["status"], "inconclusive")
 
     def test_cancel_interrupts_tls_handshake_after_connection(self):
@@ -128,9 +153,13 @@ class RuntimeAndRegistryIntegrationTests(unittest.TestCase):
         timer.start()
         started = time.monotonic()
         try:
-            with mock.patch("workbench.engine.public_addresses", return_value=["8.8.8.8"]), \
-                 mock.patch("workbench.network_transport._connect_bounded", return_value=sock), \
-                 mock.patch("workbench.engine.ssl.create_default_context", return_value=context):
+            with mock.patch(
+                "workbench.engine.public_addresses", return_value=["8.8.8.8"]
+            ), mock.patch(
+                "workbench.network_transport._connect_bounded", return_value=sock
+            ), mock.patch(
+                "workbench.engine.ssl.create_default_context", return_value=context
+            ):
                 with self.assertRaises(Cancelled):
                     inspect_remote("https://example.com", Deadline(2), cancel)
         finally:
@@ -148,15 +177,23 @@ class RuntimeAndRegistryIntegrationTests(unittest.TestCase):
         port = server.server_address[1]
 
         def owned_connect(_address, _port, deadline, _cancel=None):
-            return _REAL_CREATE_CONNECTION(("127.0.0.1", port), timeout=deadline.remaining(2))
+            return _REAL_CREATE_CONNECTION(
+                ("127.0.0.1", port), timeout=deadline.remaining(2)
+            )
 
         started = time.monotonic()
         timer.start()
         try:
-            with mock.patch("workbench.engine.public_addresses", return_value=["93.184.216.34"]), \
-                 mock.patch("workbench.network_transport._connect_bounded", side_effect=owned_connect):
+            with mock.patch(
+                "workbench.engine.public_addresses", return_value=["93.184.216.34"]
+            ), mock.patch(
+                "workbench.network_transport._connect_bounded",
+                side_effect=owned_connect,
+            ):
                 with self.assertRaises(Cancelled):
-                    WebHeaderAdapter().run("http://example.com", asset_key="cancel-fixture", cancel=cancel)
+                    WebHeaderAdapter().run(
+                        "http://example.com", asset_key="cancel-fixture", cancel=cancel
+                    )
         finally:
             timer.cancel()
             server.shutdown()
@@ -165,7 +202,9 @@ class RuntimeAndRegistryIntegrationTests(unittest.TestCase):
             _HeadFixture.delay = 0.0
         self.assertLess(time.monotonic() - started, 0.7)
         self.assertIn(_HeadFixture.requests, ([], [("HEAD", "/")]))
-        self.assertFalse(any(method == "GET" for method, _path in _HeadFixture.requests))
+        self.assertFalse(
+            any(method == "GET" for method, _path in _HeadFixture.requests)
+        )
 
     def test_shared_deadline_interrupts_slow_http_response(self):
         _HeadFixture.delay = 0.8
@@ -176,12 +215,18 @@ class RuntimeAndRegistryIntegrationTests(unittest.TestCase):
         port = server.server_address[1]
 
         def owned_connect(_address, _port, deadline, _cancel=None):
-            return _REAL_CREATE_CONNECTION(("127.0.0.1", port), timeout=deadline.remaining(2))
+            return _REAL_CREATE_CONNECTION(
+                ("127.0.0.1", port), timeout=deadline.remaining(2)
+            )
 
         started = time.monotonic()
         try:
-            with mock.patch("workbench.engine.public_addresses", return_value=["93.184.216.34"]), \
-                 mock.patch("workbench.network_transport._connect_bounded", side_effect=owned_connect):
+            with mock.patch(
+                "workbench.engine.public_addresses", return_value=["93.184.216.34"]
+            ), mock.patch(
+                "workbench.network_transport._connect_bounded",
+                side_effect=owned_connect,
+            ):
                 with self.assertRaises(DeadlineExceeded):
                     inspect_remote("http://example.com", Deadline(0.08))
         finally:
@@ -199,12 +244,18 @@ class RuntimeAndRegistryIntegrationTests(unittest.TestCase):
         port = server.server_address[1]
 
         def owned_connect(_address, _port, deadline, _cancel=None):
-            return _REAL_CREATE_CONNECTION(("127.0.0.1", port), timeout=deadline.remaining(2))
+            return _REAL_CREATE_CONNECTION(
+                ("127.0.0.1", port), timeout=deadline.remaining(2)
+            )
 
         started = time.monotonic()
         try:
-            with mock.patch("workbench.engine.public_addresses", return_value=["93.184.216.34"]), \
-                 mock.patch("workbench.network_transport._connect_bounded", side_effect=owned_connect):
+            with mock.patch(
+                "workbench.engine.public_addresses", return_value=["93.184.216.34"]
+            ), mock.patch(
+                "workbench.network_transport._connect_bounded",
+                side_effect=owned_connect,
+            ):
                 with self.assertRaises(DeadlineExceeded):
                     inspect_remote("https://example.com", Deadline(0.08))
         finally:

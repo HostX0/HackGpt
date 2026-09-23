@@ -79,7 +79,9 @@ def test_python_dependencies(imports=None):
     return not missing, missing
 
 
-def test_system_tools(required_tools=CI_REQUIRED_TOOLS, optional_tools=OPTIONAL_WORKSTATION_TOOLS):
+def test_system_tools(
+    required_tools=CI_REQUIRED_TOOLS, optional_tools=OPTIONAL_WORKSTATION_TOOLS
+):
     """Require the CI-provisioned tools and report broader workstation tools."""
     print("\nTesting system tools...")
     missing = []
@@ -102,7 +104,9 @@ def test_ollama(required=False):
     print("\nChecking optional local AI (Ollama)...")
     ollama = shutil.which("ollama")
     if not ollama:
-        print("  INFO Ollama is not installed; deterministic/no-AI operation remains available.")
+        print(
+            "  INFO Ollama is not installed; deterministic/no-AI operation remains available."
+        )
         return (not required), ([] if not required else ["ollama"])
 
     try:
@@ -122,7 +126,9 @@ def test_ollama(required=False):
     if result.returncode != 0:
         if required:
             return False, ["ollama list returned {0}".format(result.returncode)]
-        print("  INFO Ollama is installed but unavailable; no-AI operation remains available.")
+        print(
+            "  INFO Ollama is installed but unavailable; no-AI operation remains available."
+        )
         return True, []
 
     model_lines = [line for line in result.stdout.splitlines()[1:] if line.strip()]
@@ -271,7 +277,9 @@ def main(argv=None):
 
     print("Required checks passed.")
     if args.ci:
-        print("Optional scanners, Ollama and external provider access were not required.")
+        print(
+            "Optional scanners, Ollama and external provider access were not required."
+        )
     return 0
 
 

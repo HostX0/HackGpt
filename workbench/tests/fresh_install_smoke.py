@@ -5,6 +5,7 @@ server in-process, exercises the authenticated HTTP surface, runs the owned synt
 verification fixture, confirms durable persistence/export, and shuts everything down.
 It does not contact an external target or model service.
 """
+
 from __future__ import annotations
 
 import http.client
@@ -87,13 +88,20 @@ def main():
                 if report["status"] != "running":
                     break
                 time.sleep(0.05)
-            assert report is not None and report["status"] != "running", "synthetic run did not finish"
+            assert (
+                report is not None and report["status"] != "running"
+            ), "synthetic run did not finish"
             assert report["verdict"] == "verified_in_synthetic_lab_only"
             assert verify_integrity(report)
             assert report["durability"]["status"] == "durable"
-            assert any(item.get("verification") == "verified_in_lab" for item in report["findings"])
+            assert any(
+                item.get("verification") == "verified_in_lab"
+                for item in report["findings"]
+            )
 
-            status, export_headers, exported = call(server, "/api/runs/" + run_id + "/export.json")
+            status, export_headers, exported = call(
+                server, "/api/runs/" + run_id + "/export.json"
+            )
             assert status == 200, status
             assert "attachment" in export_headers.get("Content-Disposition", "")
             assert verify_integrity(json.loads(exported))
@@ -103,17 +111,22 @@ def main():
             history = json.loads(raw)["runs"]
             assert history and history[0]["id"] == run_id
 
-            print(json.dumps({
-                "schema": "hackgpt.fresh-install-smoke/v1",
-                "platform_runtime": __import__("platform").platform(),
-                "python": __import__("sys").version.split()[0],
-                "loopback_server": True,
-                "synthetic_assessment_completed": True,
-                "durable_export_verified": True,
-                "third_party_scanners_bundled": False,
-                "external_target_contacted": False,
-                "live_model_used": False,
-            }, indent=2))
+            print(
+                json.dumps(
+                    {
+                        "schema": "hackgpt.fresh-install-smoke/v1",
+                        "platform_runtime": __import__("platform").platform(),
+                        "python": __import__("sys").version.split()[0],
+                        "loopback_server": True,
+                        "synthetic_assessment_completed": True,
+                        "durable_export_verified": True,
+                        "third_party_scanners_bundled": False,
+                        "external_target_contacted": False,
+                        "live_model_used": False,
+                    },
+                    indent=2,
+                )
+            )
         finally:
             state.cancel.set()
             if state.worker:

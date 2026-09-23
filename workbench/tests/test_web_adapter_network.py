@@ -48,23 +48,36 @@ class WebAdapterOwnedNetworkFixtureTests(unittest.TestCase):
         port = self.server.server_address[1]
 
         def owned_connect(_address, _port, deadline, _cancel=None):
-            return _REAL_CREATE_CONNECTION(("127.0.0.1", port), timeout=deadline.remaining(2))
+            return _REAL_CREATE_CONNECTION(
+                ("127.0.0.1", port), timeout=deadline.remaining(2)
+            )
 
         # The adapter is given an ordinary public URL so its normal URL contract remains
         # unchanged. Only the test's resolution/connect boundary is redirected to this
         # owned ephemeral fixture; the actual HTTP transport code path still runs.
-        with mock.patch("workbench.engine.public_addresses", return_value=["93.184.216.34"]), \
-             mock.patch("workbench.network_transport._connect_bounded", side_effect=owned_connect):
-            return WebHeaderAdapter().run("http://example.com", asset_key="owned-network-fixture")
+        with mock.patch(
+            "workbench.engine.public_addresses", return_value=["93.184.216.34"]
+        ), mock.patch(
+            "workbench.network_transport._connect_bounded", side_effect=owned_connect
+        ):
+            return WebHeaderAdapter().run(
+                "http://example.com", asset_key="owned-network-fixture"
+            )
 
     def test_production_reader_path_uses_head_and_yields_candidates(self):
         result = self._run()
         self.assertEqual(_HeadFixture.requests, [("HEAD", "/")])
         self.assertEqual(result["status"], "completed")
-        self.assertEqual({item["rule"] for item in result["findings"]}, {
-            "web/missing-content-security-policy", "web/missing-content-type-options",
-        })
-        self.assertTrue(all(item["verification"] == "candidate" for item in result["findings"]))
+        self.assertEqual(
+            {item["rule"] for item in result["findings"]},
+            {
+                "web/missing-content-security-policy",
+                "web/missing-content-type-options",
+            },
+        )
+        self.assertTrue(
+            all(item["verification"] == "candidate" for item in result["findings"])
+        )
         self.assertNotIn("resolved_ip", repr(result))
 
     def test_production_reader_path_fixed_fixture_has_no_findings(self):

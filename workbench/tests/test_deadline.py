@@ -2,13 +2,26 @@ import socket
 import time
 import unittest
 
-from workbench.engine import Assessment, Deadline, DeadlineExceeded, Scope, public_addresses, verify_integrity
+from workbench.engine import (
+    Assessment,
+    Deadline,
+    DeadlineExceeded,
+    Scope,
+    public_addresses,
+    verify_integrity,
+)
 from workbench.ollama_runtime import LocalRuntime, OllamaError
 
 
 def scope():
-    return Scope.parse({"target": "https://example.com", "mode": "analyst", "authorized": True,
-                        "authorization": "Deadline fixture"})
+    return Scope.parse(
+        {
+            "target": "https://example.com",
+            "mode": "analyst",
+            "authorized": True,
+            "authorization": "Deadline fixture",
+        }
+    )
 
 
 class DeadlineTests(unittest.TestCase):
@@ -21,6 +34,7 @@ class DeadlineTests(unittest.TestCase):
         def slow(*_args, **_kwargs):
             time.sleep(0.5)
             return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("8.8.8.8", 443))]
+
         started = time.monotonic()
         with self.assertRaises(DeadlineExceeded):
             public_addresses("example.com", 443, slow, Deadline(0.03))
@@ -29,15 +43,34 @@ class DeadlineTests(unittest.TestCase):
     def test_assessment_reports_timed_out_not_completed(self):
         def slow_reader(_):
             time.sleep(0.04)
-            return {"status": 200, "headers": {"content-type": "application/json"}, "method": "HEAD", "redirect_followed": False}
-        report = Assessment(scope(), remote_reader=slow_reader, deadline_seconds=0.01).run()
+            return {
+                "status": 200,
+                "headers": {"content-type": "application/json"},
+                "method": "HEAD",
+                "redirect_followed": False,
+            }
+
+        report = Assessment(
+            scope(), remote_reader=slow_reader, deadline_seconds=0.01
+        ).run()
         self.assertEqual(report["status"], "timed_out")
         self.assertEqual(report["verdict"], "inconclusive")
-        self.assertTrue(any(check["tool"] == "assessment_deadline" for check in report["checks"]))
+        self.assertTrue(
+            any(check["tool"] == "assessment_deadline" for check in report["checks"])
+        )
         self.assertTrue(verify_integrity(report))
 
     def test_report_declares_wall_clock_budget(self):
-        report = Assessment(scope(), remote_reader=lambda _: {"status": 200, "headers": {"content-type": "application/json"}, "method": "HEAD", "redirect_followed": False}, deadline_seconds=5).run()
+        report = Assessment(
+            scope(),
+            remote_reader=lambda _: {
+                "status": 200,
+                "headers": {"content-type": "application/json"},
+                "method": "HEAD",
+                "redirect_followed": False,
+            },
+            deadline_seconds=5,
+        ).run()
         self.assertEqual(report["execution_budget"]["wall_clock_seconds"], 5.0)
         self.assertIn("network/model", report["execution_budget"]["enforcement"])
 

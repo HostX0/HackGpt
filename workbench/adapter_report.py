@@ -3,6 +3,7 @@
 This is a reporting bridge only. It performs no adapter I/O or model inference and it
 never upgrades candidate observations to an independently verified state.
 """
+
 from __future__ import annotations
 
 import copy
@@ -14,7 +15,9 @@ from .execution_receipts import normalize_execution_receipt
 
 
 def _report_id(lifecycle_id: str) -> str:
-    return hashlib.sha256(("adapter-report:" + lifecycle_id).encode("utf-8")).hexdigest()[:32]
+    return hashlib.sha256(
+        ("adapter-report:" + lifecycle_id).encode("utf-8")
+    ).hexdigest()[:32]
 
 
 def _target(summary: dict) -> str:
@@ -40,8 +43,14 @@ def build_adapter_report(record: dict) -> dict:
         finding["observed_at"] = record["updated_at"]
 
     result_status = result.get("status")
-    status = "completed" if result_status == "completed" else ("failed" if result_status == "error" else "partial")
-    check_status = "inconclusive" if result_status in {"partial", "skipped"} else result_status
+    status = (
+        "completed"
+        if result_status == "completed"
+        else ("failed" if result_status == "error" else "partial")
+    )
+    check_status = (
+        "inconclusive" if result_status in {"partial", "skipped"} else result_status
+    )
     adapter = receipt["declaration"]["adapter"]
     event = {
         "sequence": 1,
@@ -71,17 +80,23 @@ def build_adapter_report(record: dict) -> dict:
         "authorization": "Exact reviewed adapter plan " + record["plan_sha256"][:16],
         "verification_approved": False,
         "findings": findings,
-        "checks": [{
-            "tool": adapter["id"],
-            "status": check_status,
-            "adapter": copy.deepcopy(adapter),
-            "coverage": copy.deepcopy(result.get("coverage", {})),
-            "receipt_usage": copy.deepcopy(receipt["usage"]),
-            "plan_sha256": record["plan_sha256"],
-            **({"reason": result["error"]} if result.get("error") else {}),
-        }],
+        "checks": [
+            {
+                "tool": adapter["id"],
+                "status": check_status,
+                "adapter": copy.deepcopy(adapter),
+                "coverage": copy.deepcopy(result.get("coverage", {})),
+                "receipt_usage": copy.deepcopy(receipt["usage"]),
+                "plan_sha256": record["plan_sha256"],
+                **({"reason": result["error"]} if result.get("error") else {}),
+            }
+        ],
         "events": [event],
-        "verdict": "observations_need_context" if findings else "no_findings_in_executed_checks",
+        "verdict": (
+            "observations_need_context"
+            if findings
+            else "no_findings_in_executed_checks"
+        ),
         "execution_budget": {
             "wall_clock_seconds": receipt["declaration"]["limits"]["timeout_seconds"],
             "native_http_requests": receipt["declaration"]["limits"]["max_requests"],

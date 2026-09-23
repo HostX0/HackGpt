@@ -1,4 +1,5 @@
 """Integration tests for reviewer-facing retest and evidence bundle endpoints."""
+
 import http.client
 import io
 import json
@@ -10,7 +11,13 @@ import zipfile
 from workbench.engine import Assessment, Scope
 from workbench.server import LocalServer, State
 
-BASE = {"target": "https://example.com", "mode": "analyst", "authorized": True, "authorization": "Reviewer API fixture", "approve_verification": False}
+BASE = {
+    "target": "https://example.com",
+    "mode": "analyst",
+    "authorized": True,
+    "authorization": "Reviewer API fixture",
+    "approve_verification": False,
+}
 
 
 class ReviewApiTests(unittest.TestCase):
@@ -25,11 +32,15 @@ class ReviewApiTests(unittest.TestCase):
         self.state.cancel.set()
         if self.state.worker:
             self.state.worker.join(timeout=5)
-        self.server.shutdown(); self.server.server_close(); self.thread.join(timeout=2)
+        self.server.shutdown()
+        self.server.server_close()
+        self.thread.join(timeout=2)
         self.directory.cleanup()
 
     def call(self, path):
-        conn = http.client.HTTPConnection("127.0.0.1", self.server.server_port, timeout=3)
+        conn = http.client.HTTPConnection(
+            "127.0.0.1", self.server.server_port, timeout=3
+        )
         try:
             conn.request("GET", path, headers={"Authorization": "Bearer review-token"})
             response = conn.getresponse()
@@ -39,7 +50,16 @@ class ReviewApiTests(unittest.TestCase):
 
     def make_report(self, headers):
         scope = Scope.parse(BASE)
-        report = Assessment(scope, remote_reader=lambda _: {"status": 200, "headers": {"content-type": "text/html", **headers}, "method": "HEAD", "redirect_followed": False, "resolved_ip": "203.0.113.10"}).run()
+        report = Assessment(
+            scope,
+            remote_reader=lambda _: {
+                "status": 200,
+                "headers": {"content-type": "text/html", **headers},
+                "method": "HEAD",
+                "redirect_followed": False,
+                "resolved_ip": "203.0.113.10",
+            },
+        ).run()
         self.state.store.save(report)
         return report
 
@@ -57,8 +77,15 @@ class ReviewApiTests(unittest.TestCase):
 
     def test_compare_endpoint_does_not_claim_fixed(self):
         previous = self.make_report({})
-        current = self.make_report({"content-security-policy": "default-src 'self'", "x-content-type-options": "nosniff"})
-        status, _, raw = self.call(f"/api/runs/{previous['id']}/compare/{current['id']}")
+        current = self.make_report(
+            {
+                "content-security-policy": "default-src 'self'",
+                "x-content-type-options": "nosniff",
+            }
+        )
+        status, _, raw = self.call(
+            f"/api/runs/{previous['id']}/compare/{current['id']}"
+        )
         self.assertEqual(status, 200)
         diff = json.loads(raw)
         self.assertEqual(diff["counts"]["not_reproduced"], 2)

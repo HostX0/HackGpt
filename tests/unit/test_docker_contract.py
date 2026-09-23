@@ -1,6 +1,5 @@
 from pathlib import Path
 
-
 ROOT = Path(__file__).resolve().parents[2]
 DOCKERFILE = ROOT / "Dockerfile"
 INSTALLER = ROOT / "install.sh"
@@ -16,7 +15,7 @@ def test_docker_build_uses_explicit_side_effect_free_install_context():
     assert 'if [ "$INSTALL_CONTEXT" = "host" ]; then' in installer
     assert "apt-get upgrade -y" in installer
     assert "ollama pull llama2:7b" in installer
-    assert 'Container install: skipping full distribution upgrade' in installer
+    assert "Container install: skipping full distribution upgrade" in installer
     assert (
         "Container install: skipping Ollama installer, daemon start and model download"
         in installer
@@ -53,7 +52,7 @@ def test_dockerignore_excludes_local_secrets_and_generated_state_but_keeps_templ
 def test_container_mode_does_not_change_host_mode_default():
     installer = INSTALLER.read_text(encoding="utf-8")
 
-    assert 'HACKGPT_INSTALL_CONTEXT:-host' in installer
+    assert "HACKGPT_INSTALL_CONTEXT:-host" in installer
     assert "ROOT=(sudo)" in installer
     assert 'run_root ln -sf "$(pwd)/hackgpt.py" /usr/local/bin/hackgpt' in installer
 
@@ -84,9 +83,7 @@ def test_container_install_mode_has_no_model_download_or_privilege_escalation(tm
     for command, exit_code in fake_commands:
         path = fake_bin / command
         path.write_text(
-            "#!/bin/sh\n"
-            f"echo \"{command} $*\" >> \"{calls}\"\n"
-            f"exit {exit_code}\n",
+            "#!/bin/sh\n" f'echo "{command} $*" >> "{calls}"\n' f"exit {exit_code}\n",
             encoding="utf-8",
         )
         path.chmod(0o755)

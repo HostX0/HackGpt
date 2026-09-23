@@ -2,7 +2,6 @@ import unittest
 
 from workbench.execution_receipts import normalize_execution_receipt
 
-
 DECL = {
     "schema": "hackgpt.execution-declaration/v1",
     "adapter": {"id": "fake-safe", "version": "1"},
@@ -42,7 +41,9 @@ class NestedReceiptSafetyTests(unittest.TestCase):
             normalize_execution_receipt(payload({"steps": [{"command": "whoami"}]}))
 
     def test_benign_nested_summary_is_allowed(self):
-        result = normalize_execution_receipt(payload({"scope": {"path": "src", "method": "metadata"}}))
+        result = normalize_execution_receipt(
+            payload({"scope": {"path": "src", "method": "metadata"}})
+        )
         self.assertEqual(result["request_summary"]["scope"]["path"], "src")
 
 

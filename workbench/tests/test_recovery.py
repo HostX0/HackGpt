@@ -10,8 +10,14 @@ from workbench.server import State, Store
 
 
 def scope():
-    return Scope.parse({"target": "https://example.com", "mode": "analyst", "authorized": True,
-                        "authorization": "Recovery fixture"})
+    return Scope.parse(
+        {
+            "target": "https://example.com",
+            "mode": "analyst",
+            "authorized": True,
+            "authorization": "Recovery fixture",
+        }
+    )
 
 
 class RecoveryTests(unittest.TestCase):
@@ -36,7 +42,15 @@ class RecoveryTests(unittest.TestCase):
 
     def test_finalize_atomically_retires_matching_checkpoint(self):
         store = Store(self.directory.name)
-        report = Assessment(scope(), remote_reader=lambda _: {"status": 200, "headers": {"content-type": "application/json"}, "method": "HEAD", "redirect_followed": False}).run()
+        report = Assessment(
+            scope(),
+            remote_reader=lambda _: {
+                "status": 200,
+                "headers": {"content-type": "application/json"},
+                "method": "HEAD",
+                "redirect_followed": False,
+            },
+        ).run()
         running = copy.deepcopy(report)
         running.pop("integrity")
         running["status"] = "running"
@@ -52,9 +66,16 @@ class RecoveryTests(unittest.TestCase):
         running = Assessment(scope()).report
         store.save_active(running)
         with closing(sqlite3.connect(store.path)) as connection:
-            data = json.loads(connection.execute("SELECT content FROM active_runs WHERE id = ?", (running["id"],)).fetchone()[0])
+            data = json.loads(
+                connection.execute(
+                    "SELECT content FROM active_runs WHERE id = ?", (running["id"],)
+                ).fetchone()[0]
+            )
             data.setdefault("events", []).append({"sequence": 1, "sha256": "fake"})
-            connection.execute("UPDATE active_runs SET content = ? WHERE id = ?", (json.dumps(data), running["id"]))
+            connection.execute(
+                "UPDATE active_runs SET content = ? WHERE id = ?",
+                (json.dumps(data), running["id"]),
+            )
             connection.commit()
         self.assertEqual(store.recover_interrupted(), 0)
         self.assertIsNone(store.get(running["id"]))
@@ -62,7 +83,15 @@ class RecoveryTests(unittest.TestCase):
 
     def test_running_only_checkpoint_contract(self):
         store = Store(self.directory.name)
-        final = Assessment(scope(), remote_reader=lambda _: {"status": 200, "headers": {"content-type": "application/json"}, "method": "HEAD", "redirect_followed": False}).run()
+        final = Assessment(
+            scope(),
+            remote_reader=lambda _: {
+                "status": 200,
+                "headers": {"content-type": "application/json"},
+                "method": "HEAD",
+                "redirect_followed": False,
+            },
+        ).run()
         with self.assertRaises(ValueError):
             store.save_active(final)
 

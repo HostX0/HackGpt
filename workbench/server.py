@@ -1,4 +1,5 @@
 """Single-user loopback workbench. Not a public-facing production web server."""
+
 import argparse
 import copy
 import hmac
@@ -37,8 +38,12 @@ class Store:
         directory.mkdir(parents=True, exist_ok=True, mode=0o700)
         self.path = directory / "reports.sqlite3"
         with closing(sqlite3.connect(self.path)) as connection:
-            connection.execute("CREATE TABLE IF NOT EXISTS reports (id TEXT PRIMARY KEY, started TEXT NOT NULL, content TEXT NOT NULL)")
-            connection.execute("CREATE TABLE IF NOT EXISTS active_runs (id TEXT PRIMARY KEY, started TEXT NOT NULL, content TEXT NOT NULL)")
+            connection.execute(
+                "CREATE TABLE IF NOT EXISTS reports (id TEXT PRIMARY KEY, started TEXT NOT NULL, content TEXT NOT NULL)"
+            )
+            connection.execute(
+                "CREATE TABLE IF NOT EXISTS active_runs (id TEXT PRIMARY KEY, started TEXT NOT NULL, content TEXT NOT NULL)"
+            )
             connection.commit()
         try:
             self.path.chmod(0o600)
@@ -46,13 +51,20 @@ class Store:
             pass
 
     def save_active(self, report):
-        if not isinstance(report, dict) or report.get("status") != "running" or not isinstance(report.get("id"), str):
+        if (
+            not isinstance(report, dict)
+            or report.get("status") != "running"
+            or not isinstance(report.get("id"), str)
+        ):
             raise ValueError("Only running report snapshots may be checkpointed")
         raw = json.dumps(report)
         if len(raw.encode()) > 2_000_000:
             raise ValueError("Running report snapshot is too large")
         with closing(sqlite3.connect(self.path, timeout=5)) as connection:
-            connection.execute("INSERT OR REPLACE INTO active_runs VALUES (?, ?, ?)", (report["id"], report["started_at"], raw))
+            connection.execute(
+                "INSERT OR REPLACE INTO active_runs VALUES (?, ?, ?)",
+                (report["id"], report["started_at"], raw),
+            )
             connection.commit()
 
     def finalize(self, report):
@@ -61,7 +73,10 @@ class Store:
             raise ValueError("Refusing to finalize a running or invalid report")
         with closing(sqlite3.connect(self.path, timeout=5)) as connection:
             connection.execute("BEGIN IMMEDIATE")
-            connection.execute("INSERT OR REPLACE INTO reports VALUES (?, ?, ?)", (report["id"], report["started_at"], json.dumps(report)))
+            connection.execute(
+                "INSERT OR REPLACE INTO reports VALUES (?, ?, ?)",
+                (report["id"], report["started_at"], json.dumps(report)),
+            )
             connection.execute("DELETE FROM active_runs WHERE id = ?", (report["id"],))
             connection.commit()
 
@@ -73,11 +88,17 @@ class Store:
         """Convert trustworthy stale running checkpoints into explicit interrupted reports."""
         recovered = 0
         with closing(sqlite3.connect(self.path, timeout=5)) as connection:
-            rows = connection.execute("SELECT id, content FROM active_runs ORDER BY started").fetchall()
+            rows = connection.execute(
+                "SELECT id, content FROM active_runs ORDER BY started"
+            ).fetchall()
             for run_id, raw in rows:
                 try:
                     report = json.loads(raw)
-                    if not isinstance(report, dict) or report.get("id") != run_id or report.get("status") != "running":
+                    if (
+                        not isinstance(report, dict)
+                        or report.get("id") != run_id
+                        or report.get("status") != "running"
+                    ):
                         raise ValueError("invalid active snapshot")
                     candidate = copy.deepcopy(report)
                     seal(candidate)
@@ -86,7 +107,11 @@ class Store:
                     report["status"] = "interrupted"
                     report["verdict"] = "inconclusive"
                     report["finished_at"] = now()
-                    previous = report["events"][-1]["sha256"] if report.get("events") else "0" * 64
+                    previous = (
+                        report["events"][-1]["sha256"]
+                        if report.get("events")
+                        else "0" * 64
+                    )
                     event = {
                         "sequence": len(report.get("events", [])) + 1,
                         "at": now(),
@@ -97,7 +122,9 @@ class Store:
                     }
                     event["sha256"] = digest(event)
                     report.setdefault("events", []).append(event)
-                    report.setdefault("limitations", []).append("This run was interrupted before durable finalization and was recovered from a running checkpoint.")
+                    report.setdefault("limitations", []).append(
+                        "This run was interrupted before durable finalization and was recovered from a running checkpoint."
+                    )
                     report["durability"] = {
                         "status": "durable",
                         "storage": "sqlite",
@@ -107,17 +134,26 @@ class Store:
                     seal(report)
                     if not verify_integrity(report):
                         raise ValueError("recovered report failed integrity validation")
-                    connection.execute("INSERT OR REPLACE INTO reports VALUES (?, ?, ?)", (run_id, report["started_at"], json.dumps(report)))
-                    connection.execute("DELETE FROM active_runs WHERE id = ?", (run_id,))
+                    connection.execute(
+                        "INSERT OR REPLACE INTO reports VALUES (?, ?, ?)",
+                        (run_id, report["started_at"], json.dumps(report)),
+                    )
+                    connection.execute(
+                        "DELETE FROM active_runs WHERE id = ?", (run_id,)
+                    )
                     recovered += 1
                 except (ValueError, TypeError, json.JSONDecodeError):
-                    connection.execute("DELETE FROM active_runs WHERE id = ?", (run_id,))
+                    connection.execute(
+                        "DELETE FROM active_runs WHERE id = ?", (run_id,)
+                    )
             connection.commit()
         return recovered
 
     def get(self, run_id):
         with closing(sqlite3.connect(self.path)) as connection:
-            row = connection.execute("SELECT content FROM reports WHERE id = ?", (run_id,)).fetchone()
+            row = connection.execute(
+                "SELECT content FROM reports WHERE id = ?", (run_id,)
+            ).fetchone()
         if not row:
             return None
         report = json.loads(row[0])
@@ -127,12 +163,26 @@ class Store:
 
     def recent(self):
         with closing(sqlite3.connect(self.path)) as connection:
-            rows = connection.execute("SELECT content FROM reports ORDER BY started DESC LIMIT 50").fetchall()
+            rows = connection.execute(
+                "SELECT content FROM reports ORDER BY started DESC LIMIT 50"
+            ).fetchall()
         result = []
         for row in rows:
             report = json.loads(row[0])
             if verify_integrity(report):
-                result.append({k: report[k] for k in ("id", "started_at", "target", "mode", "status", "verdict")})
+                result.append(
+                    {
+                        k: report[k]
+                        for k in (
+                            "id",
+                            "started_at",
+                            "target",
+                            "mode",
+                            "status",
+                            "verdict",
+                        )
+                    }
+                )
         return result
 
 
@@ -151,7 +201,9 @@ class State:
         scope = Scope.parse(data)
         with self.lock:
             if self.active:
-                raise Busy("An assessment is already running. Cancel it or let its bounded work finish.")
+                raise Busy(
+                    "An assessment is already running. Cancel it or let its bounded work finish."
+                )
             self.cancel = threading.Event()
             assessment = Assessment(scope, cancel=self.cancel, notify=self.update)
             self.active = assessment.report["id"]
@@ -164,7 +216,9 @@ class State:
                 self.active = None
                 self.live = None
                 raise
-            self.worker = threading.Thread(target=self.run, args=(assessment,), daemon=True)
+            self.worker = threading.Thread(
+                target=self.run, args=(assessment,), daemon=True
+            )
             self.worker.start()
         return run_id
 
@@ -264,7 +318,9 @@ class Handler(BaseHTTPRequestHandler):
     def log_message(self, *_):
         pass
 
-    def reply(self, status, value, kind="application/json; charset=utf-8", attachment=None):
+    def reply(
+        self, status, value, kind="application/json; charset=utf-8", attachment=None
+    ):
         body = value if isinstance(value, bytes) else json.dumps(value).encode()
         self.send_response(status)
         self.send_header("Content-Type", kind)
@@ -273,10 +329,15 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("X-Content-Type-Options", "nosniff")
         self.send_header("X-Frame-Options", "DENY")
         self.send_header("Referrer-Policy", "no-referrer")
-        self.send_header("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self'; object-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'")
+        self.send_header(
+            "Content-Security-Policy",
+            "default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self'; object-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'",
+        )
         self.send_header("Connection", "close")
         if attachment:
-            self.send_header("Content-Disposition", 'attachment; filename="' + attachment + '"')
+            self.send_header(
+                "Content-Disposition", 'attachment; filename="' + attachment + '"'
+            )
         self.end_headers()
         self.close_connection = True
         try:
@@ -298,7 +359,9 @@ class Handler(BaseHTTPRequestHandler):
             supplied = self.headers.get("Authorization", "")
             expected = "Bearer " + self.server.token
             if not hmac.compare_digest(supplied.encode(), expected.encode()):
-                self.reply(401, {"error": "Unlock this session with the local launch token"})
+                self.reply(
+                    401, {"error": "Unlock this session with the local launch token"}
+                )
                 return False
         return True
 
@@ -307,76 +370,188 @@ class Handler(BaseHTTPRequestHandler):
         if not self.guard(api):
             return
         try:
-            static = {"/": ("index.html", "text/html; charset=utf-8"), "/style.css": ("style.css", "text/css; charset=utf-8"), "/app.js": ("app.js", "text/javascript; charset=utf-8")}
+            static = {
+                "/": ("index.html", "text/html; charset=utf-8"),
+                "/style.css": ("style.css", "text/css; charset=utf-8"),
+                "/app.js": ("app.js", "text/javascript; charset=utf-8"),
+            }
             if self.path in static:
                 filename, kind = static[self.path]
-                return self.reply(200, (Path(__file__).parent / "static" / filename).read_bytes(), kind)
+                return self.reply(
+                    200,
+                    (Path(__file__).parent / "static" / filename).read_bytes(),
+                    kind,
+                )
             if self.path == "/api/health":
-                return self.reply(200, {"version": __version__, "local_only": True, "local_only_scope": "server_binding", "ai_processing_policies": ["local_only", "cloud_allowed"], "third_party_adapters": "not_integrated", "review_features": ["coverage_aware_retest", "evidence_bundle"], "recovered_interruptions": self.server.state.recovered_interruptions, "active_run": self.server.state.active})
+                return self.reply(
+                    200,
+                    {
+                        "version": __version__,
+                        "local_only": True,
+                        "local_only_scope": "server_binding",
+                        "ai_processing_policies": ["local_only", "cloud_allowed"],
+                        "third_party_adapters": "not_integrated",
+                        "review_features": ["coverage_aware_retest", "evidence_bundle"],
+                        "recovered_interruptions": self.server.state.recovered_interruptions,
+                        "active_run": self.server.state.active,
+                    },
+                )
             if self.path == "/api/models":
                 try:
                     return self.reply(200, Ollama("").diagnostics())
                 except OllamaError as exc:
-                    return self.reply(200, {"available": False, "models": [], "state": exc.code, "note": str(exc) + " " + exc.next_step, **exc.public()})
+                    return self.reply(
+                        200,
+                        {
+                            "available": False,
+                            "models": [],
+                            "state": exc.code,
+                            "note": str(exc) + " " + exc.next_step,
+                            **exc.public(),
+                        },
+                    )
             if self.path == "/api/runs":
                 return self.reply(200, {"runs": self.server.state.store.recent()})
-            compare_match = re.fullmatch(r"/api/runs/([a-f0-9]{32})/compare/([a-f0-9]{32})", self.path)
+            compare_match = re.fullmatch(
+                r"/api/runs/([a-f0-9]{32})/compare/([a-f0-9]{32})", self.path
+            )
             if compare_match:
                 previous = self.server.state.get(compare_match[1])
                 current = self.server.state.get(compare_match[2])
                 if previous is None or current is None:
                     return self.reply(404, {"error": "Run not found"})
-                if (not verify_integrity(previous) or not verify_integrity(current)
-                        or not durable_for_review(previous) or not durable_for_review(current)):
-                    return self.reply(409, {"error": "Only durable, finalized, intact reports can be compared"})
+                if (
+                    not verify_integrity(previous)
+                    or not verify_integrity(current)
+                    or not durable_for_review(previous)
+                    or not durable_for_review(current)
+                ):
+                    return self.reply(
+                        409,
+                        {
+                            "error": "Only durable, finalized, intact reports can be compared"
+                        },
+                    )
                 return self.reply(200, compare_reports(previous, current))
-            bundle_match = re.fullmatch(r"/api/runs/([a-f0-9]{32})/export\.bundle\.zip", self.path)
+            bundle_match = re.fullmatch(
+                r"/api/runs/([a-f0-9]{32})/export\.bundle\.zip", self.path
+            )
             if bundle_match:
                 report = self.server.state.get(bundle_match[1])
                 if report is None:
                     return self.reply(404, {"error": "Run not found"})
-                if report["status"] == "running" or not verify_integrity(report) or not durable_for_review(report):
-                    return self.reply(409, {"error": "Only durable, finalized, intact reports can be exported"})
+                if (
+                    report["status"] == "running"
+                    or not verify_integrity(report)
+                    or not durable_for_review(report)
+                ):
+                    return self.reply(
+                        409,
+                        {
+                            "error": "Only durable, finalized, intact reports can be exported"
+                        },
+                    )
                 raw = build_bundle(report, markdown(report))
-                return self.reply(200, raw, "application/zip", "hackgpt-" + bundle_match[1] + "-evidence.zip")
-            match = re.fullmatch(r"/api/runs/([a-f0-9]{32})(?:/export\.(json|md))?", self.path)
+                return self.reply(
+                    200,
+                    raw,
+                    "application/zip",
+                    "hackgpt-" + bundle_match[1] + "-evidence.zip",
+                )
+            match = re.fullmatch(
+                r"/api/runs/([a-f0-9]{32})(?:/export\.(json|md))?", self.path
+            )
             if match:
                 report = self.server.state.get(match[1])
                 if report is None:
                     return self.reply(404, {"error": "Run not found"})
                 if match[2]:
-                    if report["status"] == "running" or not verify_integrity(report) or not durable_for_review(report):
-                        return self.reply(409, {"error": "Only durable, finalized, intact reports can be exported"})
+                    if (
+                        report["status"] == "running"
+                        or not verify_integrity(report)
+                        or not durable_for_review(report)
+                    ):
+                        return self.reply(
+                            409,
+                            {
+                                "error": "Only durable, finalized, intact reports can be exported"
+                            },
+                        )
                     extension = match[2]
-                    raw = markdown(report).encode() if extension == "md" else json.dumps(report, indent=2).encode()
-                    kind = "text/markdown; charset=utf-8" if extension == "md" else "application/json"
-                    return self.reply(200, raw, kind, "hackgpt-" + match[1] + "." + extension)
+                    raw = (
+                        markdown(report).encode()
+                        if extension == "md"
+                        else json.dumps(report, indent=2).encode()
+                    )
+                    kind = (
+                        "text/markdown; charset=utf-8"
+                        if extension == "md"
+                        else "application/json"
+                    )
+                    return self.reply(
+                        200, raw, kind, "hackgpt-" + match[1] + "." + extension
+                    )
                 return self.reply(200, report)
             return self.reply(404, {"error": "Not found"})
         except ValueError as exc:
             self.reply(409, {"error": str(exc)})
         except Exception:
-            self.reply(500, {"error": "Local service error. No assessment result was fabricated."})
+            self.reply(
+                500,
+                {"error": "Local service error. No assessment result was fabricated."},
+            )
 
     def do_POST(self):
         if not self.guard(True):
             return
         try:
-            if self.headers.get("Transfer-Encoding") or self.headers.get("Content-Encoding"):
+            if self.headers.get("Transfer-Encoding") or self.headers.get(
+                "Content-Encoding"
+            ):
                 raise ValueError("Encoded and chunked request bodies are not supported")
             length = int(self.headers.get("Content-Length", "0"))
-            if not 0 < length <= 16384 or self.headers.get("Content-Type", "").split(";")[0] != "application/json":
+            if (
+                not 0 < length <= 16384
+                or self.headers.get("Content-Type", "").split(";")[0]
+                != "application/json"
+            ):
                 raise ValueError("Send a JSON object no larger than 16 KiB")
             data = json.loads(self.rfile.read(length))
             if self.path == "/api/models/discover":
-                if (not isinstance(data, dict) or set(data) - {"allow_cloud"} or type(data.get("allow_cloud", False)) is not bool):
+                if (
+                    not isinstance(data, dict)
+                    or set(data) - {"allow_cloud"}
+                    or type(data.get("allow_cloud", False)) is not bool
+                ):
                     raise ValueError("Send only optional boolean allow_cloud")
-                return self.reply(200, Ollama("", allow_cloud=data.get("allow_cloud", False)).diagnostics())
+                return self.reply(
+                    200,
+                    Ollama(
+                        "", allow_cloud=data.get("allow_cloud", False)
+                    ).diagnostics(),
+                )
             if self.path in ("/api/models/check", "/api/models/self-test"):
-                if (not isinstance(data, dict) or set(data) - {"model", "require_tools", "allow_cloud"} or not isinstance(data.get("model"), str) or not data["model"] or not isinstance(data.get("require_tools", False), bool) or type(data.get("allow_cloud", False)) is not bool):
-                    raise ValueError("Send an exact model name and optional boolean require_tools")
-                client = Ollama(data["model"], allow_cloud=data.get("allow_cloud", False))
-                result = client.self_test(require_tools=data.get("require_tools", False)) if self.path == "/api/models/self-test" else client.inspect_model(require_tools=data.get("require_tools", False))
+                if (
+                    not isinstance(data, dict)
+                    or set(data) - {"model", "require_tools", "allow_cloud"}
+                    or not isinstance(data.get("model"), str)
+                    or not data["model"]
+                    or not isinstance(data.get("require_tools", False), bool)
+                    or type(data.get("allow_cloud", False)) is not bool
+                ):
+                    raise ValueError(
+                        "Send an exact model name and optional boolean require_tools"
+                    )
+                client = Ollama(
+                    data["model"], allow_cloud=data.get("allow_cloud", False)
+                )
+                result = (
+                    client.self_test(require_tools=data.get("require_tools", False))
+                    if self.path == "/api/models/self-test"
+                    else client.inspect_model(
+                        require_tools=data.get("require_tools", False)
+                    )
+                )
                 return self.reply(200, result)
             if self.path == "/api/runs":
                 run_id = self.server.state.start(data)
@@ -387,22 +562,37 @@ class Handler(BaseHTTPRequestHandler):
                     if self.server.state.active != match[1]:
                         return self.reply(409, {"error": "This run is not active"})
                     self.server.state.cancel.set()
-                return self.reply(202, {"status": "cancellation_requested", "note": "In-flight bounded I/O is not interrupted instantly."})
+                return self.reply(
+                    202,
+                    {
+                        "status": "cancellation_requested",
+                        "note": "In-flight bounded I/O is not interrupted instantly.",
+                    },
+                )
             self.reply(404, {"error": "Not found"})
         except OllamaError as exc:
             self.reply(422, exc.public())
         except Busy as exc:
             self.reply(409, {"error": str(exc)})
         except (ValueError, TypeError, UnicodeDecodeError):
-            self.reply(400, {"error": "Invalid request. Check the URL, authorization, mode approval and model selection."})
+            self.reply(
+                400,
+                {
+                    "error": "Invalid request. Check the URL, authorization, mode approval and model selection."
+                },
+            )
         except Exception:
             self.reply(500, {"error": "Unable to start assessment"})
 
 
 def main():
-    parser = argparse.ArgumentParser(description="HackGPT Evidence Workbench (local single-user preview)")
+    parser = argparse.ArgumentParser(
+        description="HackGPT Evidence Workbench (local single-user preview)"
+    )
     parser.add_argument("--port", type=int, default=8765)
-    parser.add_argument("--data-dir", type=Path, default=Path.home() / ".hackgpt-workbench")
+    parser.add_argument(
+        "--data-dir", type=Path, default=Path.home() / ".hackgpt-workbench"
+    )
     args = parser.parse_args()
     if not 1024 <= args.port <= 65535:
         parser.error("port must be between 1024 and 65535")
@@ -412,11 +602,19 @@ def main():
     server = LocalServer(("127.0.0.1", args.port), state, token)
     print("HackGPT Evidence Workbench " + __version__)
     print("Open locally: http://127.0.0.1:" + str(args.port) + "/#token=" + token)
-    print("Keep this launch URL private. Loopback only; do not expose through a tunnel.")
-    print("Native checks are ready. External scanners are NOT bundled in this milestone.")
-    print("The current Ollama adapter supports local or explicitly approved cloud-backed models; product evidence/action contracts are provider-neutral.")
+    print(
+        "Keep this launch URL private. Loopback only; do not expose through a tunnel."
+    )
+    print(
+        "Native checks are ready. External scanners are NOT bundled in this milestone."
+    )
+    print(
+        "The current Ollama adapter supports local or explicitly approved cloud-backed models; product evidence/action contracts are provider-neutral."
+    )
     if state.recovered_interruptions:
-        print(f"Recovered {state.recovered_interruptions} interrupted run(s) from durable checkpoints; none were marked completed.")
+        print(
+            f"Recovered {state.recovered_interruptions} interrupted run(s) from durable checkpoints; none were marked completed."
+        )
     try:
         server.serve_forever()
     except KeyboardInterrupt:

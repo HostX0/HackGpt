@@ -2,7 +2,6 @@ import importlib.util
 from pathlib import Path
 from unittest import mock
 
-
 MODULE_PATH = Path(__file__).resolve().parents[2] / "test_installation.py"
 SPEC = importlib.util.spec_from_file_location("hackgpt_install_checks", MODULE_PATH)
 ti = importlib.util.module_from_spec(SPEC)
@@ -40,7 +39,9 @@ def test_system_tools_only_fail_required_tools():
         "gobuster": "/usr/bin/gobuster",
         "masscan": None,
     }
-    with mock.patch.object(ti.shutil, "which", side_effect=lambda name: availability.get(name)):
+    with mock.patch.object(
+        ti.shutil, "which", side_effect=lambda name: availability.get(name)
+    ):
         passed, missing = ti.test_system_tools(
             required_tools=("nmap", "nikto", "gobuster"),
             optional_tools=("masscan",),
@@ -113,7 +114,9 @@ def test_basic_import_smoke_reports_subprocess_failure(tmp_path):
     assert issues == ["stderr:\nmissing dependency"]
 
 
-def test_basic_import_smoke_preserves_stdout_error_when_stderr_has_optional_warnings(tmp_path):
+def test_basic_import_smoke_preserves_stdout_error_when_stderr_has_optional_warnings(
+    tmp_path,
+):
     result = mock.Mock(
         returncode=1,
         stdout="Missing HackGPT modules: No module named 'psutil'\n",

@@ -5,6 +5,7 @@ content. It verifies only whether the selected model follows the workbench's
 structured-output contract and, when requested, its inert tool-call contract.
 Nothing returned by this probe is security evidence and no tool is executed.
 """
+
 from __future__ import annotations
 
 import json
@@ -27,7 +28,9 @@ def _failed(detail: str) -> OllamaError:
     )
 
 
-def validate_local_inference(client: Any, *, require_tools: bool = False) -> dict[str, Any]:
+def validate_local_inference(
+    client: Any, *, require_tools: bool = False
+) -> dict[str, Any]:
     """Run a bounded, assessment-data-free compatibility probe.
 
     ``client`` must implement ``inspect_model`` and ``chat`` using the policy-aware Ollama
@@ -50,7 +53,10 @@ def validate_local_inference(client: Any, *, require_tools: bool = False) -> dic
     message = client.chat(
         [
             {"role": "system", "content": _SELF_TEST_SYSTEM},
-            {"role": "user", "content": 'Return exactly {"status":"ready","scope":"synthetic_self_test"}.'},
+            {
+                "role": "user",
+                "content": 'Return exactly {"status":"ready","scope":"synthetic_self_test"}.',
+            },
         ],
         format=schema,
     )
@@ -68,22 +74,40 @@ def validate_local_inference(client: Any, *, require_tools: bool = False) -> dic
             "function": {
                 "name": "workbench_self_test",
                 "description": "Compatibility-only no-op. Return empty arguments. The workbench will not execute it.",
-                "parameters": {"type": "object", "properties": {}, "additionalProperties": False},
+                "parameters": {
+                    "type": "object",
+                    "properties": {},
+                    "additionalProperties": False,
+                },
             },
         }
         tool_message = client.chat(
             [
                 {"role": "system", "content": _SELF_TEST_SYSTEM},
-                {"role": "user", "content": "Call the declared workbench_self_test tool once with empty arguments."},
+                {
+                    "role": "user",
+                    "content": "Call the declared workbench_self_test tool once with empty arguments.",
+                },
             ],
             tools=[tool],
         )
-        calls = tool_message.get("tool_calls", []) if isinstance(tool_message, dict) else []
-        if len(calls) != 1 or not isinstance(calls[0], dict) or not isinstance(calls[0].get("function"), dict):
+        calls = (
+            tool_message.get("tool_calls", []) if isinstance(tool_message, dict) else []
+        )
+        if (
+            len(calls) != 1
+            or not isinstance(calls[0], dict)
+            or not isinstance(calls[0].get("function"), dict)
+        ):
             raise _failed("Tool-calling output was missing or malformed.")
         function = calls[0]["function"]
-        if function.get("name") != "workbench_self_test" or function.get("arguments") != {}:
-            raise _failed("Tool-calling output changed the fixed tool name or arguments.")
+        if (
+            function.get("name") != "workbench_self_test"
+            or function.get("arguments") != {}
+        ):
+            raise _failed(
+                "Tool-calling output changed the fixed tool name or arguments."
+            )
         tool_tested = True
 
     result = dict(metadata)

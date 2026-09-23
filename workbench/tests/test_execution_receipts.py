@@ -14,7 +14,12 @@ class ExecutionReceiptTests(unittest.TestCase):
         missing = Path(tempfile.gettempdir()) / "hackgpt-plan-missing-root"
         plan = ExecutionRegistry().plan(
             "native-project-metadata",
-            {"root": missing, "asset_key": "fixture", "max_files": 25, "timeout_seconds": 5},
+            {
+                "root": missing,
+                "asset_key": "fixture",
+                "max_files": 25,
+                "timeout_seconds": 5,
+            },
         )
         self.assertEqual(plan["declaration"]["limits"]["max_objects"], 25)
         self.assertEqual(plan["declaration"]["limits"]["timeout_seconds"], 5)
@@ -33,16 +38,25 @@ class ExecutionReceiptTests(unittest.TestCase):
         self.assertEqual(receipt["schema"], "hackgpt.execution-receipt/v1")
         self.assertEqual(receipt["usage"]["objects_tested"], 2)
         self.assertEqual(receipt["usage"]["network_requests"], 0)
-        self.assertLessEqual(receipt["usage"]["objects_tested"], receipt["declaration"]["limits"]["max_objects"])
+        self.assertLessEqual(
+            receipt["usage"]["objects_tested"],
+            receipt["declaration"]["limits"]["max_objects"],
+        )
         self.assertNotIn("DO_NOT_EXPORT", repr(receipt))
-        self.assertTrue(all(item["verification"] == "candidate" for item in receipt["result"]["findings"]))
+        self.assertTrue(
+            all(
+                item["verification"] == "candidate"
+                for item in receipt["result"]["findings"]
+            )
+        )
 
     def test_web_receipt_accounts_exact_single_request_and_body_free_scope(self):
         calls = []
         receipt = ExecutionRegistry().execute_with_receipt(
             "native-web-headers",
             {"target": "https://example.com", "asset_key": "fixture"},
-            web_reader=lambda target: calls.append(target) or {
+            web_reader=lambda target: calls.append(target)
+            or {
                 "status": 200,
                 "headers": {"content-type": "text/html"},
                 "method": "HEAD",
@@ -59,12 +73,14 @@ class ExecutionReceiptTests(unittest.TestCase):
     def test_plan_respects_operator_authority_before_io(self):
         with self.assertRaises(PermissionError):
             ExecutionRegistry(RegistryPolicy(allow_network=False)).plan(
-                "native-web-headers", {"target": "https://example.com", "asset_key": "fixture"}
+                "native-web-headers",
+                {"target": "https://example.com", "asset_key": "fixture"},
             )
         with tempfile.TemporaryDirectory() as directory:
             with self.assertRaises(PermissionError):
                 ExecutionRegistry(RegistryPolicy(allow_filesystem=False)).plan(
-                    "native-project-metadata", {"root": directory, "asset_key": "fixture"}
+                    "native-project-metadata",
+                    {"root": directory, "asset_key": "fixture"},
                 )
 
     def test_receipt_rejects_self_verified_finding(self):
@@ -111,7 +127,14 @@ class ExecutionReceiptTests(unittest.TestCase):
                 "redirect_followed": False,
             },
         )
-        for field in ("password", "token", "cookie", "authorization", "command", "argv"):
+        for field in (
+            "password",
+            "token",
+            "cookie",
+            "authorization",
+            "command",
+            "argv",
+        ):
             tampered = copy.deepcopy(receipt)
             tampered["request_summary"][field] = "do-not-store"
             with self.subTest(field=field), self.assertRaises(ValueError):
@@ -134,12 +157,15 @@ class ExecutionReceiptTests(unittest.TestCase):
         receipt = ExecutionRegistry().execute_with_receipt(
             "native-web-headers",
             {"target": "https://example.com", "asset_key": "fixture"},
-            web_reader=lambda _: (time.sleep(0.002) or {
-                "status": 204,
-                "headers": {"content-type": "text/plain"},
-                "method": "HEAD",
-                "redirect_followed": False,
-            }),
+            web_reader=lambda _: (
+                time.sleep(0.002)
+                or {
+                    "status": 204,
+                    "headers": {"content-type": "text/plain"},
+                    "method": "HEAD",
+                    "redirect_followed": False,
+                }
+            ),
         )
         self.assertGreaterEqual(receipt["usage"]["elapsed_ms"], 0)
 

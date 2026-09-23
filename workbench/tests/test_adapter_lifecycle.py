@@ -4,8 +4,11 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from workbench.adapter_lifecycle import AdapterLifecycle, request_digest, verify_lifecycle_record
-
+from workbench.adapter_lifecycle import (
+    AdapterLifecycle,
+    request_digest,
+    verify_lifecycle_record,
+)
 
 DECL = {
     "schema": "hackgpt.execution-declaration/v1",
@@ -109,7 +112,9 @@ class AdapterLifecycleTests(unittest.TestCase):
         life.approve(record["id"], record["plan_sha256"])
         done = life.execute(record["id"], "fake-safe", self.request)
         self.assertEqual(done["status"], "completed")
-        self.assertEqual(done["receipt"]["result"]["verification_authority"], "workbench_only")
+        self.assertEqual(
+            done["receipt"]["result"]["verification_authority"], "workbench_only"
+        )
         reopened = AdapterLifecycle(self.db, FakeRegistry()).get(record["id"])
         self.assertEqual(reopened["record_sha256"], done["record_sha256"])
 
@@ -125,7 +130,9 @@ class AdapterLifecycleTests(unittest.TestCase):
         self.assertIsNone(failed["receipt"])
 
     def test_cancelled_execution_is_recorded_without_raw_error(self):
-        life = AdapterLifecycle(self.db, FakeRegistry(error=InterruptedError("secret path /tmp/x")))
+        life = AdapterLifecycle(
+            self.db, FakeRegistry(error=InterruptedError("secret path /tmp/x"))
+        )
         record = life.plan("fake-safe", self.request)
         life.approve(record["id"], record["plan_sha256"])
         with self.assertRaises(InterruptedError):

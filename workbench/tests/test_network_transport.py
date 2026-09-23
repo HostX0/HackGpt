@@ -39,8 +39,11 @@ class NetworkTransportConnectTests(unittest.TestCase):
         timer.start()
         started = time.monotonic()
         try:
-            with mock.patch("workbench.network_transport.socket.socket", return_value=fake), \
-                 mock.patch("workbench.network_transport.select.select", return_value=([], [], [])):
+            with mock.patch(
+                "workbench.network_transport.socket.socket", return_value=fake
+            ), mock.patch(
+                "workbench.network_transport.select.select", return_value=([], [], [])
+            ):
                 with self.assertRaises(Cancelled):
                     _connect_bounded("93.184.216.34", 443, Deadline(1), cancel)
         finally:
@@ -51,8 +54,11 @@ class NetworkTransportConnectTests(unittest.TestCase):
     def test_deadline_closes_pending_connect(self):
         fake = _FakeSocket(errno.EINPROGRESS)
         started = time.monotonic()
-        with mock.patch("workbench.network_transport.socket.socket", return_value=fake), \
-             mock.patch("workbench.network_transport.select.select", return_value=([], [], [])):
+        with mock.patch(
+            "workbench.network_transport.socket.socket", return_value=fake
+        ), mock.patch(
+            "workbench.network_transport.select.select", return_value=([], [], [])
+        ):
             with self.assertRaises(DeadlineExceeded):
                 _connect_bounded("93.184.216.34", 443, Deadline(0.03))
         self.assertTrue(fake.closed)

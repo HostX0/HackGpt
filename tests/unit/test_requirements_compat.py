@@ -2,7 +2,6 @@ from pathlib import Path
 
 from packaging.requirements import Requirement
 
-
 ROOT = Path(__file__).resolve().parents[2]
 
 

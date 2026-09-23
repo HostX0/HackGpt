@@ -1,4 +1,5 @@
 """Ephemeral loopback-only authorization fixture. Never a remote exploitation target."""
+
 import hashlib
 import http.client
 import json
@@ -29,10 +30,22 @@ class CanaryLab:
         # Every value in this fixture is generated test data. The proof exporter still
         # exposes only schema/count/hash plus the explicitly marked canary.
         self.records = [
-            {"id": 101, "account": "synthetic-alpha", "role": "viewer", "marker": canary},
-            {"id": 102, "account": "synthetic-beta", "role": "analyst", "marker": "synthetic-control-row"},
+            {
+                "id": 101,
+                "account": "synthetic-alpha",
+                "role": "viewer",
+                "marker": canary,
+            },
+            {
+                "id": 102,
+                "account": "synthetic-beta",
+                "role": "analyst",
+                "marker": "synthetic-control-row",
+            },
         ]
-        self.marker = json.dumps(self.records, sort_keys=True, separators=(",", ":")).encode()
+        self.marker = json.dumps(
+            self.records, sort_keys=True, separators=(",", ":")
+        ).encode()
         lab = self
 
         class Handler(BaseHTTPRequestHandler):
@@ -44,7 +57,11 @@ class CanaryLab:
 
             def do_GET(self):
                 if self.path == "/control" or (lab.fixed and self.path == "/record"):
-                    status, body, content_type = 401, b"Authorization required", "text/plain"
+                    status, body, content_type = (
+                        401,
+                        b"Authorization required",
+                        "text/plain",
+                    )
                 elif self.path == "/record":
                     status, body, content_type = 200, lab.marker, "application/json"
                 else:
@@ -74,11 +91,17 @@ class CanaryLab:
     def request(self, path, method="GET"):
         if path not in ("/", "/control", "/record"):
             raise ValueError("Unknown synthetic lab action")
-        conn = http.client.HTTPConnection("127.0.0.1", self.server.server_port, timeout=3)
+        conn = http.client.HTTPConnection(
+            "127.0.0.1", self.server.server_port, timeout=3
+        )
         try:
             conn.request(method, path, headers={"Connection": "close"})
             response = conn.getresponse()
-            return response.status, dict((k.lower(), v) for k, v in response.getheaders()), response.read(4096)
+            return (
+                response.status,
+                dict((k.lower(), v) for k, v in response.getheaders()),
+                response.read(4096),
+            )
         finally:
             conn.close()
 
@@ -96,6 +119,10 @@ class CanaryLab:
             "paths": ["/control", "/record"],
             "environment": "ephemeral synthetic loopback lab",
             "data_summary": summarize_records(self.records) if matched else None,
-            "demonstrated_impact": "unauthenticated read of designated synthetic records" if matched else "not demonstrated",
+            "demonstrated_impact": (
+                "unauthenticated read of designated synthetic records"
+                if matched
+                else "not demonstrated"
+            ),
             "customer_data_sampled": False,
         }

@@ -1,4 +1,5 @@
 """Hosted macOS startup stall diagnostic without weakening the main readiness test."""
+
 import os
 from pathlib import Path
 import queue
@@ -9,7 +10,6 @@ import tempfile
 import threading
 import time
 import unittest
-
 
 ROOT = Path(__file__).resolve().parents[2]
 ENTRY = ROOT / "workbench" / "start.py"
@@ -28,7 +28,14 @@ class MacStartupTraceTests(unittest.TestCase):
             env = os.environ.copy()
             env["HACKGPT_STARTUP_TRACE"] = "1"
             process = subprocess.Popen(
-                [sys.executable, str(ENTRY), "--data-dir", directory, "--port", str(unused_port())],
+                [
+                    sys.executable,
+                    str(ENTRY),
+                    "--data-dir",
+                    directory,
+                    "--port",
+                    str(unused_port()),
+                ],
                 cwd=directory,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
@@ -36,7 +43,9 @@ class MacStartupTraceTests(unittest.TestCase):
                 env=env,
             )
             lines = queue.Queue()
-            reader = threading.Thread(target=lambda: [lines.put(line) for line in process.stdout], daemon=True)
+            reader = threading.Thread(
+                target=lambda: [lines.put(line) for line in process.stdout], daemon=True
+            )
             reader.start()
             ready = False
             try:
@@ -59,7 +68,10 @@ class MacStartupTraceTests(unittest.TestCase):
                         process.kill()
                         process.wait(timeout=5)
                     diagnostics = process.stderr.read()
-                    self.fail("macOS launcher did not become ready; captured child stack:\n" + diagnostics[-12000:])
+                    self.fail(
+                        "macOS launcher did not become ready; captured child stack:\n"
+                        + diagnostics[-12000:]
+                    )
             finally:
                 if process.poll() is None:
                     process.terminate()
