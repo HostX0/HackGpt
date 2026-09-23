@@ -71,6 +71,7 @@ jobs:
         pip install -r requirements.txt
 
     - name: Run Black formatter check and capture diagnostics
+      id: black_check
       shell: bash
       run: |
         set +e
@@ -78,6 +79,7 @@ jobs:
         black --check --diff --no-color . 2>&1 | tee .ci/black/black.txt
         status=${PIPESTATUS[0]}
         printf '%s\n' "$status" > .ci/black/exit-code.txt
+        printf 'status=%s\n' "$status" >> "$GITHUB_OUTPUT"
         exit 0
 
     - name: Upload Black diagnostics
@@ -88,12 +90,32 @@ jobs:
         path: .ci/black/
         if-no-files-found: error
 
+    - name: Build Black-formatted repair candidate
+      if: steps.black_check.outputs.status != '0'
+      shell: bash
+      run: |
+        set -euo pipefail
+        git ls-files -z '*.py' | xargs -0 black --no-color
+        git diff --name-only --diff-filter=M -- '*.py' | LC_ALL=C sort > .ci/black/formatted-files.txt
+        test -s .ci/black/formatted-files.txt
+        tar -czf .ci/black/formatted-python.tar.gz -T .ci/black/formatted-files.txt
+
+    - name: Upload Black-formatted repair candidate
+      if: steps.black_check.outputs.status != '0'
+      uses: actions/upload-artifact@v4
+      with:
+        name: black-formatted-candidate
+        path: |
+          .ci/black/formatted-files.txt
+          .ci/black/formatted-python.tar.gz
+        if-no-files-found: error
+
     - name: Enforce Black formatter check
       shell: bash
       run: |
         status="$(cat .ci/black/exit-code.txt)"
         if [ "$status" -ne 0 ]; then
-          echo "Black formatting failed; download the black-diagnostics artifact for the exact diff."
+          echo "Black formatting failed; download the black-diagnostics and black-formatted-candidate artifacts for the exact diff and formatted files."
           exit "$status"
         fi
 
