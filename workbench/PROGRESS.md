@@ -29,166 +29,76 @@ Both updates advanced `fix/review-readiness` by non-force fast-forward and prese
 At source `0c0c4f9b8995cd1fe7404e453b47634c6ace55f7` / generated PR checkout `1b227780010852a380497aa52a6aaf4f4ff23e5c`:
 
 - Basic CI `35819753021`, Startup `35819753008` and Release Package `35819753016` passed.
-- Evidence Workbench `35819753044` ran 361 native Python tests on its Python 3.11 lane: **358 passed, 2 skipped, 1 failed**. The single failure was the workflow regression misclassifying `black --version`; browser E2E, the real local-model compatibility probe, pinned Semgrep-container validation and fresh-install smoke on Ubuntu/macOS/Windows all passed.
-- Enterprise `35819753009` selected Python 3.9.25 for code quality and failed before formatting because Black 26.5.1 requires Python >=3.10. Its always-upload diagnostics step also failed because `.ci/black/` had not yet been created. The Python 3.9/3.10/3.11 application test jobs had passed at that checkpoint; no completion claim was made for 3.8 there.
-
-These logs establish the repair target; they are not current-head validation.
-
-## Focused pre-publication validation
-
-Using the exact published package artifact from Release Package `35819753016` plus the exact hosted root workflow texts in a temporary validation tree:
-
-- Workbench documentation/workflow regression module: **8 passed, 0 failed/skipped**.
-- Root Enterprise CI contract tests: **4 passed, 0 failed/skipped**.
-- `python -m compileall -q workbench tests/unit/test_enterprise_ci_contract.py`: passed.
-- Both root workflow files parsed successfully as YAML.
-- One complete local Workbench suite exceeded the execution tool limit before a final summary, so it is **not** counted as a completed local full-suite pass.
-
-No external assessment target, real customer data/credentials, live external scanner target or blocked unpublished draft was used.
-
-## Hosted validation after publication
-
-### Source `9625cdb592da5181bcb875c474811b4684fb179d`
-
-- Evidence Workbench `35822890367`: **success**. Python 3.11 native lane ran **361 tests: 359 passed, 2 skipped, 0 failures** in 35.935s. JavaScript DOM/fetch contracts: **29 passed, 0 failed/skipped**. Browser E2E, real local-model compatibility, pinned Semgrep-container validation, and fresh-install smoke on Ubuntu/macOS/Windows all passed in the aggregate.
-- Startup `35822890363`: **success**.
-- Release Package `35822890373`: **success**.
-- Enterprise `35822890391`: Python 3.11.16 and Black 26.5.1 installed successfully and diagnostics were uploaded. Fail-closed enforcement then reported exactly **1 file would be reformatted and 99 left unchanged**. Formatter repair artifact `10733709416` was generated. This run correctly remained non-green until the exact formatting was committed.
-
-### Source `8e6e871ad360d93f5d207c17f5c7281213ad2c2d`
-
-- Startup `35823047203`: **success**.
-- Evidence Workbench `35823047248`: **success**.
-- Release Package `35823047290`: **success**.
-- Enterprise `35823047201`, Code Quality job `107058805447`: **success**. Quality-tool installation, Black check, fail-closed enforcement, Flake8, MyPy, Pylint and report upload all completed successfully; the repair-candidate steps correctly skipped because the checkout was already formatted. The security advisory job also passed at the latest checkpoint.
-- Basic CI `35823047202` and the Python 3.8-3.11 Enterprise runtime matrix/downstream Docker path were still running at the latest checkpoint. They are **not** counted as successful or complete here.
-
-The formatter/runtime blocker is therefore closed by hosted evidence, but **whole-repository green status is not yet established**. PR #2 remains open and unmerged while the exact current Basic/Enterprise runtime and Docker paths finish or expose the next concrete blocker.
-
-
-## Current reliability candidate: exact-once execution and terminal-storage truthfulness
-
-This candidate is based on source `1f18fef08f6cd1290ba3f8a6b15eb6f13846115e`. Its exact current Workbench bytes were taken from Release Package run `35823563700`, generated PR checkout `cf3ff5e903c1c37ef5b001cc3c1c2379d8a4ee31`, artifact `10734560859`; the package itself had already passed its Ubuntu/macOS/Windows smoke jobs before this candidate was edited locally.
-
-The reliability change closes a concrete ambiguity in the reviewed adapter lifecycle rather than widening execution authority:
-
-- Two concurrent callers against one approved lifecycle cannot both reach the execution registry; the second caller is rejected after the first transition to `executing`.
-- Adapter execution/receipt validation errors still persist their real bounded outcome when storage is healthy.
-- If that terminal write fails, a recoverable second write records `interrupted` with `terminal_persistence_failed` instead of pretending the adapter itself failed. A known pre-persistence outcome may be retained only as a code such as `policy_denied`; no raw exception or request path is stored.
-- If an adapter returns successfully but the durable completed receipt cannot be committed, no receipt is exposed and no durable success is claimed. The lifecycle becomes `interrupted` when the fallback write succeeds; if storage remains unavailable, the existing restart recovery converts the still-`executing` row to interrupted evidence.
-- The HTTP layer returns a bounded 503 persistence error telling the operator to **Check run status** and not automatically re-execute. The existing frontend already performs a read-only status recovery rather than retrying the tool.
-
-Focused local validation on Linux/Python 3.13 against that exact packaged Workbench plus this candidate:
-
-- `test_adapter_lifecycle`, `test_adapter_api`, and `test_adapter_lifecycle_registry`: **21 passed, 0 failed/skipped** in 3.607s.
-- `test_adapter_ui.cjs`: **6 passed, 0 failed/skipped**; DOM/fetch contracts only, not browser E2E.
-- `compileall` for the changed lifecycle/server/test modules passed.
-- A complete local Workbench discovery was attempted but did not finish inside the execution-tool limit, so it is **not** counted as a full-suite pass. No external target, live scanner target, model call, customer row or credential was used.
-
-Fresh hosted state of the unmodified base `1f18fef...` at the latest pre-publication read:
-
-- Evidence Workbench `35823563686`: **success**.
-- Release Package `35823563700`: **success**; on this pull request the package/smoke path runs but trusted Sigstore attestation is intentionally not treated as an external-PR signing success.
-- Workbench Startup `35823563640`: **success**.
-- Basic CI `35823563775`: **success**.
-- Enterprise `35823563635`: still **in progress**. Code Quality plus Python 3.9, 3.10 and 3.11 test jobs were successful; Python 3.8 was still in dependency installation at the latest read. Downstream Enterprise completion is therefore not claimed, and none of these base results validate the unpublished candidate.
-
-## Current gate impact
-
-- **A â€” evidence/document consistency:** advanced. Current claims distinguish baseline failures, source commits, hosted jobs and incomplete lanes. Historical records remain preserved.
-- **B â€” reliability:** materially advanced by the candidate's exact-once concurrent lifecycle fixture and explicit terminal-persistence-failure path. A successful adapter return without a durable receipt is now treated as interrupted/unknown review evidence, never durable success; hosted current-head validation is still pending.
-- **C â€” adapter/scope:** unchanged and preserved; no authority or scanner surface was expanded.
-- **D â€” reviewer evidence:** advanced by revision-bound CI/formatter diagnostics without relabeling repair artifacts as successful validation.
-- **E â€” usable release/build compatibility:** materially advanced. Black runtime installation, exact formatting and the full Enterprise code-quality job now pass, while current Basic/Enterprise runtime and Docker completion remain required before a whole-project pass.
-
-See [ROADMAP.md](ROADMAP.md) for the cumulative acceptance criteria. Portable-source packaging is not a native signed installer, advisory security reports are not certification, and no findings is not a security guarantee.
-
-
-## Current startup-diagnostics candidate: actionable fail-closed preflight
-
-This candidate is based on published source `6af6d78063b8e61381d833740a4fe24d6080ec95` and changes only the dependency-free launcher diagnostics, its startup regressions and matching documentation. It does not open report storage, contact inference, start a scanner, widen adapter authority or perform automatic repair.
-
-The existing `--check-install` preflight already tests application files, in-memory SQLite, a temporary workspace write and loopback-port availability. The candidate makes failures useful to operators and automation without exposing raw local exception details:
-
-- machine-readable failures now include a stable `check` field plus a bounded code: `application_files` / `incomplete_application_files`, `sqlite_memory` / `sqlite_unavailable`, `workspace_write` / `workspace_not_writable`, or `loopback_port` / `loopback_port_unavailable`;
-- workspace-lock contention remains separately reported as `workspace_lock` / `workspace_busy`;
-- unexpected failures remain the generic `startup` / `startup_failed`;
-- human-readable failure text gives one local recovery action for the stable category but never embeds the caught exception, path or socket detail;
-- successful preflight semantics remain unchanged and still do not inspect/recover assessment history.
-
-Focused local validation on Linux/Python 3.13 against the exact current release-package bytes plus this candidate:
-
-- `workbench.tests.test_startup`: **17 passed, 0 failed/skipped** in 8.301s, including new occupied-port, workspace-write and incomplete-files failure fixtures.
-- `workbench.tests.test_startup_trace`: **0 passed, 1 explicit macOS-only skip, 0 failures** on Linux.
-- `python -m workbench.tests.fresh_install_smoke`: passed, completing an owned synthetic assessment and durable export with no external target or live model.
-- `compileall` for the changed launcher/test modules passed.
-
-Fresh hosted state of the unmodified base `6af6d780...` at the latest read:
-
-- Evidence Workbench `35827760430`: **success**.
-- Workbench Startup `35827760479`: **success**.
-- Release Package `35827760428`: **success**.
-- Basic CI `35827760528`: **success**, including legacy readiness/import plus Docker build and Docker smoke.
-- Enterprise `35827760460`: still **in progress**. Code Quality, Security Advisory Reports and Python 3.9/3.10/3.11 unit/integration jobs are successful; Python 3.8 was still installing dependencies at the latest read. A transient job-log download returned `BlobNotFound` while that job was still running, so no root cause is inferred from it.
-
-These base results do not validate this unpublished candidate. Fresh hosted startup/Workbench/package/whole-repository results are required after publication.
-
-
-## Current candidate: close exact formatter drift and classify workspace preparation failures
-
-Fresh hosted evidence for source `2671b0723de9202f17ad65ff1fedc03301bd0cb0` / generated PR checkout `33c843c82851cbdfa8920a2864630790238f31e2` established the next concrete blocker instead of relying on the previous checkpoint:
-
-- Evidence Workbench `35835984309`: **success**.
-- Workbench Startup `35835984380`: **success**.
-- Release Package `35835984346`: **success**; candidate artifact `10739685879` supplies the exact tested Workbench bytes used for this round.
-- Basic CI `35835984429`: **success**.
-- Enterprise `35835984314`: still **in progress** at this read, but Code Quality job `107099439532` failed closed on Black 26.5.1 after reporting exactly two files needing formatting: `workbench/start.py` and `workbench/tests/test_startup.py`. Its exact hosted repair artifact is `10738997572`. Security Advisory Reports and Python 3.11 were already successful at the same checkpoint; no whole-Enterprise success is claimed.
-
-This candidate applies the exact hosted Black repair for those two files and closes one remaining actionable startup gap without widening assessment authority:
-
-- workspace directory resolution/creation and lock-file open failures now return `workspace_lock` / `workspace_unavailable` instead of the generic `startup_failed`;
-- a symbolic-link or otherwise unsafe lock object returns `workspace_lock` / `workspace_lock_unsafe`;
-- ordinary lock contention remains the existing `workspace_busy`, preserving the distinction between a live cooperating process and an unusable workspace;
-- JSON and human diagnostics never expose the caught filesystem detail or local path, and no automatic repair/deletion of the lock is attempted.
-
-Focused local validation on Linux/Python 3.13 against the exact packaged current Workbench plus this candidate:
-
-- `workbench.tests.test_startup`: **18 passed, 0 failed/skipped** in 13.422s, including workspace-creation privacy and unsafe-symlink lock regressions.
-- `workbench.tests.test_startup_trace`: **0 passed, 1 explicit macOS-only skip, 0 failures** on Linux.
-- `python -m workbench.tests.fresh_install_smoke`: passed, including owned synthetic assessment and durable export with no external target or live model.
-- `compileall` / Python compilation of the changed launcher and startup tests passed.
-- Black 26.5.1 could not be installed in the local execution container because package-index DNS was unavailable. The exact current-head hosted formatter artifact was therefore used for the two baseline files, while the newly added lines await fail-closed hosted Black verification after publication; no local formatter pass is claimed.
-
-No external assessment target, real credential/customer row, live scanner target, model call, blocked unpublished draft, public deployment or paid service was used.
-
-## Current CI compatibility candidate: bounded Python 3.8 dependency profile
-
-Source `3ab2920f0d86ef409ed2482e20bc9e26456b6971` addresses a repeatable Enterprise shipping bottleneck without deleting Python 3.8 or weakening the unit/integration matrix. On source `881575b311c3e854b06ad9abda99faa4ca7eb263`, Workbench Startup `35840399491`, Evidence Workbench `35840399451`, Release Package `35840399309` and Basic CI `35840399456` completed successfully. Enterprise `35840399529` had successful Code Quality, Security Advisory Reports and Python 3.9/3.10/3.11 test jobs while Python 3.8 remained in `Install dependencies` for hours; the preceding Enterprise run showed the same oldest-runtime stall. The completed Python 3.9 job log showed the full `requirements.txt` resolving large TensorFlow and Torch/CUDA stacks before running the retained 21 unit and 2 integration tests.
-
-The published repair therefore keeps two distinct claims honest:
-
-- Python 3.8 still runs the same real unit/integration tests and legacy readiness/import checks, but uses `requirements-ci-py38.txt`, a bounded profile tied by regression to `test_installation.CORE_IMPORTS` plus the import-time Jinja2 reporting dependency.
-- Python 3.9, 3.10 and 3.11 still install the complete `requirements.txt`, preserving full-stack dependency validation on three runtimes. TensorFlow, Torch and Transformers are not removed from the product requirements; they are excluded only from the oldest compatibility lane where they are not required for the retained legacy import contract.
-- Downstream Docker still depends on the entire matrix. No runtime was removed, no test/assertion was deleted, and no `continue-on-error` or skip was added.
-
-Focused pre-publication validation on Linux/Python 3.13 in a temporary exact workflow/profile tree: **9 Enterprise/profile contract tests passed, 0 failed**, and the updated Enterprise workflow parsed successfully as YAML with all four runtime entries present. No external target, model call, scanner target, report/customer data, credential or blocked unpublished draft was used.
-
-Fresh hosted runs for `3ab2920f...` were queued/in progress at publication: Evidence Workbench `35843554118`, Workbench Startup `35843554090`, Release Package `35843554235`, Basic CI `35843554297`, Enterprise `35843554070`. These are not claimed successful until their exact current-head conclusions are read.
-
-## Current candidate: repair exact current-head CI contract drift
-
-Fresh hosted evidence for source `3aafe689ca443e3d7468b6ff08af2c36ac4060a8` / generated PR checkout `b899c9f3cb09b3b4945fbcaaa7a93bf48723919e` identifies two bounded CI blockers while confirming the underlying compatibility work:
-
-- Workbench Startup `35843846771`: **success**.
-- Release Package `35843846701`: **success**.
-- Basic CI `35843846716`: **success**.
-- Evidence Workbench `35843846696`: **failure** only in native Python 3.11/3.12/3.13 lanes. The Python 3.11 lane ran **369 tests: 366 passed, 2 skipped, 1 failed**; the one failure is `test_legacy_setup_fixes_keep_real_test_and_lint_commands`, whose stale assertion still expects literal `pip install -r requirements.txt` although the reviewed Enterprise workflow now installs the matrix-selected requirements file. Browser E2E, the real local-model probe, pinned Semgrep validation and fresh-install smoke on Ubuntu/macOS/Windows all succeeded in the same aggregate run.
-- Enterprise `35843846730`: **failure** at fail-closed Code Quality only. Security Advisory Reports and all four test matrix jobs passed: Python 3.8 `legacy-core` plus Python 3.9/3.10/3.11 `full`. Black 26.5.1 reported exactly one file requiring formatting, `tests/unit/test_requirements_compat.py`; because quality failed, the downstream Docker job correctly did not run. Compliance remains an explicitly non-validating coverage-gap job, not certification.
-
-The current candidate makes two narrow repairs without weakening coverage:
-
-- applies the exact hosted Black 26.5.1 formatting to the two long set-comprehension lines in `tests/unit/test_requirements_compat.py`, with no logic change;
-- updates the Workbench workflow regression to validate the four-lane dependency contract itself: one Python 3.8 `legacy-core` profile, three `full` lanes using `requirements.txt`, and the matrix-selected install command. It no longer requires the obsolete literal command that the new matrix intentionally replaced;
-- refreshes ROADMAP Gate E to the exact current evidence instead of retaining the older formatter checkpoint.
-
-The candidate does not remove a runtime, dependency from the product requirements, test, assertion category or fail-closed check. It adds no execution authority and uses no external assessment target, model call, scanner target, credential/customer data, blocked draft, public deployment or paid service. Fresh hosted validation is still required after publication; current-head success is not claimed yet.
+- Evidence Workbench `35819753044` ran 361 native Python tests on its Python 3.11 lane: **358 passed, 2 skipped, 1 failed**. The single failure was the workflow regression misclassifying `black --version`; browser E2E, the real local-model compatibility probe, pinned Semgrep-container validation and fresh-install smoke on Ubu[KÛXXÓÔËÕÚ[™İÜÈ[\ÜÙY‚‹H[\œš\ÙHÍNNMÍLÌXÙ[XİY]ÛˆËKŒH›ÜˆÛÙH]X[]H[™˜Z[Y™Y›Ü™H›Ü›X][™È™XØ]\ÙH›XÚÈ‹KŒH™\]Z\™\È]ÛˆLËŒLˆ]È[Ø^\Ë]\ØYXYÛ›ÜİXÜÈİ\[ÛÈ˜Z[Y™XØ]\ÙH˜ÚKØ›XÚËØY›İY]™Y[ˆÜ™X]YˆH]ÛˆËKÌËŒLÌËŒLH\XØ][Ûˆ\İ›ØœÈY\ÜÙY]]ÚXÚÜÚ[È›ÈÛÛ\][ÛˆÛZ[HØ\ÈXYH›ÜˆË\™K‚‚•\ÙHÙÜÈ\İX›\ÚH™\Z\ˆ\™Ù]È^H\™H›İİ\œ™[ZXY˜[Y][Û‹‚‚ˆÈÈ›Øİ\ÙY™K\X›XØ][Ûˆ˜[Y][Û‚‚•\Ú[™ÈH^XİX›\ÚYXÚØYÙH\Y˜Xİœ›ÛH™[X\ÙHXÚØYÙHÍNNMÍLÌM˜\ÈH^XİÜİY›ÛİÛÜšÙ›İÈ^È[ˆH[\Ü˜\H˜[Y][Ûˆ™YN‚‚‹HÛÜšØ™[˜ÚØİ[Y[][Û‹İÛÜšÙ›İÈ™YÜ™\ÜÚ[Ûˆ[Ù[Nˆ
+Š\ÜÙY˜Z[YÜÚÚ\Y
+Š‹‚‹H›Ûİ[\œš\ÙHÒHÛÛ˜Xİ\İÎˆ
+Š\ÜÙY˜Z[YÜÚÚ\Y
+Š‹‚‹H]Ûˆ[HÛÛ\[X[\HÛÜšØ™[˜Ú\İËİ[š]İ\İÙ[\œš\ÙWØÚWØÛÛ˜XİœXˆ\ÜÙY‚‹H›İ›ÛİÛÜšÙ›İÈš[\È\œÙYİXØÙ\ÜÙ[H\ÈPSS‚‹HÛ™HÛÛ\]HØØ[ÛÜšØ™[˜ÚİZ]H^ÙYYYH^Xİ][ÛˆÛÛ[Z]™Y›Ü™HHš[˜[İ[[X\KÛÈ]\È
+Š››İ
+ŠˆÛİ[Y\ÈHÛÛ\]YØØ[[\İZ]H\ÜË‚‚“›È^\›˜[\ÜÙ\ÜÛY[\™Ù]™X[İ\İÛY\ˆ]KØÜ™Y[X[Ë]™H^\›˜[ØØ[›™\ˆ\™Ù]Üˆ›ØÚÙY[œX›\ÚY˜YØ\È\ÙY‚‚ˆÈÈÜİY˜[Y][ÛˆY\ˆX›XØ][Û‚‚ˆÈÈÈÛİ\˜ÙHMŒXÙNL™MLNX˜ØÍXÍÍLX˜ŒMÎY‚‹H]šY[˜ÙHÛÜšØ™[˜ÚÍNŒLÍØˆ
+ŠœİXØÙ\ÜÊŠ‹ˆ]ÛˆËŒLH˜]]™H[™H˜[ˆ
+ŠŒÍŒH\İÎˆÍNH\ÜÙYˆÚÚ\Y˜Z[\™\ÊŠˆ[ˆÍKLÍ\Ëˆ˜]˜TØÜš\ÓKÙ™]ÚÛÛ˜XİÎˆ
+ŠŒH\ÜÙY˜Z[YÜÚÚ\Y
+Š‹ˆœ›İÜÙ\ˆL‘K™X[ØØ[[[Ù[ÛÛ\]Xš[]K[›™YÙ[YÜ™\XÛÛZ[™\ˆ˜[Y][Û‹[™œ™\ÚZ[œİ[Û[ÚÙHÛˆX[KÛXXÓÔËÕÚ[™İÜÈ[\ÜÙY[ˆHYÙÜ™YØ]K‚‹Hİ\\ÍNŒLÍŒØˆ
+ŠœİXØÙ\ÜÊŠ‹‚‹H™[X\ÙHXÚØYÙHÍNŒLÍÌØˆ
+ŠœİXØÙ\ÜÊŠ‹‚‹H[\œš\ÙHÍNŒLÎLXˆ]ÛˆËŒLKŒMˆ[™›XÚÈ‹KŒH[œİ[YİXØÙ\ÜÙ[H[™XYÛ›ÜİXÜÈÙ\™H\ØYYˆ˜Z[XÛÜÙY[™›Ü˜Ù[Y[[ˆ™\ÜY^XİH
+ŠŒHš[HÛİ[™H™Y›Ü›X]Y[™NHY[˜Ú[™ÙY
+Š‹ˆ›Ü›X]\ˆ™\Z\ˆ\Y˜XİLÌÌÍÌMM˜Ø\ÈÙ[™\˜]Yˆ\È[ˆÛÜœ™XİH™[XZ[™Y›Û‹YÜ™Y[ˆ[[H^Xİ›Ü›X][™ÈØ\ÈÛÛ[Z]Y‚‚ˆÈÈÈÛİ\˜ÙHM™NÌXYÍŒLÙYŒØÌMÙXÍÌLŒLØY˜Ì™‚‹Hİ\\ÍNŒÌÌŒØˆ
+ŠœİXØÙ\ÜÊŠ‹‚‹H]šY[˜ÙHÛÜšØ™[˜ÚÍNŒÌÌˆ
+ŠœİXØÙ\ÜÊŠ‹‚‹H™[X\ÙHXÚØYÙHÍNŒÌÌLˆ
+ŠœİXØÙ\ÜÊŠ‹‚‹H[\œš\ÙHÍNŒÌÌŒXÛÙH]X[]H›ØˆLÌNMØˆ
+ŠœİXØÙ\ÜÊŠ‹ˆ]X[]K]ÛÛ[œİ[][Û‹›XÚÈÚXÚË˜Z[XÛÜÙY[™›Ü˜Ù[Y[›ZÙN^TK[[[™™\Ü\ØY[ÛÛ\]YİXØÙ\ÜÙ[NÈH™\Z\‹XØ[™Y]Hİ\ÈÛÜœ™XİHÚÚ\Y™XØ]\ÙHHÚXÚÛİ]Ø\È[™XYH›Ü›X]YˆHÙXİ\š]HYš\ÛÜH›Øˆ[ÛÈ\ÜÙY]H]\İÚXÚÜÚ[‚‹H˜\ÚXÈÒHÍNŒÌÌŒ˜[™H]ÛˆËLËŒLH[\œš\ÙH[[YHX]š^ÙİÛœİ™X[HØÚÙ\ˆ]Ù\™Hİ[[›š[™È]H]\İÚXÚÜÚ[ˆ^H\™H
+Š››İ
+ŠˆÛİ[Y\ÈİXØÙ\ÜÙ[ÜˆÛÛ\]H\™K‚‚•H›Ü›X]\‹Ü[[YH›ØÚÙ\ˆ\È\™Y›Ü™HÛÜÙYHÜİY]šY[˜ÙK]
+ŠÚÛK\™\ÜÚ]ÜHÜ™Y[ˆİ]\È\È›İY]\İX›\ÚY
+Š‹ˆˆÌˆ™[XZ[œÈÜ[ˆ[™[›Y\™ÙYÚ[HH^Xİİ\œ™[˜\ÚXËÑ[\œš\ÙH[[YH[™ØÚÙ\ˆ]Èš[š\ÚÜˆ^ÜÙHH™^ÛÛ˜Ü™]H›ØÚÙ\‹‚‚ˆÈÈİ\œ™[™[XXš[]HØ[™Y]Nˆ^Xİ[Û˜ÙH^Xİ][Ûˆ[™\›Z[˜[\İÜ˜YÙH][™\ÜÂ‚•\ÈØ[™Y]H\È˜\ÙYÛˆÛİ\˜ÙHYŒN™YŒ˜ÙLL˜LÙM˜ŒMYX™ŒLÎŒLMYXˆ]È^Xİİ\œ™[ÛÜšØ™[˜Ú]\ÈÙ\™HZÙ[ˆœ›ÛH™[X\ÙHXÚØYÙH[ˆÍNŒÍMŒÍÌÙ[™\˜]YˆÚXÚÛİ]ÙŒÙ™YNLØÌXÌÍÙYXŒXØÌØÌXÌŒÍÎYMYLÌX\Y˜XİLÌÍMŒNXÈHXÚØYÙH]Ù[ˆY[™XYH\ÜÙY]ÈX[KÛXXÓÔËÕÚ[™İÜÈÛ[ÚÙH›ØœÈ™Y›Ü™H\ÈØ[™Y]HØ\ÈY]YØØ[K‚‚•H™[XXš[]HÚ[™ÙHÛÜÙ\ÈHÛÛ˜Ü™]H[XšYİZ]H[ˆH™]šY]ÙYY\\ˆY™XŞXÛH˜]\ˆ[ˆÚY[š[™È^Xİ][Ûˆ]]Üš]N‚‚‹HÛÈÛÛ˜İ\œ™[Ø[\œÈYØZ[œİÛ™H\›İ™YY™XŞXÛHØ[››İ›İ™XXÚH^Xİ][Ûˆ™YÚ\İNÈHÙXÛÛ™Ø[\ˆ\È™Z™XİYY\ˆHš\œİ˜[œÚ][ÛˆÈ^Xİ][™Ø‚‹HY\\ˆ^Xİ][Û‹Ü™XÙZ\˜[Y][Ûˆ\œ›ÜœÈİ[\œÚ\İZ\ˆ™X[›İ[™Yİ]ÛÛYHÚ[ˆİÜ˜YÙH\ÈX[K‚‹HYˆ]\›Z[˜[Üš]H˜Z[ËH™XÛİ™\˜X›HÙXÛÛ™Üš]H™XÛÜ™È[\œ\YÚ]\›Z[˜[Ü\œÚ\İ[˜ÙWÙ˜Z[Y[œİXYÙˆ™][™[™ÈHY\\ˆš[š\ÚY\˜X›K‚‹HYˆ›İ\œÚ\İ[˜ÙH][\È˜Z[H^Xİ][Ûˆ[™Ú[™]\›œÈLØÈ\›Z[˜[Ü\œÚ\İ[˜ÙWÙ˜Z[YÚ][ˆ^XÚ]™XY[Û›HÚXÚÈ[ˆİ]\Ø™XÛİ™\HXİ[ÛÈ]Ù\È›İ]]ÛX]XØ[H™\[ˆHÛÛÜˆ˜Z[œÈH™XÙZ\‚‚‘›Øİ\ÙYØØ[˜[Y][ÛˆÛˆ[^Ô]ÛˆËŒLÈ\Ú[™ÈH^XİXÚØYÙY˜\ÙH\È\ÈØ[™Y]N‚‚‹HÛÜšØ™[˜Ú\İË\İØY\\—ÛY™XŞXÛXˆ
+ŠŒLÈ\ÜÙY
+Š‹‚‹H›Øİ\ÙY\KØØ[˜Ù[][Û‹Ü™XÙZ\\İÎˆ
+Š\ÜÙY
+Š‹‚‹H˜]˜TØÜš\˜[œØXİ[Ûˆ™YÜ™\ÜÚ[ÛœÎˆ
+Šˆ\ÜÙY
+Š‹‚‹HÛÛ\[X[ÈŞ[^ÚXÚÜÈ›ÜˆHÚ[™ÙY]Û‹ÛÛÜ˜XÚÈÛ[ÚÙH[Ù[\Îˆ\ÜÙY‚‚•H™X[œ›İÜÙ\ˆL‘H\È›İÛİ[YH\ÙHÓKØÛÛ˜Xİ\İËˆœ™\ÚÜİYÛÜšØ™[˜Úİ\\XÚØYÙK˜\ÚXÈÒH[™[\œš\ÙH™\İ[È\™H™\]Z\™Y™Y›Ü™H[HY\™ÙHÜˆİ\œ™[ZXYÛÛ\][ÛˆÛZ[K‚‚ˆÈÈÜİY›ÛİË]›İYÚ›ÜˆÛİ\˜ÙH˜Y™ÎŒØMŒLÎYÌÍÍM™LŒXÎMX‚‘œ™\ÚÜİYÛÜšÙ›İÜÈ›ÜˆHX›\ÚY™[XXš[]HØ[™Y]HÛÛ\]Y‚‚‹H]šY[˜ÙHÛÜšØ™[˜ÚÍNÍÍŒÌˆ
+ŠœİXØÙ\ÜÊŠ‹‚‹HÛÜšØ™[˜Úİ\\ÍNÍÍŒÎXˆ
+ŠœİXØÙ\ÜÊŠ‹‚‹H™[X\ÙHXÚØYÙHÍNÍÍŒˆ
+ŠœİXØÙ\ÜÊŠ‹‚‹H˜\ÚXÈÒHÍNÍÍŒLˆ
+ŠœİXØÙ\ÜÊŠ‹ˆ^Xİ›Øˆ[œÜXİ[ÛˆÛÛ™š\›\ÈHYØXŞH™XY[™\ÜËÚ[\Ü›Ø‹[š]\İË]X[]KÙXİ\š]H[™ØÚÙ\ˆZ[
+ÜÛ[ÚÙHÛÛ\]YİXØÙ\ÜÙ[K‚‹H[\œš\ÙHÍNÍÍŒŒˆ
+Š™˜Z[\™JŠˆ™XØ]\ÙH˜Z[XÛÜÙYÛÙH]X[]H™\ÜYÈ]Ûˆš[\È™\]Z\š[™È›Ü›X][™ËˆHÙXİ\š]HYš\ÛÜH™\ÜÈ›ØˆİXØÙYYY]ÛˆËKÌËŒLÌËŒLH[š]Ú[YÜ˜][Ûˆ›ØœÈİXØÙYYY[™]ÛˆË™[XZ[™Y[ˆ\[™[˜ŞH[œİ[][Ûˆ]H]\İÚXÚÜÚ[ˆİÛœİ™X[HØÚÙ\ˆÛÜœ™XİHY›İ[ˆ™XØ]\ÙHH™\]Z\™YX]š^Ü]X[]H]Ø\È›İÜ™Y[‹‚‚•HÛÜšØ™[˜Ú[™YXØ]YÚ\[™È]È\™H\™Y›Ü™H˜[Y]Y]\È™]š\Ú[Û‹]H™\ÜÚ]ÜH\ÈHÚÛH™[XZ[œÈ›Û‹YÜ™Y[‹ˆH^XİÜİY›XÚÈ˜Z[\™H\ÈH™^™\›ÙXÚX›H™]Z[™Y]ÛÜšÙ›İÈ›ØÚÙ\È]\È›İØZ]™YÜˆX™[Y[ˆ[œ™[]YYØXŞH›Ø›[K‚‚ˆÈÈİ\œ™[Ø[™Y]Nˆ[œİ[][Ûˆ™Y›YÚØ]YÛÜšY\È[™™YXİY™XÛİ™\HXİ[ÛœÂ‚‘œ™\ÚÜİY™\İ[È›Üˆ˜\ÙHÛİ\˜ÙH˜Y™ÎŒØMŒLÎYÌÍÍM™LŒXÎMXÙ\™H™XY™Y›Ü™H\ÈØ[™Y]HØ\È™\\™YˆHİ\œ™[Ú[™ÙHÙY\Èİ\H]\›Z[š\İXÈ[™ØØ[]XZÙ\ÈKXÚXÚËZ[œİ[KZœÛÛ˜\ÙY[ÈH™]šY]Ù\ˆ[œİXYÙˆ™]\›š[™ÈÛ™HÙ[™\šXÈİ\\Ù˜Z[Y›Üˆ]™\H^Ù\[Û‚‚‹H™\]Z\™YÙš[\ØÈ[˜ÛÛ\]WÚ[œİ[][Û˜›ÜˆHZ\ÜÚ[™È][˜Ú\‹ØÛÜ™HÙ\™\‹ÔÔSØÚ[XNÂ‹HÜ[]WÜ™Y›YÚÈÜ[]Wİ[˜]˜Z[X›X›Üˆ™\ÜÚ]ÜK[ØØ[ÔS]H˜Z[\™NÂ‹HÛÜšÜÜXÙWİÜš]XˆØÛÜšÜÜXÙWİ[Üš]X›X›Üˆ[Üš]X›HÛÜšÜÜXÙHİÜ˜YÙNÂ‹HÜØ]˜Z[Xš[]XÈÛÜ˜XÚ×ÜÜİ[˜]˜Z[X›X›ÜˆH›Û‹Xš[™X›HÛÜ˜XÚÈ\İ[ˆÜ‚‚[š]™H˜Z[\™HØ]YÛÜšY\È\ÙHİX›HXXÚ[™K\™XYX›HÛÙX˜[Y\È[™›İ[™YXİ[Û˜X›H™XÛİ™\X^Ú[HÙY\[™ÈH]Z[ËÜÙXÜ™]ÛØØ[\]İ]Ùˆ”ÓÓ‹ˆH[X[‹\™XYX›H\œ›Üˆ\ÈÚ[Z[\›H™YXİY‚‚‹HİX›HØ]YÛÜH
+È™X\ÛÛˆ
+ÛØØ[™XÛİ™\HXİ[ÛÂ‹H›ÈØ]YÚ^Ù\[Ûˆİš[™ËÛÜšÜÜXÙH]ÜˆÛØÚÙ]]Z[Â‹H[™^XİY˜Z[\™\È™[XZ[ˆHÙ[™\šXÈİ\\Èİ\\Ù˜Z[YÂ‹H[X[‹\™XYX›H˜Z[\™H^Ú]™\ÈÛ™HØØ[™XÛİ™\HXİ[Ûˆ›ÜˆHİX›HØ]YÛÜH]™]™\ˆ[X™YÈHØ]YÚ^Ù\[Û‹]ÜˆÛØÚÙ]]Z[Â‹HİXØÙ\ÜÙ[™Y›YÚÙ[X[XÜÈ™[XZ[ˆ[˜Ú[™ÙY[™İ[È›İ[œÜXİÜ™XÛİ™\ˆ\ÜÙ\ÜÛY[\İÜK‚‚‘›Øİ\ÙYØØ[˜[Y][ÛˆÛˆ[^Ô]ÛˆËŒLÈYØZ[œİH^Xİİ\œ™[™[X\ÙK\XÚØYÙH]\È\È\ÈØ[™Y]N‚‚‹HÛÜšØ™[˜Ú\İË\İÜİ\\ˆ
+ŠŒMÈ\ÜÙY˜Z[YÜÚÚ\Y
+Šˆ[ˆŒÌ\Ë[˜ÛY[™È™]ÈØØİ\YY\ÜÛÜšÜÜXÙK]Üš]H[™[˜ÛÛ\]KYš[\È˜Z[\™Hš^\™\Ë‚‹HÛÜšØ™[˜Ú\İË\İÜİ\\İ˜XÙXˆ
+ŠŒ\ÜÙYH^XÚ]XXÓÔË[Û›HÚÚ\˜Z[\™\ÊŠˆÛˆ[^‚‹H]Ûˆ[HÛÜšØ™[˜Ú\İË™œ™\ÚÚ[œİ[ÜÛ[ÚÙXˆ\ÜÙYÛÛ\][™È[ˆİÛ™YŞ[]XÈ\ÜÙ\ÜÛY[[™\˜X›H^ÜÚ]›È^\›˜[\™Ù]Üˆ]™H[Ù[‚‹HÛÛ\[X[›ÜˆHÚ[™ÙY][˜Ú\‹İ\İ[Ù[\È\ÜÙY‚‚‘œ™\ÚÜİYİ]HÙˆH[›[ÙYšYY˜\ÙH˜Y™Î‹‹˜]H]\İ™XY‚‚‹H]šY[˜ÙHÛÜšØ™[˜ÚÍNÍÍŒÌˆ
+ŠœİXØÙ\ÜÊŠ‹‚‹HÛÜšØ™[˜Úİ\\ÍNÍÍŒÎXˆ
+ŠœİXØÙ\ÜÊŠ‹‚‹H™[X\ÙHXÚØYÙHÍNÍÍŒˆ
+ŠœİXØÙ\ÜÊŠ‹‚‹H˜\ÚXÈÒHÍNÍÍŒLˆ
+ŠœİXØÙ\ÜÊŠ‹‚‹H[\œš\ÙHÍNÍÍŒŒˆİ[
+Šš[ˆ›ÙÜ™\ÜÊŠ‹ˆÛÙH]X[]KÙXİ\š]HYš\ÛÜH™\ÜÈ[™]ÛˆËKÌËŒLÌËŒLH[š]Ú[YÜ˜][Ûˆ›ØœÈ\™HİXØÙ\ÜÙ[È]ÛˆËØ\Èİ[[œİ[[™È\[™[˜ÚY\È]H]\İ™XYˆH˜[œÚY[›Ø‹[ÙÈİÛ›ØY™]\›™Y›Ø“›İ›İ[™Ú[H]›ØˆØ\Èİ[[›š[™ËÛÈ›È›ÛİØ]\ÙH\È[™™\œ™Yœ›ÛH]‚‚•\ÙH˜\ÙH™\İ[ÈÈ›İ˜[Y]H\È[œX›\ÚYØ[™Y]Kˆœ™\ÚÜİYİ\\ÕÛÜšØ™[˜ÚÜXÚØYÙKİÚÛK\™\ÜÚ]ÜH™\İ[È\™H™\]Z\™YY\ˆX›XØ][Û‹‚‚‚ˆÈÈİ\œ™[Ø[™Y]NˆÛÜÙH^Xİ›Ü›X]\ˆšY[™Û\ÜÚYHÛÜšÜÜXÙH™\\˜][Ûˆ˜Z[\™\Â‚‘œ™\ÚÜİY]šY[˜ÙH›ÜˆÛİ\˜ÙHÌXŒÌŒÙNLŒ™ŒMØYY™ŒY™YÌÌÌX™ØŒÈÙ[™\˜]YˆÚXÚÛİ]ÌØÎØÎLXØ™˜NLŒLÌÌÎLŒÎŒÌYL˜\İX›\Ú\ÈH™^ÛÛ˜Ü™]H›ØÚÙ\ˆ[œİXYÙˆ™[Z[™ÈÛˆH™]š[İ\ÈÚXÚÜÚ[‚‚‹H]šY[˜ÙHÛÜšØ™[˜ÚÍNÍNNÌXˆ
+ŠœİXØÙ\ÜÊŠ‹‚‹HÛÜšØ™[˜Úİ\\ÍNÍNNÎˆ
+ŠœİXØÙ\ÜÊŠ‹‚‹H™[X\ÙHXÚØYÙHÍNÍNNÍ˜ˆ
+ŠœİXØÙ\ÜÊŠÈØ[™Y]H\Y˜XİLÌÎMNÎXİ\Y\ÈH^Xİ\İYÛÜšØ™[˜Ú]\È\ÙY›Üˆ\È›İ[™‚‹H˜\ÚXÈÒHÍNÍNNXˆ
+ŠœİXØÙ\ÜÊŠ‹‚‹H[\œš\ÙHÍNÍNNÌMˆİ[
+Šš[ˆ›ÙÜ™\ÜÊŠˆ]\È™XY]ÛÙH]X[]H›ØˆLÌNMÎMLÌ˜˜Z[YÛÜÙYÛˆ›XÚÈ‹KŒHY\ˆ™\Ü[™È^XİHÛÈš[\È™YY[™È›Ü›X][™ÎˆÛÜšØ™[˜ÚÜİ\œX[™ÛÜšØ™[˜Úİ\İËİ\İÜİ\\œXˆ]È^XİÜİY™\Z\ˆ\Y˜Xİ\ÈLÌÎNMÍMÌ˜ˆÙXİ\š]HYš\ÛÜH™\ÜÈ[™]ÛˆËŒLHÙ\™H[™XYHİXØÙ\ÜÙ[[ˆHØ[YH[\œš\ÙH[È›ÈÚÛKQ[\œš\ÙHİXØÙ\ÜÈ\ÈÛZ[YY‚‚•\ÈØ[™Y]H\Y\ÈH^XİÜİY›XÚÈ™\Z\ˆ›ÜˆÜÙHÛÈš[\È[™ÛÜÙ\ÈÛ™H™[XZ[š[™ÈXİ[Û˜X›Hİ\\Ø\Ú]İ]ÚY[š[™È\ÜÙ\ÜÛY[]]Üš]N‚‚‹HÛÜšÜÜXÙH\™XİÜH™\ÛÛ][Û‹ØÜ™X][Ûˆ[™ØÚËYš[HÜ[ˆ˜Z[\™\È›İÈ™]\›ˆÛÜšÜÜXÙWÛØÚØÈÛÜšÜÜXÙWİ[˜]˜Z[X›XˆİXYÙˆHÙ[™\šXÈİ\\Ù˜Z[YÂ‹HHŞ[X›ÛXË[[šÈÜˆİ\Ú\ÙH[œØY™HØÚÈØš™Xİ™]\›œÈÛÜšÜÜXÙWÛØÚØÈÛÜšÜÜXÙWÛØÚ×İ[œØY™XÂ‹HÜ™[˜\HØÚÈÛÛ[[Ûˆ™[XZ[œÈH^\İ[™ÈÛÜšÜÜXÙWØ\ŞX™\Ù\š[™ÈH\İ[˜İ[Ûˆ™]ÙY[ˆH]™HÛÛÜ\˜][™È›ØÙ\ÜÈ[™[ˆ[\ØX›HÛÜšÜÜXÙNÂ‹H”ÓÓˆ[™[X[ˆXYÛ›ÜİXÜÈ™]™\ˆ^ÜÙHHØ]YÚš[\Ş\İ[H]Z[ÜˆØØ[][™›È]]ÛX]XÈ[][Û‹Ü™\Z\ˆÙˆHØÚÈ\È\™›Ü›YY‚‚‘›Øİ\ÙYØØ[˜[Y][ÛˆÛˆ[^Ô]ÛˆËŒLÈYØZ[œİH^XİXÚØYÙYİ\œ™[ÛÜšØ™[˜Ú\È\ÈØ[™Y]N‚‚‹HÛÜšØ™[˜Ú\İË\İÜİ\\ˆ
+ŠŒN\ÜÙY˜Z[YÜÚÚ\Y
+Šˆ[ˆLËŒœË[˜ÛY[™ÈÛÜšÜÜXÙKXÜ™X][Ûˆš]˜XŞH[™[œØY™K\Ş[[[šÈØÚÈ™YÜ™\ÜÚ[ÛœË‚‹HÛÜšØ™[˜Ú\İË\İÜİ\\İ˜XÙXˆ
+ŠŒ\ÜÙYH^XÚ]XXÓÔË[Û›HÚÚ\˜Z[\™\ÊŠˆÛˆ[^‚‹H]Ûˆ[HÛÜšØ™[˜Ú\İË™œ™\ÚÚ[œİ[ÜÛ[ÚÙXˆ\ÜÙY[˜ÛY[™ÈİÛ™YŞ[]XÈ\ÜÙ\ÜÛY[[™\˜X›H^ÜÚ]›È^\›˜[\™Ù]Üˆ]™H[Ù[‚‹HÛÛ\[X[È]ÛˆÛÛ\[][ÛˆÙˆHÚ[™ÙY][˜Ú\ˆ[™İ\\\İÈ\ÜÙY‚‹H›XÚÈ‹KŒHÛİ[›İ™H[œİ[Y[ˆHØØ[^Xİ][ÛˆÛÛZ[™\ˆ™XØ]\ÙHXÚØYÙKZ[™^”ÈØ\È[˜]˜Z[X›KˆH^Xİİ\œ™[ZXYÜİY›Ü›X]\ˆ\Y˜XİØ\È\™Y›Ü™H\ÙY›ÜˆHÛÈ˜\Ù[[™Hš[\ËÚ[HH™]ÛHYY[™\È]ØZ]˜Z[XÛÜÙYÜİY›XÚÈ™\šYšXØ][ÛˆY\ˆX›XØ][ÛÈ›ÈØØ[›Ü›X]\ˆ\ÜÈ\ÈÛZ[YY‚‚“›È^\›˜[\ÜÙ\ÜÛY[\™Ù]™X[Ü™Y[X[Øİ\İÛY\ˆ›İË]™HØØ[›™\ˆ\™Ù][Ù[Ø[›ØÚÙY[œX›\ÚY˜YX›XÈ\Ş[Y[ÜˆZYÙ\šXÙHØ\È\ÙY‚‚ˆÈÈİ\œ™[ÒHÛÛ\]Xš[]HØ[™Y]Nˆ›İ[™Y]ÛˆË\[™[˜ŞH›Ùš[B‚”Ûİ\˜ÙHØXŒLŒŒ™YYY™LŒ˜ÎYLM˜MÌXY™\ÜÙ\ÈH™\X]X›H[\œš\ÙHÚ\[™È›İ[™XÚÈÚ]İ][][™È]ÛˆËÜˆÙXZÙ[š[™ÈH[š]Ú[YÜ˜][ÛˆX]š^ˆÛˆÛİ\˜ÙHMMÍXŒÌLXÌÙNMŒ˜YXX™NNY˜XMØMÙXŒŒØÛÜšØ™[˜Úİ\\ÍNÎNMML]šY[˜ÙHÛÜšØ™[˜ÚÍNÎNMLLØ™[X\ÙHXÚØYÙHÍNÎNMX[™˜\ÚXÈÒHÍNÎNMM˜ÛÛ\]YİXØÙ\ÜÙ[Kˆ[\œš\ÙHÍNÎNMLXYİXØÙ\ÜÙ[ÛÙH]X[]KÙXİ\š]HYš\ÛÜH™\ÜÈ[™]ÛˆËKÌËŒLÌËŒLH\İ›ØœÈÚ[H]ÛˆË™[XZ[™Y[ˆ[œİ[\[˜ÚY\Ø›Üˆİ\œÎÈH™XÙY[™È[\œš\ÙH[ˆÚİÙYHØ[YHÛ\İ\[[YHİ[ˆHÛÛ\]Y]ÛˆËH›ØˆÙÈÚİÙYH[™\]Z\™[Y[Ë™\ÛÛš[™È\™ÙH[œÛÜ‘›İÈ[™Ü˜ÚĞÕQHİXÚÜÈ™Y›Ü™H[›š[™ÈH™]Z[™YŒH[š][™ˆ[YÜ˜][Ûˆ\İË‚‚•HX›\ÚY™\Z\ˆ\™Y›Ü™HÙY\ÈÛÈ\İ[˜İÛZ[\ÈÛ™\İ‚‚‹H]ÛˆËİ[[œÈHØ[YH™X[[š]Ú[YÜ˜][Ûˆ\İÈ[™YØXŞH™XY[™\ÜËÚ[\ÜÚXÚÜË]\Ù\È™\]Z\™[Y[ËXÚK\LÎH›İ[™Y›Ùš[HYYH™YÜ™\ÜÚ[ÛˆÈ\İÚ[œİ[][Û‹ÓÔ‘WÒSTÔ•Ø\ÈH[\Ü][YHš[š˜Lˆ™\Ü[™È\[™[˜ŞK‚‹H]ÛˆËKËŒL[™ËŒLHİ[[œİ[HÛÛ\]H™\]Z\™[Y[Ë™\Ù\š[™È[\İXÚÈ\[™[˜ŞH˜[Y][ÛˆÛˆ™YH[[Y\Ëˆ[œÛÜ‘›İËÜ˜Ú[™˜[œÙ›Ü›Y\œÈ\™H›İ™[[İ™Yœ›ÛHH›ÙXİ™\]Z\™[Y[ÎÈ^H\™H^ÛYYÛ›Hœ›ÛHHÛ\İÛÛ\]Xš[]H[™HÚ\™H^H\™H›İ™\]Z\™Y›ÜˆH™]Z[™YYØXŞH[\ÜÛÛ˜Xİ‚‹HİÛœİ™X[HØÚÙ\ˆİ[\[™ÈÛˆH[\™HX]š^ˆ›È[[YHØ\È™[[İ™Y›È\İØ\ÜÙ\[ÛˆØ\È[]Y[™›ÈÛÛ[YK[Û‹Y\œ›Ü˜ÜˆÚÚ\Ø\ÈYY‚‚‘›Øİ\ÙY™K\X›XØ][Ûˆ˜[Y][ÛˆÛˆ[^Ô]ÛˆËŒLÈ[ˆH[\Ü˜\H^XİÛÜšÙ›İËÜ›Ùš[H™YNˆ
+ŠH[\œš\ÙKÜ›Ùš[HÛÛ˜Xİ\İÈ\ÜÙY˜Z[Y
+Š‹[™H\]Y[\œš\ÙHÛÜšÙ›İÈ\œÙYİXØÙ\ÜÙ[H\ÈPSSÚ][›İ\ˆ[[YH[šY\È™\Ù[ˆ›È^\›˜[\™Ù][Ù[Ø[ØØ[›™\ˆ\™Ù]™\ÜØİ\İÛY\ˆ]KÜ™Y[X[Üˆ›ØÚÙY[œX›\ÚY˜YØ\È\ÙY‚‚‘œ™\ÚÜİY[œÈ›ÜˆØXŒLŒ‹‹‹˜Ù\™H]Y]YYÚ[ˆ›ÙÜ™\ÜÈ]X›XØ][Ûˆ]šY[˜ÙHÛÜšØ™[˜ÚÍNÍMMLNÛÜšØ™[˜Úİ\\ÍNÍMML™[X\ÙHXÚØYÙHÍNÍMMŒÍX˜\ÚXÈÒHÍNÍMMMØ[\œš\ÙHÍNÍMMÌˆ\ÙH\™H›İÛZ[YYİXØÙ\ÜÙ[[[Z\ˆ^Xİİ\œ™[ZXYÛÛ˜Û\Ú[ÛœÈ\™H™XY‚‚ˆÈÈİ\œ™[Ø[™Y]Nˆ™\Z\ˆ^Xİİ\œ™[ZXYÒHÛÛ˜XİšY‚‘œ™\ÚÜİY]šY[˜ÙH›ÜˆÛİ\˜ÙHØXY™MXØMÙLÙÍ™™ŒYŒ˜ÌÍ˜XÍŒNÈÙ[™\˜]YˆÚXÚÛİ]NXÎYŒØØŒXŒØMY˜˜ØXXMØNLØ™ÌŒÎLNYXY[YšY\ÈÛÈ›İ[™YÒH›ØÚÙ\œÈÚ[HÛÛ™š\›Z[™ÈH[™\›Z[™ÈÛÛ\]Xš[]HÛÜšÎ‚‚‹HÛÜšØ™[˜Úİ\\ÍNÎÍÌXˆ
+ŠœİXØÙ\ÜÊŠ‹‚‹H™[X\ÙHXÚØYÙHÍNÎÌXˆ
+ŠœİXØÙ\ÜÊŠ‹‚‹H˜\ÚXÈÒHÍNÎÌM˜ˆ
+ŠœİXØÙ\ÜÊŠ‹‚‹H]šY[˜ÙHÛÜšØ™[˜ÚÍNÎM˜ˆ
+Š™˜Z[\™JŠˆÛ›H[ˆ˜]]™H]ÛˆËŒLKÌËŒL‹ÌËŒLÈ[™\ËˆH]ÛˆËŒLH[™H˜[ˆ
+ŠŒÍH\İÎˆÍˆ\ÜÙYˆÚÚ\YH˜Z[Y
+ŠÈHÛ™H˜Z[\™H\È\İÛYØXŞWÜÙ]\Ùš^\×ÚÙY\Ü™X[İ\İØ[™Û[ØÛÛ[X[™ØÚÜÙHİ[H\ÜÙ\[Ûˆİ[^XİÈ]\˜[\[œİ[\ˆ™\]Z\™[Y[Ë[İYÚH™]šY]ÙY[\œš\ÙHÛÜšÙ›İÈ›İÈ[œİ[ÈHX]š^\Ù[XİY™\]Z\™[Y[Èš[Kˆœ›İÜÙ\ˆL‘KH™X[ØØ[[[Ù[›Ø™K[›™YÙ[YÜ™\˜[Y][Ûˆ[™œ™\ÚZ[œİ[Û[ÚÙHÛˆX[KÛXXÓÔËÕÚ[™İÜÈ[İXØÙYYY[ˆHØ[YHYÙÜ™YØ]H[‹‚‹H[\œš\ÙHÍNÎÌÌˆ
+Š™˜Z[\™JŠˆ]˜Z[XÛÜÙYÛÙH]X[]HÛ›KˆÙXİ\š]HYš\ÛÜH™\ÜÈ[™[›İ\ˆ\İX]š^›ØœÈ\ÜÙYˆ]ÛˆËYØXŞKXÛÜ™X\È]ÛˆËKÌËŒLÌËŒLH[ˆ›XÚÈ‹KŒH™\ÜY^XİHÛ™Hš[H™\]Z\š[™È›Ü›X][™Ë\İËİ[š]İ\İÜ™\]Z\™[Y[×ØÛÛ\]œXÈ™XØ]\ÙH]X[]H˜Z[YHİÛœİ™X[HØÚÙ\ˆ›ØˆÛÜœ™XİHY›İ[‹ˆÛÛ\X[˜ÙH™[XZ[œÈ[ˆ^XÚ]H›Û‹]˜[Y][™ÈÛİ™\˜YÙKYØ\[Ø‹›İÙ\YšXØ][Û‹‚‚•Hİ\œ™[Ø[™Y]HXZÙ\ÈÛÈ˜\œ›İÈ™\Z\œÈÚ]İ]ÙXZÙ[š[™ÈÛİ™\˜YÙN‚‚‹H\Y\ÈH^XİÜİY›XÚÈ‹KŒH›Ü›X][™ÈÈHÛÈÛ™ÈÙ]XÛÛ\™Z[œÚ[Ûˆ[™\È[ˆ\İËİ[š]İ\İÜ™\]Z\™[Y[×ØÛÛ\]œXÚ]›ÈÙÚXÈÚ[™ÙNÂ‹H\]\ÈHÛÜšØ™[˜ÚÛÜšÙ›İÈ™YÜ™\ÜÚ[ÛˆÈ˜[Y]HH›İ\‹[[™H\[™[˜ŞHÛÛ˜Xİ]Ù[ˆÛ™H]ÛˆËYØXŞKXÛÜ™X›Ùš[K™YH[[™\È\Ú[™È™\]Z\™[Y[Ë[™HX]š^\Ù[XİY[œİ[ÛÛ[X[™ˆ]›ÈÛ™Ù\ˆ™\]Z\™\ÈHØœÛÛ]H]\˜[ÛÛ[X[™]H™]ÈX]š^[[[Û˜[H™\XÙYÂ‹H™Yœ™\Ú\È“ĞQPTØ]HHÈH^Xİİ\œ™[]šY[˜ÙH[œİXYÙˆ™]Z[š[™ÈHÛ\ˆ›Ü›X]\ˆÚXÚÜÚ[‚‚•HØ[™Y]HÙ\È›İ™[[İ™HH[[YK\[™[˜ŞHœ›ÛHH›ÙXİ™\]Z\™[Y[Ë\İ\ÜÙ\[ÛˆØ]YÛÜHÜˆ˜Z[XÛÜÙYÚXÚËˆ]YÈ›È^Xİ][Ûˆ]]Üš]H[™\Ù\È›È^\›˜[\ÜÙ\ÜÛY[\™Ù][Ù[Ø[ØØ[›™\ˆ\™Ù]Ü™Y[X[Øİ\İÛY\ˆ]K›ØÚÙY˜YX›XÈ\Ş[Y[ÜˆZYÙ\šXÙKˆœ™\ÚÜİY˜[Y][Ûˆ\Èİ[™\]Z\™YY\ˆX›XØ][ÛÈİ\œ™[ZXYİXØÙ\ÜÈ\È›İÛZ[YYY]‚‚ˆÈÈİ\œ™[Ø[™Y]NˆÙY\]ÛˆËÛÛ\]Xš[]HYYÈH™X[YØXŞH[\Üİ\™˜XÙB‚‘œ™\ÚÜİY]šY[˜ÙH›ÜˆÛİ\˜ÙHXŒL˜ÍYMŒL™™XÙYMYÎØYŒÌLÎYØŒ˜ÈÙ[™\˜]YˆÚXÚÛİ]ŒYŒ™MØMLŒÌØXŒMMÌNYMÍXÎLÌÙM˜ÛÜÙ\ÈHš[Üˆ›Ü›X]\‹İÛÜšÙ›İËXÛÛ˜Xİ˜Z[\™\È[™^ÜÙ\ÈÛ™H™XÚ\ÙHÛ\İ\[[YH\[™[˜ŞHZ\ÛX]Ú‚‚‹H]šY[˜ÙHÛÜšØ™[˜ÚÍNLÌLØˆ
+ŠœİXØÙ\ÜÊŠ‹‚‹HÛÜšØ™[˜Úİ\\ÍNLÌNXˆ
+ŠœİXØÙ\ÜÊŠ‹‚‹H™[X\ÙHXÚØYÙHÍNLÌM˜ˆ
+ŠœİXØÙ\ÜÊŠ‹‚‹H˜\ÚXÈÒHÍNLÌLŒXˆ
+ŠœİXØÙ\ÜÊŠ‹‚‹H[\œš\ÙHÍNLÌMÍˆ
+Š™˜Z[\™JŠˆÛ›H™XØ]\ÙHH]ÛˆËYØXŞKXÛÜ™X[™HİÜÈ\š[™È\[™[˜ŞH[œİ[][Ûˆ™Y›Ü™H[š]Ú[YÜ˜][Ûˆ\İËˆÛÙH]X[]KÙXİ\š]HYš\ÛÜH™\ÜÈ[™]ÛˆËKÌËŒLÌËŒLH[\İ›ØœÈ[İXØÙYYˆHİÛœİ™X[HØÚÙ\‹Ü\™›Ü›X[˜ÙH]\ÈÚÚ\Y™XØ]\ÙHHX]š^™[XZ[œÈ˜Z[XÛÜÙY‚‹H^Xİ]ÛˆË›ØˆLÌMÍLÍX™\ÜÈ›ÈX]Ú[™È\İšX][Ûˆ›İ[™›ÜˆİœÜÛXLKŒŒˆHİ\œ™[]ÛˆËŒLH[›ØˆLÌMÍLÎ™\ÛÛ™\È[™[œİ[ÈİœÜÛX‹LKŒŒİXØÙ\ÜÙ[K[ˆ[œÈ
+ŠŒH[š]\İÈ\ÜÙY
+Šˆ[™
+ŠŒˆ[YÜ˜][Ûˆ\İÈ\ÜÙY
+Š‹ˆ\È\È\™Y›Ü™H[ˆÛ\İ\[[YKÜ›Ùš[HZ\ÛX]Ú›İ]šY[˜ÙH]H[›ÙXİ\[™[˜ŞH\È[˜]˜Z[X›K‚‚”Ûİ\˜ÙH™]šY]ÈÛÛ™š\›\È\İÚ[œİ[][Û‹ÓÔ‘WÒSTÔ•Øİ\œ™[H\İÈİœÜÛX˜]™[ˆİYÚ]X›H\ÈØİ[Y[Y\ÈXÚØYÙ\È\ÙY\™XİHHH™]Z[™YYØXŞH[HÚ[[™›È™\ÜÚ]ÜHÛİ\˜ÙH\ÙHÙˆİœÜÛX˜Ø\È›İ[™[ˆHİ\œ™[™]šY]ËˆH›İ[™Y]ÛˆË›Ùš[H\ÈÛÛ˜XİX[HYYÈÓÔ‘WÒSTÔ•ØÛÈ]İ[HXÛ\˜][Ûˆ[›™XÙ\ÜØ\š[H[ÈHÛÛ\]Xš[]KZ[™[YÚX›H™\Ü[™ËØÛÛ\X[˜ÙHXÚØYÙH[ÈHÛ\İ[™K‚‚•HØ[™Y]HXZÙ\ÈH˜\œ›İÈÛÛ\]Xš[]HÛÜœ™Xİ[ÛˆÚ]İ]Ú[™Ú[™ÈH[\XØ][Ûˆ\[™[˜ŞHÙ]‚‚‹H™[[İ™HİœÜÛX˜œ›ÛHÓÔ‘WÒSTÔ•ØÛÈ[œİ[][Ûˆ™XY[™\ÜÈ›ÈÛ™Ù\ˆÛZ[\ÈHYØXŞH[HÚ[\™XİH[\ÜÈ]Â‹H™[[İ™HİœÜÛXLKŒŒÛ›Hœ›ÛH™\]Z\™[Y[ËXÚK\LÎÈÙY\İœÜÛXLKŒŒ[ˆ[™\]Z\™[Y[ËÛÈ]ÛˆËKÌËŒLÌËŒLHÛÛ[YH˜[Y][™ÈHÛÛ\]H›ÙXİİXÚÎÂ‹HY[ˆ^XÚ]™YÜ™\ÜÚ[Ûˆ]H]ÛˆËÛÛ\]Xš[]H›Ùš[HÙ\È›İ™KXXÜ]Z\™H\È[\ÙY[\İXÚÈÕ”ÔËÜ™\Ü[™È\[™[˜ŞHÚ[Hİ[Ûİ™\š[™È]™\HXÛ\™YYØXŞHÛÜ™H[\Ü‚‚‘›Øİ\ÙYØØ[˜[Y][Ûˆ[ˆH^Xİ][ÛˆÛÛZ[™\ˆ\ÙYH^XİÚ[™ÙYÛÛ\]Xš[]Hš[\È\ÈHZ[š[X[ØØ[™\]Z\™[Y[Ëš^\™H™\Ù\š[™ÈHİ\œ™[[œÛÜ‘›İÈX\šÙ\ˆ[™İœÜÛX˜™\Ù[˜ÙNˆ
+Š™\]Z\™[Y[ËXÛÛ˜Xİ\İÈ\ÜÙY˜Z[Y
+ŠÈ\İÚ[œİ[][Û‹œX[™H™YÜ™\ÜÚ[Ûˆ[Ù[H›İÛÛ\[YİXØÙ\ÜÙ[KˆH™X[]ÛˆË\[™[˜ŞK\™\ÛÛ][Û‹İ\İ™\İ[\È[[[Û˜[HYÈœ™\ÚÜİYÒHY\ˆX›XØ][ÛÈ›ÈØØ[XÚØYÙKZ[™^™\İ[\ÈÛZ[YY™XØ]\ÙH\È^Xİ][ÛˆÛÛZ[™\ˆİ\œ™[H\È”È[˜]˜Z[X›Kˆ›È^\›˜[\ÜÙ\ÜÛY[\™Ù][Ù[Ø[ØØ[›™\ˆ\™Ù]Ü™Y[X[Øİ\İÛY\ˆ]K›ØÚÙY[œX›\ÚY˜YX›XÈ\Ş[Y[ÜˆZYÙ\šXÙHØ\È\ÙY‚‚

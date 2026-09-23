@@ -53,3 +53,21 @@ def test_python38_ci_profile_excludes_redundant_heavy_optional_ml_stack():
     assert canonicalize_name("tensorflow") not in profile
     assert canonicalize_name("torch") not in profile
     assert canonicalize_name("transformers") not in profile
+
+
+def test_python38_ci_profile_excludes_unused_full_stack_cvss_dependency():
+    spec = importlib.util.spec_from_file_location(
+        "installation_contract_cvss", INSTALLATION_MODULE
+    )
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+
+    profile = {
+        canonicalize_name(item.name)
+        for item in _requirements("requirements-ci-py38.txt")
+    }
+    assert "cvsslib" not in module.CORE_IMPORTS
+    assert canonicalize_name("cvsslib") not in profile
+    assert canonicalize_name("cvsslib") in {
+        canonicalize_name(item.name) for item in _requirements()
+    }

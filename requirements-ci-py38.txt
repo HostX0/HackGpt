@@ -6,6 +6,8 @@
 # Optional heavyweight ML/provider packages that are not required to import the
 # legacy entry point remain validated by the full-runtime lanes instead of being
 # redundantly resolved/downloaded on the oldest compatibility interpreter.
+# Full-stack compliance/reporting dependencies remain in requirements.txt unless they
+# are part of the retained legacy entry-point import surface.
 requests>=2.31.0
 rich>=13.6.0
 python-dotenv>=1.0.0
@@ -33,7 +35,6 @@ psutil>=5.9.0
 speechrecognition>=3.10.0
 pyttsx3>=2.90
 pypandoc>=1.11
-cvsslib>=1.0.0
 websockets>=11.0.0
 aiohttp>=3.9.0
 jinja2>=3.1.0
