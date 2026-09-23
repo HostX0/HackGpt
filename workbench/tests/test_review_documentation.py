@@ -1,6 +1,7 @@
 """Guard current claims and known CI setup fixes, not historical completion."""
 import hashlib
 import re
+import shlex
 import unittest
 from pathlib import Path
 
@@ -13,6 +14,20 @@ def text(name):
 
 
 class ReviewDocumentationTests(unittest.TestCase):
+    def assert_black_check_targets_repository(self, workflow):
+        commands = [
+            shlex.split(line.strip())
+            for line in workflow.splitlines()
+            if line.strip().startswith('black ')
+        ]
+        self.assertTrue(commands, 'expected an enforced Black command')
+        for command in commands:
+            with self.subTest(command=command):
+                self.assertEqual(command[0], 'black')
+                self.assertIn('--check', command)
+                self.assertIn('--diff', command)
+                self.assertIn('.', command)
+
     def test_current_readme_has_accurate_entrypoint_and_execution_limits(self):
         readme = text('README.md')
         for expected in ('git clone --branch main', 'python -m workbench', 'Semgrep CE 1.177.0',
@@ -76,7 +91,8 @@ class ReviewDocumentationTests(unittest.TestCase):
         for command in ('python test_installation.py', 'from hackgpt import HackGPT, AIEngine, ToolManager',
                         'flake8 hackgpt.py --count --select=E9,F63,F7,F82', 'docker run --rm hackgpt:test --help'):
             self.assertIn(command, basic)
-        for command in ('black --check --diff .', 'pytest tests/unit/', 'pytest tests/integration/',
+        self.assert_black_check_targets_repository(enterprise)
+        for command in ('pytest tests/unit/', 'pytest tests/integration/',
                         'flake8 . --count --select=E9,F63,F7,F82'):
             self.assertIn(command, enterprise)
         # Inherited advisory checks are disclosed; this repair must not add new suppression.
