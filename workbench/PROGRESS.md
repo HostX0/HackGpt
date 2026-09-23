@@ -132,3 +132,31 @@ Fresh hosted state of the unmodified base `6af6d780...` at the latest read:
 - Enterprise `35827760460`: still **in progress**. Code Quality, Security Advisory Reports and Python 3.9/3.10/3.11 unit/integration jobs are successful; Python 3.8 was still installing dependencies at the latest read. A transient job-log download returned `BlobNotFound` while that job was still running, so no root cause is inferred from it.
 
 These base results do not validate this unpublished candidate. Fresh hosted startup/Workbench/package/whole-repository results are required after publication.
+
+
+## Current candidate: close exact formatter drift and classify workspace preparation failures
+
+Fresh hosted evidence for source `2671b0723de9202f17ad65ff1fedc03301bd0cb0` / generated PR checkout `33c843c82851cbdfa8920a2864630790238f31e2` established the next concrete blocker instead of relying on the previous checkpoint:
+
+- Evidence Workbench `35835984309`: **success**.
+- Workbench Startup `35835984380`: **success**.
+- Release Package `35835984346`: **success**; candidate artifact `10739685879` supplies the exact tested Workbench bytes used for this round.
+- Basic CI `35835984429`: **success**.
+- Enterprise `35835984314`: still **in progress** at this read, but Code Quality job `107099439532` failed closed on Black 26.5.1 after reporting exactly two files needing formatting: `workbench/start.py` and `workbench/tests/test_startup.py`. Its exact hosted repair artifact is `10738997572`. Security Advisory Reports and Python 3.11 were already successful at the same checkpoint; no whole-Enterprise success is claimed.
+
+This candidate applies the exact hosted Black repair for those two files and closes one remaining actionable startup gap without widening assessment authority:
+
+- workspace directory resolution/creation and lock-file open failures now return `workspace_lock` / `workspace_unavailable` instead of the generic `startup_failed`;
+- a symbolic-link or otherwise unsafe lock object returns `workspace_lock` / `workspace_lock_unsafe`;
+- ordinary lock contention remains the existing `workspace_busy`, preserving the distinction between a live cooperating process and an unusable workspace;
+- JSON and human diagnostics never expose the caught filesystem detail or local path, and no automatic repair/deletion of the lock is attempted.
+
+Focused local validation on Linux/Python 3.13 against the exact packaged current Workbench plus this candidate:
+
+- `workbench.tests.test_startup`: **18 passed, 0 failed/skipped** in 13.422s, including workspace-creation privacy and unsafe-symlink lock regressions.
+- `workbench.tests.test_startup_trace`: **0 passed, 1 explicit macOS-only skip, 0 failures** on Linux.
+- `python -m workbench.tests.fresh_install_smoke`: passed, including owned synthetic assessment and durable export with no external target or live model.
+- `compileall` / Python compilation of the changed launcher and startup tests passed.
+- Black 26.5.1 could not be installed in the local execution container because package-index DNS was unavailable. The exact current-head hosted formatter artifact was therefore used for the two baseline files, while the newly added lines await fail-closed hosted Black verification after publication; no local formatter pass is claimed.
+
+No external assessment target, real credential/customer row, live scanner target, model call, blocked unpublished draft, public deployment or paid service was used.

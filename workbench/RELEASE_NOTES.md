@@ -10,7 +10,7 @@ PR #1 merged into the HostX0 fork at `2048e591`; this is not upstream acceptance
 - Repair legacy artifact-action setup and LDAP/PortAudio build prerequisites without dropping test/lint commands. Fork Docker CI is build-only, not publication. Other legacy defects remain separately tracked; setup fixes are not an all-green claim.
 - Add offline scope/cancellation, candidate-lifecycle and documentation/workflow regression coverage. See PROGRESS.md for exact observed results and unavailable integrations.
 - Harden adapter terminal publication: one approved lifecycle cannot execute concurrently twice; a terminal SQLite failure can no longer be mislabeled as an adapter execution failure or durable success. The recoverable state is `interrupted`, no receipt is exposed, and the API directs the operator to check status rather than automatically retry.
-- Make dependency-free startup diagnostics actionable without leaking local exception details: `--check-install --json` now reports the failed prerequisite stage and stable code for application files, SQLite, workspace writes and loopback-port availability while preserving the no-report/no-model/no-scanner preflight boundary.
+- Make dependency-free startup diagnostics actionable without leaking local exception details: `--check-install --json` reports stable failure stages/codes for application files, SQLite, workspace preparation/write access, unsafe lock objects and loopback-port availability while preserving the no-report/no-model/no-scanner preflight boundary.
 
 ## 0.1.0 review preview
 

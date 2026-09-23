@@ -16,7 +16,7 @@ cd HackGpt
 python -m workbench
 ```
 
-For a proposed follow-up PR, check out its exact reviewed head before testing its changes. Use `python3` where that is the Python command. `python workbench/start.py --check-install --json` provides machine-readable prerequisite diagnostics without opening report storage or contacting a model/scanner; failures use stable check/code fields instead of raw local exception text. Open the **private launch URL printed in the terminal**; its fragment contains a session token which the frontend removes after reading. Never share the launch URL. The service binds only to `127.0.0.1:8765`; do not expose it publicly or through a tunnel.
+For a proposed follow-up PR, check out its exact reviewed head before testing its changes. Use `python3` where that is the Python command. `python workbench/start.py --check-install --json` provides machine-readable prerequisite diagnostics without opening report storage or contacting a model/scanner; failures use stable check/code fields instead of raw local exception text. Workspace preparation failures report `workspace_lock` / `workspace_unavailable`; an unsafe non-regular or symbolic-link lock reports `workspace_lock_unsafe`, while ordinary live-lock contention remains `workspace_busy`. Open the **private launch URL printed in the terminal**; its fragment contains a session token which the frontend removes after reading. Never share the launch URL. The service binds only to `127.0.0.1:8765`; do not expose it publicly or through a tunnel.
 
 ```bash
 python -m workbench --port 8766 --data-dir ./local-workbench-data

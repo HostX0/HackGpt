@@ -210,9 +210,9 @@ class StartupTests(unittest.TestCase):
         self.assertNotIn("private-workspace-detail", output.getvalue())
 
     def test_incomplete_application_files_have_stable_failure_stage(self):
-        with patch.object(Path, "is_file", return_value=False), contextlib.redirect_stdout(
-            io.StringIO()
-        ) as output:
+        with patch.object(
+            Path, "is_file", return_value=False
+        ), contextlib.redirect_stdout(io.StringIO()) as output:
             status = start.main(
                 [
                     "--check-install",
@@ -227,6 +227,26 @@ class StartupTests(unittest.TestCase):
         document = json.loads(output.getvalue())
         self.assertEqual(document["code"], "incomplete_application_files")
         self.assertEqual(document["check"], "application_files")
+
+    def test_workspace_directory_setup_failure_has_stable_safe_stage(self):
+        with patch.object(
+            Path, "mkdir", side_effect=PermissionError("private-parent-detail")
+        ), contextlib.redirect_stdout(io.StringIO()) as output:
+            status = start.main(
+                [
+                    "--check-install",
+                    "--json",
+                    "--data-dir",
+                    str(self.directory / "blocked"),
+                    "--port",
+                    str(unused_port()),
+                ]
+            )
+        self.assertEqual(status, 1)
+        document = json.loads(output.getvalue())
+        self.assertEqual(document["code"], "workspace_unavailable")
+        self.assertEqual(document["check"], "workspace_lock")
+        self.assertNotIn("private-parent-detail", output.getvalue())
 
     def test_lock_excludes_second_process_and_releases_without_deleting(self):
         lock = start.WorkspaceLock(self.directory)
@@ -269,6 +289,10 @@ class StartupTests(unittest.TestCase):
         (self.directory / ".starter.lock").symlink_to(victim)
         result = self.check()
         self.assertEqual(result.returncode, 1)
+        document = json.loads(result.stdout)
+        self.assertEqual(document["code"], "workspace_lock_unsafe")
+        self.assertEqual(document["check"], "workspace_lock")
+        self.assertNotIn(str(victim), result.stdout + result.stderr)
         self.assertEqual(victim.read_bytes(), b"unchanged")
 
     def test_browser_is_explicit_and_failure_does_not_claim_e2e(self):

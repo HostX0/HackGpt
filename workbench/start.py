@@ -37,18 +37,24 @@ class WorkspaceLock:
 
     def __init__(self, directory):
         self.fd = None
-        self.directory = Path(directory).expanduser().resolve()
-        self.directory.mkdir(parents=True, exist_ok=True, mode=0o700)
+        try:
+            self.directory = Path(directory).expanduser().resolve()
+            self.directory.mkdir(parents=True, exist_ok=True, mode=0o700)
+        except (OSError, RuntimeError) as exc:
+            raise StartupCheckError("workspace_lock", "workspace_unavailable") from exc
         path = self.directory / ".starter.lock"
         if path.is_symlink():
-            raise ValueError("Workspace lock cannot be a symbolic link")
+            raise StartupCheckError("workspace_lock", "workspace_lock_unsafe")
         flags = os.O_CREAT | os.O_RDWR | getattr(os, "O_NOFOLLOW", 0)
         flags |= getattr(os, "O_NONBLOCK", 0) | getattr(os, "O_CLOEXEC", 0)
-        fd = os.open(path, flags, 0o600)
+        try:
+            fd = os.open(path, flags, 0o600)
+        except OSError as exc:
+            raise StartupCheckError("workspace_lock", "workspace_unavailable") from exc
         try:
             info = os.fstat(fd)
             if not stat.S_ISREG(info.st_mode) or info.st_nlink != 1:
-                raise ValueError("Workspace lock must be an unshared regular file")
+                raise StartupCheckError("workspace_lock", "workspace_lock_unsafe")
             os.set_inheritable(fd, False)
             os.lseek(fd, 0, os.SEEK_SET)
             try:
@@ -63,6 +69,12 @@ class WorkspaceLock:
             except OSError as exc:
                 raise WorkspaceBusy("Workspace is busy or cannot be locked") from exc
             self.fd = fd
+        except (WorkspaceBusy, StartupCheckError):
+            os.close(fd)
+            raise
+        except OSError as exc:
+            os.close(fd)
+            raise StartupCheckError("workspace_lock", "workspace_unavailable") from exc
         except BaseException:
             os.close(fd)
             raise
@@ -255,10 +267,20 @@ def main(argv=None):
                 "incomplete_application_files": "Extract the complete application archive and retry.",
                 "sqlite_unavailable": "Use a Python build with working SQLite support.",
                 "workspace_not_writable": "Choose a writable local --data-dir with available space.",
+                "workspace_unavailable": (
+                    "Choose a usable local --data-dir whose parent is writable and available."
+                ),
+                "workspace_lock_unsafe": (
+                    "Use a local --data-dir with a regular non-symlink .starter.lock; do not replace a live lock."
+                ),
                 "loopback_port_unavailable": "Choose another unused --port on this machine.",
             }
             print(
-                "Startup check failed at " + check + ". " + hints.get(code, "Review local prerequisites and retry.") + " No automatic repair was performed.",
+                "Startup check failed at "
+                + check
+                + ". "
+                + hints.get(code, "Review local prerequisites and retry.")
+                + " No automatic repair was performed.",
                 file=sys.stderr,
             )
         else:
