@@ -12,7 +12,7 @@ def _workflow_text() -> str:
 def test_black_diagnostics_preserve_fail_closed_formatter_gate():
     workflow = _workflow_text()
 
-    assert "black --check --diff --color never . 2>&1 | tee .ci/black/black.txt" in workflow
+    assert "black --check --diff --no-color . 2>&1 | tee .ci/black/black.txt" in workflow
     assert 'status=${PIPESTATUS[0]}' in workflow
     assert 'printf \'%s\\n\' "$status" > .ci/black/exit-code.txt' in workflow
     assert 'status="$(cat .ci/black/exit-code.txt)"' in workflow
