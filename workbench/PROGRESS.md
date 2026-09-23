@@ -174,3 +174,21 @@ The published repair therefore keeps two distinct claims honest:
 Focused pre-publication validation on Linux/Python 3.13 in a temporary exact workflow/profile tree: **9 Enterprise/profile contract tests passed, 0 failed**, and the updated Enterprise workflow parsed successfully as YAML with all four runtime entries present. No external target, model call, scanner target, report/customer data, credential or blocked unpublished draft was used.
 
 Fresh hosted runs for `3ab2920f...` were queued/in progress at publication: Evidence Workbench `35843554118`, Workbench Startup `35843554090`, Release Package `35843554235`, Basic CI `35843554297`, Enterprise `35843554070`. These are not claimed successful until their exact current-head conclusions are read.
+
+## Current candidate: repair exact current-head CI contract drift
+
+Fresh hosted evidence for source `3aafe689ca443e3d7468b6ff08af2c36ac4060a8` / generated PR checkout `b899c9f3cb09b3b4945fbcaaa7a93bf48723919e` identifies two bounded CI blockers while confirming the underlying compatibility work:
+
+- Workbench Startup `35843846771`: **success**.
+- Release Package `35843846701`: **success**.
+- Basic CI `35843846716`: **success**.
+- Evidence Workbench `35843846696`: **failure** only in native Python 3.11/3.12/3.13 lanes. The Python 3.11 lane ran **369 tests: 366 passed, 2 skipped, 1 failed**; the one failure is `test_legacy_setup_fixes_keep_real_test_and_lint_commands`, whose stale assertion still expects literal `pip install -r requirements.txt` although the reviewed Enterprise workflow now installs the matrix-selected requirements file. Browser E2E, the real local-model probe, pinned Semgrep validation and fresh-install smoke on Ubuntu/macOS/Windows all succeeded in the same aggregate run.
+- Enterprise `35843846730`: **failure** at fail-closed Code Quality only. Security Advisory Reports and all four test matrix jobs passed: Python 3.8 `legacy-core` plus Python 3.9/3.10/3.11 `full`. Black 26.5.1 reported exactly one file requiring formatting, `tests/unit/test_requirements_compat.py`; because quality failed, the downstream Docker job correctly did not run. Compliance remains an explicitly non-validating coverage-gap job, not certification.
+
+The current candidate makes two narrow repairs without weakening coverage:
+
+- applies the exact hosted Black 26.5.1 formatting to the two long set-comprehension lines in `tests/unit/test_requirements_compat.py`, with no logic change;
+- updates the Workbench workflow regression to validate the four-lane dependency contract itself: one Python 3.8 `legacy-core` profile, three `full` lanes using `requirements.txt`, and the matrix-selected install command. It no longer requires the obsolete literal command that the new matrix intentionally replaced;
+- refreshes ROADMAP Gate E to the exact current evidence instead of retaining the older formatter checkpoint.
+
+The candidate does not remove a runtime, dependency from the product requirements, test, assertion category or fail-closed check. It adds no execution authority and uses no external assessment target, model call, scanner target, credential/customer data, blocked draft, public deployment or paid service. Fresh hosted validation is still required after publication; current-head success is not claimed yet.

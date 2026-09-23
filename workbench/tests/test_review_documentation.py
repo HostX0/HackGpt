@@ -146,7 +146,11 @@ class ReviewDocumentationTests(unittest.TestCase):
         )
         self.assertIn("black --version | tee .ci/black/black-version.txt", code_quality)
         self.assertIn("name: Install native build prerequisites", test_suite)
-        self.assertIn("pip install -r requirements.txt", test_suite)
+        self.assertIn("requirements-file: requirements-ci-py38.txt", test_suite)
+        self.assertEqual(test_suite.count("requirements-file: requirements.txt"), 3)
+        self.assertEqual(test_suite.count("dependency-scope: full"), 3)
+        self.assertIn("dependency-scope: legacy-core", test_suite)
+        self.assertIn('pip install -r "${{ matrix.requirements-file }}"', test_suite)
 
         for command in (
             "python test_installation.py",
