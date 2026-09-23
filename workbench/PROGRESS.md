@@ -160,3 +160,17 @@ Focused local validation on Linux/Python 3.13 against the exact packaged current
 - Black 26.5.1 could not be installed in the local execution container because package-index DNS was unavailable. The exact current-head hosted formatter artifact was therefore used for the two baseline files, while the newly added lines await fail-closed hosted Black verification after publication; no local formatter pass is claimed.
 
 No external assessment target, real credential/customer row, live scanner target, model call, blocked unpublished draft, public deployment or paid service was used.
+
+## Current CI compatibility candidate: bounded Python 3.8 dependency profile
+
+Source `3ab2920f0d86ef409ed2482e20bc9e26456b6971` addresses a repeatable Enterprise shipping bottleneck without deleting Python 3.8 or weakening the unit/integration matrix. On source `881575b311c3e854b06ad9abda99faa4ca7eb263`, Workbench Startup `35840399491`, Evidence Workbench `35840399451`, Release Package `35840399309` and Basic CI `35840399456` completed successfully. Enterprise `35840399529` had successful Code Quality, Security Advisory Reports and Python 3.9/3.10/3.11 test jobs while Python 3.8 remained in `Install dependencies` for hours; the preceding Enterprise run showed the same oldest-runtime stall. The completed Python 3.9 job log showed the full `requirements.txt` resolving large TensorFlow and Torch/CUDA stacks before running the retained 21 unit and 2 integration tests.
+
+The published repair therefore keeps two distinct claims honest:
+
+- Python 3.8 still runs the same real unit/integration tests and legacy readiness/import checks, but uses `requirements-ci-py38.txt`, a bounded profile tied by regression to `test_installation.CORE_IMPORTS` plus the import-time Jinja2 reporting dependency.
+- Python 3.9, 3.10 and 3.11 still install the complete `requirements.txt`, preserving full-stack dependency validation on three runtimes. TensorFlow, Torch and Transformers are not removed from the product requirements; they are excluded only from the oldest compatibility lane where they are not required for the retained legacy import contract.
+- Downstream Docker still depends on the entire matrix. No runtime was removed, no test/assertion was deleted, and no `continue-on-error` or skip was added.
+
+Focused pre-publication validation on Linux/Python 3.13 in a temporary exact workflow/profile tree: **9 Enterprise/profile contract tests passed, 0 failed**, and the updated Enterprise workflow parsed successfully as YAML with all four runtime entries present. No external target, model call, scanner target, report/customer data, credential or blocked unpublished draft was used.
+
+Fresh hosted runs for `3ab2920f...` were queued/in progress at publication: Evidence Workbench `35843554118`, Workbench Startup `35843554090`, Release Package `35843554235`, Basic CI `35843554297`, Enterprise `35843554070`. These are not claimed successful until their exact current-head conclusions are read.
