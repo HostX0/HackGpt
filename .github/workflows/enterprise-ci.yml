@@ -60,15 +60,8 @@ jobs:
       with:
         python-version: ${{ env.PYTHON_VERSION }}
 
-    - name: Install native build prerequisites
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y libldap2-dev libsasl2-dev portaudio19-dev python3-dev
-
     - name: Install quality tools
-      run: |
-        pip install black flake8 mypy pylint pytest-cov
-        pip install -r requirements.txt
+      run: pip install black flake8 mypy pylint
 
     - name: Run Black formatter check and capture diagnostics
       id: black_check
