@@ -10,6 +10,7 @@ on:
 
 env:
   PYTHON_VERSION: '3.9'
+  QUALITY_PYTHON_VERSION: '3.11'
   NODE_VERSION: '18'
   BLACK_VERSION: '26.5.1'
 
@@ -59,12 +60,16 @@ jobs:
     - name: Set up Python
       uses: actions/setup-python@v5
       with:
-        python-version: ${{ env.PYTHON_VERSION }}
+        python-version: ${{ env.QUALITY_PYTHON_VERSION }}
 
     - name: Install quality tools
+      shell: bash
       run: |
+        set -euo pipefail
+        mkdir -p .ci/black
+        python --version 2>&1 | tee .ci/black/python-version.txt
         pip install "black==${BLACK_VERSION}" flake8 mypy pylint
-        black --version
+        black --version | tee .ci/black/black-version.txt
 
     - name: Run Black formatter check and capture diagnostics
       id: black_check

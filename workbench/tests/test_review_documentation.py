@@ -21,11 +21,11 @@ class ReviewDocumentationTests(unittest.TestCase):
             for line in workflow.splitlines()
             if line.strip().startswith("black ")
         ]
-        self.assertTrue(commands, "expected an enforced Black command")
-        for command in commands:
+        checks = [command for command in commands if "--check" in command]
+        self.assertTrue(checks, "expected an enforced Black check command")
+        for command in checks:
             with self.subTest(command=command):
                 self.assertEqual(command[0], "black")
-                self.assertIn("--check", command)
                 self.assertIn("--diff", command)
                 self.assertIn(".", command)
 
@@ -138,6 +138,15 @@ class ReviewDocumentationTests(unittest.TestCase):
         )
         self.assertNotIn("apt-get install", code_quality)
         self.assertNotIn("pip install -r requirements.txt", code_quality)
+        self.assertIn("QUALITY_PYTHON_VERSION: '3.11'", enterprise)
+        self.assertIn(
+            "python-version: ${{ env.QUALITY_PYTHON_VERSION }}", code_quality
+        )
+        self.assertIn("mkdir -p .ci/black", code_quality)
+        self.assertIn(
+            "python --version 2>&1 | tee .ci/black/python-version.txt", code_quality
+        )
+        self.assertIn("black --version | tee .ci/black/black-version.txt", code_quality)
         self.assertIn("name: Install native build prerequisites", test_suite)
         self.assertIn("pip install -r requirements.txt", test_suite)
 

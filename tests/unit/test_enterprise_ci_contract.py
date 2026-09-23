@@ -16,6 +16,20 @@ def test_black_version_is_pinned_to_published_repair_formatter():
     assert "black --version" in workflow
 
 
+def test_quality_lane_uses_black_compatible_python_and_keeps_install_diagnostics():
+    workflow = _workflow_text()
+    code_quality = workflow[
+        workflow.index("  code-quality:") : workflow.index("  test-suite:")
+    ]
+
+    assert "QUALITY_PYTHON_VERSION: '3.11'" in workflow
+    assert "python-version: ${{ env.QUALITY_PYTHON_VERSION }}" in code_quality
+    assert "mkdir -p .ci/black" in code_quality
+    assert "python --version 2>&1 | tee .ci/black/python-version.txt" in code_quality
+    assert "black --version | tee .ci/black/black-version.txt" in code_quality
+    assert "python-version: ${{ env.PYTHON_VERSION }}" not in code_quality
+
+
 def test_black_diagnostics_preserve_fail_closed_formatter_gate():
     workflow = _workflow_text()
 
