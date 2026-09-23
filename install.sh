@@ -32,6 +32,24 @@ info() {
     echo -e "${BLUE}[$(date +'%Y-%m-%d %H:%M:%S')] INFO:${NC} $1"
 }
 
+INSTALL_CONTEXT="${HACKGPT_INSTALL_CONTEXT:-host}"
+case "$INSTALL_CONTEXT" in
+    host)
+        ROOT=(sudo)
+        ;;
+    container)
+        ROOT=()
+        ;;
+    *)
+        error "Unsupported HACKGPT_INSTALL_CONTEXT: $INSTALL_CONTEXT (expected host or container)"
+        exit 2
+        ;;
+esac
+
+run_root() {
+    "${ROOT[@]}" "$@"
+}
+
 # Banner
 echo -e "${PURPLE}"
 echo "██╗  ██╗ █████╗  ██████╗██╗  ██╗ ██████╗ ██████╗ ████████╗"
@@ -45,17 +63,28 @@ echo -e "${CYAN}Enterprise AI-Powered Penetration Testing Platform v2.0${NC}"
 echo -e "${GREEN}Production-Ready | Cloud-Native | AI-Enhanced${NC}"
 echo
 
-# Update system
+# Update package metadata. A full host upgrade remains an explicit host-install action;
+# container images should be reproducible from their declared base image instead.
 echo "[+] Updating system packages..."
-sudo apt update && sudo apt upgrade -y
+run_root apt-get update
+if [ "$INSTALL_CONTEXT" = "host" ]; then
+    run_root apt-get upgrade -y
+else
+    info "Container install: skipping full distribution upgrade"
+fi
 
-# Install Python dependencies
-echo "[+] Installing Python dependencies..."
-pip install -r requirements.txt --break-system-packages
+# Docker installs requirements in a cacheable layer before copying the source tree.
+# Keep the historical host installer behavior unchanged for direct installations.
+if [ "$INSTALL_CONTEXT" = "host" ]; then
+    echo "[+] Installing Python dependencies..."
+    pip install -r requirements.txt --break-system-packages
+else
+    info "Container install: Python dependencies are provided by the Docker requirements layer"
+fi
 
 # Install available pentesting tools (skip unavailable ones)
 echo "[+] Installing available pentesting tools..."
-sudo apt install -y \
+run_root apt-get install -y \
     nmap \
     masscan \
     nikto \
@@ -77,7 +106,7 @@ sudo apt install -y \
 
 # Install additional security tools that are available
 echo "[+] Installing additional security tools..."
-sudo apt install -y \
+run_root apt-get install -y \
     binwalk \
     foremost \
     steghide \
@@ -87,22 +116,26 @@ sudo apt install -y \
     socat \
     proxychains4 || warn "Some additional tools may not be available"
 
-# Install ollama for local AI
-echo "[+] Installing ollama for local AI support..."
-curl -fsSL https://ollama.ai/install.sh | sh
+# Local-model provisioning is a user-controlled host action. Baking a daemon and a
+# multi-GB model download into the image build is non-deterministic and makes offline
+# image builds impossible. The Workbench remains usable in deterministic no-AI mode.
+if [ "$INSTALL_CONTEXT" = "host" ]; then
+    echo "[+] Installing ollama for local AI support..."
+    curl -fsSL https://ollama.ai/install.sh | sh
 
-# Start ollama service in background and wait for it to be ready
-echo "[+] Starting ollama service..."
-ollama serve &
-OLLAMA_PID=$!
-sleep 5
+    echo "[+] Starting ollama service..."
+    ollama serve &
+    OLLAMA_PID=$!
+    sleep 5
 
-# Check if ollama is running
-if kill -0 $OLLAMA_PID 2>/dev/null; then
-    echo "[+] Downloading local AI model..."
-    ollama pull llama2:7b || warn "Failed to download AI model - you can do this later with 'ollama pull llama2:7b'"
+    if kill -0 "$OLLAMA_PID" 2>/dev/null; then
+        echo "[+] Downloading local AI model..."
+        ollama pull llama2:7b || warn "Failed to download AI model - you can do this later with 'ollama pull llama2:7b'"
+    else
+        warn "Ollama service failed to start - you can start it manually with 'ollama serve'"
+    fi
 else
-    warn "Ollama service failed to start - you can start it manually with 'ollama serve'"
+    info "Container install: skipping Ollama installer, daemon start and model download"
 fi
 
 # Create reports directory
@@ -162,9 +195,14 @@ fi
 # Make scripts executable
 chmod +x hackgpt.py hackgpt_v2.py install.sh usage_examples.sh test_installation.py
 
-# Create symlink for global access
-echo "[+] Creating global command..."
-sudo ln -sf $(pwd)/hackgpt.py /usr/local/bin/hackgpt || warn "Failed to create global symlink"
+# Host installs keep the historical global command. Container entrypoints are declared
+# by the image itself and do not need a host-style symlink.
+if [ "$INSTALL_CONTEXT" = "host" ]; then
+    echo "[+] Creating global command..."
+    run_root ln -sf "$(pwd)/hackgpt.py" /usr/local/bin/hackgpt || warn "Failed to create global symlink"
+else
+    info "Container install: using the Docker entrypoint instead of a global symlink"
+fi
 
 echo ""
 echo "✅ Installation Complete!"
