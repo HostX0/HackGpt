@@ -111,6 +111,36 @@ function coverageHarness() {
   return {context, coverage};
 }
 
+function aiHarness() {
+  const ai = reviewerNode('pre');
+  const coverage = reviewerNode('pre');
+  let cards = [];
+  const document = {
+    createElement(tag) { return reviewerNode(tag); },
+    getElementById(id) {
+      if (id === 'ai-content') return ai;
+      if (id === 'coverage-content') return coverage;
+      return null;
+    },
+    querySelectorAll(selector) { return selector === '#findings .finding' ? cards : []; },
+  };
+  const context = vm.createContext({document, console});
+  context.render = (value) => {
+    cards = (value.findings || []).map((finding) => {
+      const card = reviewerNode('details');
+      card.className = 'finding';
+      const raw = reviewerNode('pre');
+      raw.textContent = JSON.stringify(finding.evidence, null, 2);
+      card.append(raw);
+      return card;
+    });
+    coverage.textContent = JSON.stringify({checks: value.checks || [], limitations: value.limitations || []}, null, 2);
+    ai.textContent = JSON.stringify(value.ai || {}, null, 2);
+  };
+  vm.runInContext(reviewerScript, context);
+  return {context, ai};
+}
+
 function coverageReport() {
   return {
     findings: [],
@@ -287,5 +317,66 @@ test('coverage review renders recorded strings as text and never uses innerHTML'
   const malicious = '<img src=x onerror=alert(1)>';
   h.context.render({findings: [], checks: [{tool: malicious, status: 'skipped', reason: malicious}], limitations: [malicious]});
   assert.match(h.coverage.textContent, /<img src=x onerror=alert\(1\)>/);
+  assert.doesNotMatch(reviewerScript, /\.innerHTML\s*=/);
+});
+
+test('AI review keeps not-requested state explicit with no fallback implication', () => {
+  const h = aiHarness();
+  const text = h.context.reviewerAiText({ai: {
+    status: 'not_requested', provider: null, model: null,
+    processing_policy: 'local_only', cloud_processing_approved: false,
+  }});
+  assert.match(text, /Status: NOT REQUESTED/);
+  assert.match(text, /Provider: not used/);
+  assert.match(text, /Model: not used/);
+  assert.match(text, /Inference: not requested/);
+  assert.match(text, /no alternate provider is substituted/);
+});
+
+test('AI review separates cloud approval from reported execution location and usage', () => {
+  const h = aiHarness();
+  const value = {
+    status: 'completed', provider: 'ollama', model: 'fixture-model',
+    processing_policy: 'cloud_allowed', cloud_processing_approved: true,
+    data_disclosure: 'Minimized recorded fields only.',
+    usage: {
+      provider: 'ollama', model: 'fixture-model', processing_policy: 'cloud_allowed',
+      execution_location: 'local_reported', cloud_processing_approved: true,
+      inference_attempts: 2, responses_received: 1,
+      prompt_tokens_reported: null, output_tokens_reported: 19, billing_cost: null,
+    },
+  };
+  const text = h.context.reviewerAiText({ai: value});
+  assert.match(text, /Processing policy: cloud allowed/);
+  assert.match(text, /Cloud processing approved: yes/);
+  assert.match(text, /Reported execution location: local reported/);
+  assert.match(text, /Inference attempts: 2/);
+  assert.match(text, /Responses received: 1/);
+  assert.match(text, /Prompt tokens reported: not reported/);
+  assert.match(text, /Output tokens reported: 19/);
+  assert.match(text, /approval does not prove where inference actually ran/);
+  assert.match(text, /Billing cost: not estimated by the workbench/);
+});
+
+test('AI review fails closed for unknown status, policy, location and invalid counters', () => {
+  const h = aiHarness();
+  const text = h.context.reviewerAiText({ai: {
+    status: 'success-ish', processing_policy: 'mystery',
+    usage: {execution_location: 'somewhere', inference_attempts: -1, responses_received: 1.5},
+  }});
+  assert.match(text, /Status: UNKNOWN/);
+  assert.match(text, /Processing policy: unknown/);
+  assert.match(text, /Reported execution location: unknown/);
+  assert.match(text, /Inference attempts: not reported/);
+  assert.match(text, /Responses received: not reported/);
+});
+
+test('AI review preserves raw record and renders recorded strings as text', () => {
+  const h = aiHarness();
+  const malicious = '<img src=x onerror=alert(1)>';
+  const value = {status: 'unavailable', provider: malicious, error_type: malicious};
+  h.context.render({findings: [], checks: [], limitations: [], ai: value});
+  assert.match(h.ai.textContent, /<img src=x onerror=alert\(1\)>/);
+  assert.ok(h.ai.textContent.endsWith(JSON.stringify(value, null, 2)));
   assert.doesNotMatch(reviewerScript, /\.innerHTML\s*=/);
 });
