@@ -11,21 +11,22 @@ LAUNCHER = ROOT / "workbench" / "start.cmd"
 class WindowsLauncherContractTests(unittest.TestCase):
     def setUp(self):
         self.source = LAUNCHER.read_text(encoding="utf-8")
+        self.lines = [line.strip() for line in self.source.splitlines()]
 
     def test_path_selected_python_precedes_launcher_fallback(self):
-        python_probe = self.source.index("where python >nul 2>nul")
-        python_jump = self.source.index("if not errorlevel 1 goto use_python")
-        launcher_probe = self.source.index("where py >nul 2>nul")
-        launcher_jump = self.source.index("if not errorlevel 1 goto use_py")
+        python_probe = self.lines.index("where python >nul 2>nul")
+        python_jump = self.lines.index("if not errorlevel 1 goto use_python")
+        launcher_probe = self.lines.index("where py >nul 2>nul")
+        launcher_jump = self.lines.index("if not errorlevel 1 goto use_py")
         self.assertLess(python_probe, python_jump)
         self.assertLess(python_jump, launcher_probe)
         self.assertLess(launcher_probe, launcher_jump)
 
     def test_both_routes_execute_the_same_reviewed_entrypoint(self):
-        self.assertIn('python "%~dp0start.py" %*', self.source)
-        self.assertIn('python "%~dp0start.py" --open-browser', self.source)
-        self.assertIn('py -3 "%~dp0start.py" %*', self.source)
-        self.assertIn('py -3 "%~dp0start.py" --open-browser', self.source)
+        self.assertIn('python "%~dp0start.py" %*', self.lines)
+        self.assertIn('python "%~dp0start.py" --open-browser', self.lines)
+        self.assertIn('py -3 "%~dp0start.py" %*', self.lines)
+        self.assertIn('py -3 "%~dp0start.py" --open-browser', self.lines)
 
     def test_launcher_never_installs_or_downloads_runtime_content(self):
         lowered = self.source.lower()
