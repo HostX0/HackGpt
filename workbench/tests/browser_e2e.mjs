@@ -105,7 +105,7 @@ try {
     const response = await fetch(`http://127.0.0.1:${debugPort}/json/version`).catch(() => null);
     if (!response?.ok) return null;
     return response.json();
-  }, 'Chrome DevTools endpoint');
+  }, 'Chrome DevTools endpoint', 30000, 100);
   assert(version.webSocketDebuggerUrl, 'Chrome DevTools websocket URL missing');
 
   socket = new WebSocket(version.webSocketDebuggerUrl);
