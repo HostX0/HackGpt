@@ -35,6 +35,21 @@
       ' · Mode ' + humanLabel(item.mode);
   }
 
+  function runTimeLabel(value) {
+    const text = recordedText(value);
+    if (!text) return 'time not recorded';
+    const parsed = new Date(text);
+    return Number.isFinite(parsed.getTime()) ? parsed.toLocaleString() : 'time invalid';
+  }
+
+  function retestOptionText(run) {
+    const item = run && typeof run === 'object' && !Array.isArray(run) ? run : {};
+    return runTimeLabel(item.started_at) + ' · ' +
+      (recordedText(item.target) || 'target not recorded') + ' · ' +
+      runStatus(item.status).toUpperCase() + ' · ' +
+      humanLabel(item.verdict);
+  }
+
   function historySnapshot() {
     return typeof historyRuns !== 'undefined' && Array.isArray(historyRuns) ? historyRuns : [];
   }
@@ -96,11 +111,7 @@
     runs.forEach((run, index) => {
       const option = select.children[index + 1];
       if (!option) return;
-      const started = recordedText(run.started_at);
-      const time = started ? new Date(started).toLocaleString() : 'time not recorded';
-      option.textContent = time + ' · ' + (recordedText(run.target) || 'target not recorded') +
-        ' · ' + runStatus(run.status).toUpperCase() +
-        ' · ' + humanLabel(run.verdict);
+      option.textContent = retestOptionText(run);
     });
   }
 
@@ -318,6 +329,7 @@
   globalThis.reviewerCoverageText = coverageReviewText;
   globalThis.reviewerAiText = aiReviewText;
   globalThis.reviewerRunHistoryText = runHistoryText;
+  globalThis.reviewerRetestOptionText = retestOptionText;
   globalThis.reviewerDurabilityState = durabilityState;
   globalThis.render = function renderWithReviewerEvidence(report) {
     baseRender(report);
