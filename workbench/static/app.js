@@ -36,6 +36,60 @@ function element(tag, text, className) {
   return node;
 }
 function human(text) { return String(text || '').replaceAll('_', ' '); }
+function comparisonCount(result, key) {
+  const value = result && result.counts && result.counts[key];
+  return Number.isInteger(value) && value >= 0 ? value : 0;
+}
+function comparisonFlag(value) {
+  if (value === true) return 'same';
+  if (value === false) return 'changed';
+  return 'not recorded';
+}
+function adapterLabel(adapter) {
+  if (!adapter || typeof adapter !== 'object' || typeof adapter.id !== 'string' || typeof adapter.version !== 'string') return null;
+  return adapter.id + '@' + adapter.version;
+}
+function coverageText(coverage) {
+  if (!coverage || typeof coverage !== 'object') return 'unknown';
+  const parts = [human(coverage.status || 'unknown')];
+  const expectedAdapter = adapterLabel(coverage.expected_adapter);
+  if (expectedAdapter) parts.push('expected adapter ' + expectedAdapter);
+  if (Array.isArray(coverage.observed_adapters)) {
+    const observed = coverage.observed_adapters.map(adapterLabel).filter(Boolean);
+    if (observed.length) parts.push('observed adapter ' + observed.join(', '));
+  }
+  if (typeof coverage.expected_method === 'string' && coverage.expected_method) parts.push('expected method ' + coverage.expected_method);
+  if (Array.isArray(coverage.observed_methods) && coverage.observed_methods.length) parts.push('observed method ' + coverage.observed_methods.join(', '));
+  if (typeof coverage.reason === 'string' && coverage.reason) parts.push(coverage.reason);
+  return parts.join(' · ');
+}
+function comparisonText(result) {
+  if (!result || result.schema !== 'hackgpt.retest-diff/v1') throw new Error('Unsupported comparison response.');
+  const scope = result.scope_comparison && typeof result.scope_comparison === 'object' ? result.scope_comparison : {};
+  const lines = [
+    result.comparable_scope ? 'Comparable scope: yes' : 'Comparable scope: no',
+    'Scope: target ' + comparisonFlag(scope.same_target) + ' · environment ' + comparisonFlag(scope.same_environment) + ' · mode ' + comparisonFlag(scope.same_mode) + ' · engine ' + comparisonFlag(scope.same_engine_version),
+    'Finding states: Still present ' + comparisonCount(result, 'still_present') + ' · New ' + comparisonCount(result, 'new') + ' · Not reproduced ' + comparisonCount(result, 'not_reproduced') + ' · Not retested ' + comparisonCount(result, 'not_retested'),
+  ];
+  const items = Array.isArray(result.items) ? result.items : [];
+  if (items.length) {
+    lines.push('', 'Finding review:');
+    items.forEach((item, index) => {
+      const label = item && (item.title || item.rule) ? (item.title || item.rule) : 'Untitled finding';
+      lines.push((index + 1) + '. ' + human(item && item.state).toUpperCase() + ' — ' + label);
+      if (item && typeof item.reason === 'string' && item.reason) lines.push('   ' + item.reason);
+      const coverage = item && item.recheck && item.recheck.coverage;
+      if (coverage) lines.push('   Coverage: ' + coverageText(coverage));
+    });
+  } else {
+    lines.push('', 'No finding changes were recorded by this comparison.');
+  }
+  lines.push('', 'Reviewer boundary: not reproduced is not fixed; not retested means comparable successful coverage was not established.');
+  return lines.join('\n');
+}
+function comparisonAnnouncement(result) {
+  return 'Comparison ready. ' + comparisonCount(result, 'still_present') + ' still present, ' + comparisonCount(result, 'new') + ' new, ' + comparisonCount(result, 'not_reproduced') + ' not reproduced, ' + comparisonCount(result, 'not_retested') + ' not retested.';
+}
 function syncForm() {
   const lab = $('target-type').value === 'lab';
   $('target').disabled = lab;
@@ -284,7 +338,8 @@ $('compare').addEventListener('click', async () => {
   try {
     const result = await api('/api/runs/' + previous + '/compare/' + current);
     if (!stillCurrent()) return;
-    $('compare-content').textContent = JSON.stringify(result, null, 2);
+    $('compare-content').textContent = comparisonText(result);
+    notice(comparisonAnnouncement(result));
   } catch (error) {
     if (!stillCurrent()) return;
     $('compare-content').textContent = 'Comparison unavailable.';

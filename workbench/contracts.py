@@ -117,6 +117,7 @@ def normalize_adapter_result(payload: Any, *, asset_key: str) -> dict[str, Any]:
     if not isinstance(findings, list) or len(findings) > 500:
         raise ValueError("findings must be a bounded list")
     normalized = []
+    seen_fingerprints: set[str] = set()
     for item in findings:
         if not isinstance(item, dict):
             raise ValueError("each finding must be an object")
@@ -159,6 +160,12 @@ def normalize_adapter_result(payload: Any, *, asset_key: str) -> dict[str, Any]:
                 "external_id": external_id,
             }
         )
+        if fingerprint in seen_fingerprints:
+            raise ValueError(
+                "adapter findings contain an ambiguous duplicate identity; "
+                "supply a stable external_id that distinguishes each occurrence"
+            )
+        seen_fingerprints.add(fingerprint)
         normalized.append(
             {
                 "id": fingerprint[:16],
