@@ -7,6 +7,7 @@ const vm = require('node:vm');
 const root = join(__dirname, '..', 'static');
 const html = readFileSync(join(root, 'index.html'), 'utf8');
 const script = readFileSync(join(root, 'app.js'), 'utf8');
+const reviewerScript = readFileSync(join(root, 'reviewer.js'), 'utf8');
 
 function node() {
   return {value: '', checked: false, disabled: false, hidden: true, textContent: '', className: '', children: [], listeners: {},
@@ -40,6 +41,54 @@ function comparison(overrides = {}) {
     note: 'comparison only',
     ...overrides,
   };
+}
+
+function reviewerNode(tagName = 'div') {
+  return {
+    tagName: tagName.toUpperCase(),
+    className: '',
+    textContent: '',
+    children: [],
+    append(...items) { this.children.push(...items); },
+    insertBefore(item, before) {
+      const index = before ? this.children.indexOf(before) : -1;
+      if (index < 0) this.children.push(item);
+      else this.children.splice(index, 0, item);
+    },
+    querySelector(selector) {
+      if (selector === 'pre') return this.children.find((child) => child.tagName === 'PRE') || null;
+      if (selector.startsWith('.')) {
+        const className = selector.slice(1);
+        return this.children.find((child) => String(child.className).split(/\s+/).includes(className)) || null;
+      }
+      return null;
+    },
+  };
+}
+
+function reviewerHarness() {
+  let cards = [];
+  const document = {
+    createElement(tag) { return reviewerNode(tag); },
+    querySelectorAll(selector) { return selector === '#findings .finding' ? cards : []; },
+  };
+  const context = vm.createContext({document, console});
+  context.render = (value) => {
+    cards = value.findings.map((finding) => {
+      const card = reviewerNode('details');
+      card.className = 'finding';
+      const raw = reviewerNode('pre');
+      raw.textContent = JSON.stringify(finding.evidence, null, 2);
+      card.append(raw);
+      return card;
+    });
+  };
+  vm.runInContext(reviewerScript, context);
+  return {context, cards: () => cards};
+}
+
+function factMap(context, finding) {
+  return Object.fromEntries(JSON.parse(JSON.stringify(context.reviewerEvidenceFacts(finding))));
 }
 
 test('finalized report enables evidence bundle export control', () => {
@@ -98,4 +147,67 @@ test('scope drift is visible in reviewer summary', () => {
 test('unsupported comparison schema fails closed', () => {
   const h = harness();
   assert.throws(() => h.run(`comparisonText({schema:'unknown'})`), /Unsupported comparison response/);
+});
+
+test('finding evidence drill-down exposes only recorded reviewer facts', () => {
+  const h = reviewerHarness();
+  const facts = factMap(h.context, {
+    source: 'adapter/native-web-headers/1',
+    rule: 'header/content-security-policy',
+    verification: 'candidate',
+    confidence: 0.875,
+    external_id: 'finding-7',
+    observed_at: '2026-09-24T07:30:00+00:00',
+    evidence_sha256: 'a'.repeat(64),
+    evidence: {method: 'HEAD', http_status: 200, scope: 'this response only', absent_header: 'content-security-policy'},
+  });
+  assert.equal(facts.Source, 'adapter/native-web-headers/1');
+  assert.equal(facts.Rule, 'header/content-security-policy');
+  assert.equal(facts.Verification, 'candidate');
+  assert.equal(facts.Confidence, '87.5%');
+  assert.equal(facts['External ID'], 'finding-7');
+  assert.equal(facts.Method, 'HEAD');
+  assert.equal(facts['HTTP status'], '200');
+  assert.equal(facts['Scope note'], 'this response only');
+  assert.equal(facts['Absent header'], 'content-security-policy');
+  assert.equal(facts['Evidence SHA-256'], 'a'.repeat(64));
+});
+
+test('finding evidence drill-down keeps raw synthetic proof unchanged', () => {
+  const h = reviewerHarness();
+  const evidence = {
+    environment: 'ephemeral synthetic loopback lab',
+    demonstrated_impact: 'unauthenticated read of designated synthetic records',
+    control_status: 401,
+    record_status: 200,
+    credentials_sent: false,
+    customer_data_sampled: false,
+  };
+  const finding = {
+    source: 'native/0.1.0',
+    rule: 'lab/missing-authorization',
+    verification: 'verified_in_lab',
+    evidence,
+    evidence_sha256: 'c'.repeat(64),
+  };
+  h.context.render({findings: [finding]});
+  const card = h.cards()[0];
+  const panel = card.querySelector('.reviewer-evidence');
+  const raw = card.querySelector('pre');
+  assert.ok(panel, 'structured reviewer panel missing');
+  assert.ok(card.children.indexOf(panel) < card.children.indexOf(raw), 'structured review should precede raw JSON');
+  assert.equal(raw.textContent, JSON.stringify(evidence, null, 2));
+  const text = JSON.stringify(panel);
+  assert.match(text, /ephemeral synthetic loopback lab/);
+  assert.match(text, /Credentials sent/);
+  assert.match(text, /Customer data sampled/);
+});
+
+test('finding evidence drill-down treats recorded values as text', () => {
+  const h = reviewerHarness();
+  const malicious = '<img src=x onerror=alert(1)>';
+  h.context.render({findings: [{source: malicious, rule: 'safe/rule', verification: 'candidate', evidence: {}, evidence_sha256: 'd'.repeat(64)}]});
+  const panel = h.cards()[0].querySelector('.reviewer-evidence');
+  assert.match(JSON.stringify(panel), /<img src=x onerror=alert\(1\)>/);
+  assert.doesNotMatch(reviewerScript, /\.innerHTML\s*=/);
 });
