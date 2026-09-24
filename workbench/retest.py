@@ -241,6 +241,26 @@ def _optional_equal(previous: dict[str, Any], current: dict[str, Any], key: str)
     return left == right
 
 
+def _index_findings(report: dict[str, Any], label: str) -> dict[str, dict[str, Any]]:
+    """Index findings only when every comparison identity is explicit and unambiguous."""
+    indexed: dict[str, dict[str, Any]] = {}
+    for position, item in enumerate(report.get("findings", [])):
+        if not isinstance(item, dict):
+            raise ValueError(f"{label} report finding {position + 1} must be an object")
+        fingerprint = item.get("fingerprint")
+        if not isinstance(fingerprint, str) or not fingerprint.strip():
+            raise ValueError(
+                f"{label} report finding {position + 1} is missing a comparison fingerprint"
+            )
+        if fingerprint in indexed:
+            raise ValueError(
+                f"{label} report contains duplicate fingerprint {fingerprint!r}; "
+                "instance-level comparison would be ambiguous"
+            )
+        indexed[fingerprint] = item
+    return indexed
+
+
 def compare_reports(
     previous: dict[str, Any], current: dict[str, Any]
 ) -> dict[str, Any]:
@@ -259,16 +279,8 @@ def compare_reports(
     same_target = previous.get("target") == current.get("target")
     same_environment = previous.get("environment") == current.get("environment")
     comparable_scope = same_target and same_environment
-    old = {
-        item.get("fingerprint"): item
-        for item in previous.get("findings", [])
-        if isinstance(item, dict) and isinstance(item.get("fingerprint"), str)
-    }
-    new = {
-        item.get("fingerprint"): item
-        for item in current.get("findings", [])
-        if isinstance(item, dict) and isinstance(item.get("fingerprint"), str)
-    }
+    old = _index_findings(previous, "previous")
+    new = _index_findings(current, "current")
 
     items = []
     counts = {"still_present": 0, "new": 0, "not_reproduced": 0, "not_retested": 0}
