@@ -106,6 +106,8 @@ class RuntimeAndRegistryIntegrationTests(unittest.TestCase):
                     "title": "CSP missing",
                     "remediation": "Add a scoped CSP",
                     "evidence_sha256": "e" * 64,
+                    "evidence": {"method": "HEAD"},
+                    "source": "adapter/native-web-headers/1",
                     "id": "old",
                 }
             ],
@@ -116,13 +118,23 @@ class RuntimeAndRegistryIntegrationTests(unittest.TestCase):
             "environment": "authorized_public_web",
             "status": "completed",
             "findings": [],
-            "checks": [{"tool": "native-web-headers", "status": "completed"}],
+            "checks": [
+                {
+                    "tool": "native-web-headers",
+                    "status": "completed",
+                    "adapter": {"id": "native-web-headers", "version": "1"},
+                }
+            ],
         }
         diff = compare_reports(prior, current)
         self.assertEqual(diff["counts"]["not_reproduced"], 1)
+        coverage = diff["items"][0]["recheck"]["coverage"]
+        self.assertEqual(coverage["tool"], "native-web-headers")
         self.assertEqual(
-            diff["items"][0]["recheck"]["coverage"]["tool"], "native-web-headers"
+            coverage["expected_adapter"],
+            {"id": "native-web-headers", "version": "1"},
         )
+        self.assertEqual(coverage["observed_methods"], ["HEAD"])
 
     def test_partial_registry_result_keeps_assessment_inconclusive(self):
         report = Assessment(
