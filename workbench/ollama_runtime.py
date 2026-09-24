@@ -211,6 +211,7 @@ class LocalRuntime:
             # http.client neither reads proxy environment variables nor follows redirects.
             conn = http.client.HTTPConnection("127.0.0.1", self.port, timeout=timeout)
             holder["connection"] = conn
+            response = None
             try:
                 conn.request(
                     methods[route],
@@ -316,6 +317,11 @@ class LocalRuntime:
                     ),
                 )
             finally:
+                if response is not None:
+                    try:
+                        response.close()
+                    except OSError:
+                        pass
                 conn.close()
 
         def abort_connection() -> None:

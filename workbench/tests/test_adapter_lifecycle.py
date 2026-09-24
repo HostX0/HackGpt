@@ -3,6 +3,7 @@ import sqlite3
 import tempfile
 import threading
 import unittest
+from contextlib import closing
 from pathlib import Path
 
 from workbench.adapter_lifecycle import (
@@ -162,7 +163,7 @@ class AdapterLifecycleTests(unittest.TestCase):
     def test_integrity_tampering_is_detected(self):
         life = AdapterLifecycle(self.db, FakeRegistry())
         record = life.plan("fake-safe", self.request)
-        with sqlite3.connect(self.db) as connection:
+        with closing(sqlite3.connect(self.db)) as connection:
             raw = connection.execute(
                 "SELECT content FROM adapter_lifecycle WHERE id = ?", (record["id"],)
             ).fetchone()[0]
