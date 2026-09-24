@@ -12,6 +12,14 @@ class WindowsLauncherContractTests(unittest.TestCase):
         self.source = LAUNCHER.read_text(encoding="utf-8")
         self.lines = [line.strip() for line in self.source.splitlines()]
 
+    def test_automatic_runtime_install_is_disabled_before_launch_probes(self):
+        guard = self.lines.index('set "PYTHON_MANAGER_AUTOMATIC_INSTALL=0"')
+        python_probe = self.lines.index("where python >nul 2>nul")
+        launcher_probe = self.lines.index("where py >nul 2>nul")
+        self.assertLess(guard, python_probe)
+        self.assertLess(guard, launcher_probe)
+        self.assertNotIn('set "PYTHON_MANAGER_AUTOMATIC_INSTALL=1"', self.lines)
+
     def test_path_selected_python_precedes_launcher_fallback(self):
         python_probe = self.lines.index("where python >nul 2>nul")
         python_jump = self.lines.index("if not errorlevel 1 goto use_python")
