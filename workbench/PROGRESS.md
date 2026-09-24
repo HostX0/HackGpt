@@ -8,7 +8,7 @@ PR #2 was merged into fork `main` at `2cf544d46f9d6c1b4383230ff7d0aa004a8cb56d` 
 
 ## Retest comparability and reviewer UX candidate
 
-Open PR #4 (`fix/retest-comparability`) tightens Gate D and improves the reviewer-facing comparison without changing execution authority, scanners, targets, network behavior or fingerprints.
+Open PR #4 (`fix/retest-comparability`) tightens Gate D and improves the reviewer-facing comparison without changing execution authority, scanners, targets or network behavior.
 
 ### Reproduced hosted regression at source `88a0e00abd2741273522d4e71558d92f14048225`
 
@@ -30,29 +30,26 @@ The repair makes method comparability revision-bound rather than guessed:
 3. Unknown/future adapter versions do **not** inherit that assumption; without their own recorded/declared method they remain `method_unknown` and therefore `not_retested`.
 4. Adapter-version drift, missing identity, method drift and missing coverage remain conservative `not_retested` states. A stable fingerprint may still show `still_present`; it never proves comparable absence by itself.
 
-Two focused Python regressions were added on top of the original retest tests: one proves `native-web-headers/1` can use its exact version-bound `HEAD` contract without duplicated check evidence, and one proves an unknown version cannot inherit that method contract.
+The reviewer UI converts the retest API object into a compact human-readable review instead of dumping raw JSON. It shows whether target/environment are comparable, mode/engine drift, counts for `still_present`, `new`, `not_reproduced` and `not_retested`, per-finding reasons, and expected/observed adapter versions and methods. Output is assigned through `textContent`; no finding text becomes markup. Unsupported retest schemas fail closed. The existing `role=status` / `aria-live=polite` notice announces completion and state counts without forcing focus. Reviewer DOM/fetch regressions cover the human summary, adapter-version detail, scope drift, announcement text and unsupported-schema failure. Delayed-response/selection epoch guards remain unchanged.
 
-The reviewer UI converts the retest API object into a compact human-readable review instead of dumping raw JSON. It shows whether target/environment are comparable, mode/engine drift, counts for `still_present`, `new`, `not_reproduced` and `not_retested`, per-finding reasons, and expected/observed adapter versions and methods. Output is assigned through `textContent`; no finding text becomes markup. Unsupported retest schemas fail closed. The existing `role=status` / `aria-live=polite` notice announces completion and state counts without forcing focus.
-
-Reviewer DOM/fetch regressions cover the human summary, adapter-version detail, scope drift, announcement text and unsupported-schema failure. Delayed-response/selection epoch guards remain unchanged.
-
-### Ambiguous finding identity now fails closed
+### Ambiguous finding identity now fails closed at import and comparison
 
 A further review found that `compare_reports()` built dictionaries directly from `fingerprint`. That silently dropped malformed findings without a fingerprint and silently collapsed multiple findings carrying the same fingerprint. Either behavior can corrupt reviewer counts and can turn an ambiguous instance-level comparison into an apparently precise result.
 
-Source commits `33abf5899e42a111347588d0a9e18579fe4f7cf7` and `d27a98d605b6daeca4201e32dbc87348f5b321cd` replace that silent normalization with explicit indexing validation. Both reports must now contain object findings with nonempty comparison fingerprints; duplicate fingerprints in either report raise a comparison error instead of choosing one record. The existing API converts that `ValueError` into HTTP 409, so the operator gets no fabricated `still_present` / `new` / `not_reproduced` counts from ambiguous data.
+Source commits `33abf5899e42a111347588d0a9e18579fe4f7cf7` and `d27a98d605b6daeca4201e32dbc87348f5b321cd` replace that silent normalization with explicit comparison indexing validation. Both reports must contain object findings with nonempty comparison fingerprints; duplicate fingerprints in either report raise a comparison error instead of choosing one record. The existing API converts that `ValueError` into HTTP 409, so the operator gets no fabricated `still_present` / `new` / `not_reproduced` counts from ambiguous data.
+
+Commits `c2d8de359d84bd77899ad3610a6222f06c481d1d` and `9e568e9051713195dd4845b91a5ce772fc3c5739` move the same invariant earlier to the versioned adapter-result boundary. `normalize_adapter_result()` now rejects two findings that resolve to the same asset/adapter/rule/external-id fingerprint instead of emitting an ambiguous candidate report. An adapter that legitimately reports multiple occurrences of the same rule must provide distinct stable `external_id` values; dedicated tests prove equal implicit IDs and equal explicit IDs fail closed, while distinct external IDs generate distinct fingerprints.
 
 This is deliberately conservative rather than inventing an occurrence ID. SARIF permits a result management system to retain multiple results with the same fingerprint when distinct stable result GUIDs distinguish the instances. HackGPT's current retest report schema does not carry a separate comparison-grade instance/correlation identity, so accepting duplicates would be guesswork. DefectDojo likewise models duplicate Findings explicitly and preserves a canonical original instead of erasing duplicate records from the review model. No external code or dependency was copied.
 
-Targeted Linux/Python 3.13 validation for this identity slice:
+Targeted Linux/Python 3.13 validation for the comparison identity slice before the adapter-boundary extension:
 
 - Existing retest module plus the new integrity cases: **22 passed / 0 failed**.
-- Exact standalone `workbench/tests/test_retest_identity_integrity.py` against the published `retest.py`: **5 passed / 0 failed**.
-- The new regressions cover missing/blank fingerprints, non-object findings, duplicate prior identities and duplicate current identities.
+- Exact standalone `workbench/tests/test_retest_identity_integrity.py`: **5 passed / 0 failed**.
 
-An unrelated local runtime warm-up warning appeared before the unittest process, but the test processes exited successfully; it is not counted as a HackGPT test failure or silently described as a product pass.
+Hosted Workbench run `35957883142` for exact source `d27a98d605b6daeca4201e32dbc87348f5b321cd` subsequently completed successfully. Its Python 3.13 generated-merge checkout ran **382 tests: 380 passed, 2 explicitly skipped, 0 failed**, including all five new retest identity-integrity regressions and the previously failing review/runtime integration assertions. Frontend behavior contracts ran **31 passed / 0 failed**. Real Chromium E2E, pinned Semgrep fixture, real assessment-data-free local-model compatibility, Python 3.11/3.12/3.13 and Ubuntu/macOS/Windows fresh-install jobs all passed, and the workflow's fail-closed validation summary passed. Workbench Startup `35957882956` and Release Package `35957882872` also passed for that same source. Basic `35957882912` and Enterprise `35957882883` were still in progress at the last predecessor-head read.
 
-At source `d27a98d605b6daeca4201e32dbc87348f5b321cd`, fresh hosted Workbench Startup `35957882956` and Release Package `35957882872` completed successfully. Evidence Workbench `35957883142`, Basic CI `35957882912` and Enterprise `35957882883` were still in progress at this checkpoint. These results are revision-bound to `d27a98d6`; the documentation-only ledger commit after it requires its own current-head conclusions before merge.
+The adapter-boundary extension at source `9e568e9051713195dd4845b91a5ce772fc3c5739` queued fresh hosted workflows when this entry was updated; no current-head success claim is made before those runs finish. The container available to this development session could not resolve `github.com`, so an attempted independent checkout was recorded as unavailable rather than represented as local validation of that newer source.
 
 ## Research applied in this slice
 
@@ -74,7 +71,7 @@ Autonomous tests use owned synthetic fixtures, denied controls and redacted cana
 
 ## Remaining validation and product work
 
-1. **Finish exact-head validation for PR #4.** The Python integration failures reproduced above must remain green on the repaired source, together with the new identity-integrity regressions, frontend syntax/DOM tests, real Chromium E2E, fresh-install, package, Basic and Enterprise workflows, before merge.
+1. **Finish exact-head validation for PR #4.** The repaired comparison, new adapter-boundary identity checks, frontend syntax/DOM tests, real Chromium E2E, fresh-install, package, Basic and Enterprise workflows must all be evaluated on the newest source before merge.
 2. **Keep PR #3 independent.** Release-attestation verification remains a separate open shipping-path fix and must not be overwritten by this retest branch.
 3. **Do not convert informational jobs into claims.** Advisory security reports and non-validating compliance/performance placeholders remain evidence gaps, not clean scans, benchmarks or certifications.
 4. **Continue reviewer/product work after comparability is proven.** Gate D still needs wider reviewer validation and practical evidence drill-down; Gates A-E remain cumulative. Missing adapters, broader model-quality evidence and native signed installers remain outstanding where documented in [ROADMAP.md](ROADMAP.md).
