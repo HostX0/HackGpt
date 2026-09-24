@@ -2,7 +2,7 @@
 
 ## Post-merge review-readiness hardening (in progress)
 
-PR #1 merged into the HostX0 fork at `2048e591`; this is not upstream acceptance. The owner resumed development and explicitly extended the same bounded hourly window on 2026-09-23 without resetting or duplicating it. Historical implementation and hosted validation below are distinct from the current continuation's unpassed acceptance criteria in ROADMAP.md.
+PR #1 and PR #2 are merged into the HostX0 fork; this is not upstream acceptance. Development remains active while substantial in-purpose reliability, release, reviewer and validation gaps remain. Historical implementation and hosted validation below are distinct from current unpassed acceptance criteria in ROADMAP.md.
 
 - Repair the shared public-web resolver boundary: reject multicast, IPv6 site-local/zone identifiers and explicit special/transition prefixes, including mixed DNS answers before connection.
 - Pre-cancelled/expired resolution dispatches no fresh resolver work; cancellation remains bounded even when a caller omits an explicit deadline. An OS resolver already running is not forcibly killed.
@@ -11,6 +11,7 @@ PR #1 merged into the HostX0 fork at `2048e591`; this is not upstream acceptance
 - Add offline scope/cancellation, candidate-lifecycle and documentation/workflow regression coverage. See PROGRESS.md for exact observed results and unavailable integrations.
 - Harden adapter terminal publication: one approved lifecycle cannot execute concurrently twice; a terminal SQLite failure can no longer be mislabeled as an adapter execution failure or durable success. The recoverable state is `interrupted`, no receipt is exposed, and the API directs the operator to check status rather than automatically retry.
 - Make dependency-free startup diagnostics actionable without leaking local exception details: `--check-install --json` reports stable failure stages/codes for application files, SQLite, workspace preparation/write access, unsafe lock objects and loopback-port availability while preserving the no-report/no-model/no-scanner preflight boundary.
+- Repair trusted portable-release attestation verification after post-merge main exposed an output-name mismatch: package build, three-OS exact-byte smoke and both GitHub/Sigstore signatures succeeded, but the verifier received `_release/.tar.gz`. The release workflow now uses one `package_basename` output consistently and verifies the exact preserved provenance and CycloneDX SBOM bundles against the package, repository and source revision before evidence upload. Pull requests still receive no OIDC/attestation write authority. This verifies supply-chain claims for package bytes; it is not native code signing, assessment-report signing or security certification.
 
 ## 0.1.0 review preview
 
@@ -42,7 +43,7 @@ This is an isolated contribution under `workbench/`; it does not replace the leg
 - Historical run `35589788372` passed one real local Ollama `0.34.2` / `smollm2:135m-instruct-q5_K_M` compatibility probe separately from protocol doubles. Quality/GPU/cloud-provider benchmarking remains unestablished.
 - The current real browser E2E is Chromium on GitHub-hosted Ubuntu; it is not a multi-browser compatibility claim and does not replace manual assistive-technology review.
 - Historical package run `35589788385` tested the exact same portable source archive on Ubuntu/macOS/Windows before provenance/SBOM attestations. No native installer or bundled scanner/container image is produced.
-- GitHub/Sigstore build-provenance and SBOM attestations exist for the historical portable package. These are not signed assessment reports, platform code-signing certificates or a security certification; report checksums remain unsigned.
+- GitHub/Sigstore build-provenance and SBOM attestations exist for historical packages and are generated only in trusted repository contexts. Verification evidence is retained separately from the portable archive. These are not signed assessment reports, platform code-signing certificates or a security certification; report checksums remain unsigned.
 - Any future executable third-party runner needs its own pinned version/image, checksum, license, sandbox boundary, owned integration fixtures and SBOM/release evidence before it can be described as shipped.
 - Application-level encryption at rest and multi-user/public hosting are unsupported.
 
