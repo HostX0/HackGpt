@@ -110,6 +110,45 @@ The PR #6 cleanup follows current Python 3.13 standard-library ownership semanti
 
 The cleanup does not claim those docs prove every socket/resource path in the application is leak-free; the exact regression and warning-free hosted path are the bounded evidence for this slice.
 
+## PR #6 merged and post-merge shipping evidence
+
+The documentation successor `686f2df527f784998d9bd2617c70d19b042cda1e` subsequently received fresh exact-source validation before merge: Evidence Workbench `35976280429`, Workbench Startup `35976280402`, PR-context Release Package `35976280359`, Basic CI `35976280293`, and Enterprise CI `35976280292` all completed successfully. The PR package job remained a smoke/build check with trusted signing intentionally gated off in pull-request context.
+
+After reviewing the four-file final diff, PR #6 was merged with expected-head protection and no force update into fork `main` at **`f3668af7539951c4efb59b44d3806ac20c3abfe2`**. Post-merge Evidence Workbench `35980900465`, Workbench Startup `35980900513`, and Basic CI `35980900492` completed successfully. Trusted Release Package `35980900508` also completed successfully: deterministic build, exact-package smoke on Ubuntu/macOS/Windows, downloaded-package identity validation, signed build provenance, signed CycloneDX SBOM, preservation and verification of both attestation bundles, and final attested portable-release evidence upload all succeeded. Post-merge Enterprise run `35980900483` was still in progress at the latest read, so repository-wide aggregate green is not claimed here.
+
+## PR #7: coverage-aware reviewer summary
+
+With the release and resource-ownership blockers bounded, the next Gate D/E slice improves the existing **Coverage and skipped checks** reviewer surface without adding any execution authority. Branch `feat/coverage-review-summary` starts from merged main `f3668af7539951c4efb59b44d3806ac20c3abfe2`. Current implementation source before this ledger successor is **`d7cf400d36f3bb9a5745e2e9a6b7ecbcadebc955`**; GitHub generated PR checkout **`cfa3a381c1fa31badff130ace0c773e8ce5c91e1`** for its exact Workbench run.
+
+The reviewer layer now summarizes only already-recorded report data:
+
+- every check is classified as `completed`, `inconclusive`, `skipped`, `error`, or fail-closed `unknown`;
+- missing or unrecognized status is never promoted to `completed`;
+- `completed` is explicitly defined as **the check executed**, not that the target is safe;
+- recorded result, reason, bounded `objects_tested`/`objects_total`, and coverage notes are shown when present;
+- recorded limitations remain visible;
+- the exact raw `{checks, limitations}` JSON is appended unchanged and labeled authoritative.
+
+The implementation writes recorded strings through `textContent`, does not use `innerHTML`, and introduces no model request, scanner invocation, target, filesystem access, network request, schema change, storage mutation, or tool authority.
+
+### Test-integration correction and exact current evidence
+
+The first implementation temporarily placed four new frontend regressions in a standalone CJS file. Predecessor Workbench run `35981327914` was green, but its exact Python 3.13 job log showed the hosted workflow explicitly invoked only `test_ollama_ui.cjs`, `test_reviewer_ui.cjs`, and `test_adapter_ui.cjs`; therefore that green run **did not validate the new standalone coverage test file**. The omission was not treated as a pass. The four cases were moved into the already-hosted `test_reviewer_ui.cjs` suite and the duplicate standalone file was deleted.
+
+Exact current implementation-head Evidence Workbench run **`35981763295`** on generated PR checkout `cfa3a381c1fa31badff130ace0c773e8ce5c91e1` completed successfully. On Ubuntu 24.04 with CPython **3.13.15**, the Python suite ran **411 tests: 409 passed, 2 explicitly skipped, 0 failed**. The hosted frontend command then ran **38 JavaScript tests: 38 passed, 0 failed, 0 skipped**; tests 35–38 are the new coverage-review contracts covering mixed completed/inconclusive/skipped/error visibility, fail-closed unknown status, exact raw-record preservation, and text-only rendering of untrusted recorded strings. The workflow does not separately print the Node CLI version, so no exact Node-version claim is made.
+
+That same current-head Workbench run also passed Python 3.11/3.12/3.13, real Chromium browser-to-loopback E2E/accessibility, pinned Semgrep owned-fixture validation, assessment-data-free live local Ollama compatibility, fresh-install smoke on Ubuntu/macOS/Windows, and its fail-closed validation summary. Workbench Startup **`35981763417`** and PR-context Release Package **`35981763310`** also completed successfully. The package run proves deterministic build and exact cross-platform package smoke in PR context; trusted signing is intentionally gated and is not claimed. Basic `35981763326` and Enterprise `35981763304` remained in progress at this ledger checkpoint. Enterprise fail-closed Black and Flake8 had already passed; MyPy/Pylint retain their existing advisory semantics.
+
+### Research applied to coverage review
+
+No external code or dependency was copied.
+
+- **W3C WCAG 2 at a Glance** — https://www.w3.org/WAI/standards-guidelines/wcag/glance/ . Applied lesson: reviewer information should remain understandable, predictable, and robust rather than requiring interpretation of raw machine data for ordinary status review.
+- **DefectDojo – Findings data** — https://docs.defectdojo.com/asset_modelling/engagements_tests/os__findings/ . Applied lesson: expose recorded status/context at the review surface while retaining the underlying test/finding record.
+- **DefectDojo – Finding Status Definitions** — https://docs.defectdojo.com/triage_findings/findings_workflows/finding_status_definitions/ . Applied lesson: status terms represent specific lifecycle facts, not a universal safety verdict. HackGPT therefore keeps `completed` as execution state and preserves skipped/inconclusive/error/unknown coverage gaps explicitly.
+
+These sources informed presentation semantics only; HackGPT's status model is not asserted to be equivalent to DefectDojo's.
+
 ## Preserved reliability, AI, privacy, and execution boundaries
 
 The original Workbench and later contributions remain intact: integrity-checked reports, explicit failed/skipped/inconclusive coverage, exact request-digest approval, finite typed adapters, candidate-only imported observations, bounded public-web scope, durable execution receipts, cancellation/deadline paths, owned synthetic proof with a denied control, pinned Semgrep runner, delayed-response UI transaction guards, selection-bound exports/comparisons, linked-report navigation, startup diagnostics/locking, exact-once adapter lifecycle execution, terminal-persistence-failure handling, conservative retesting, structured reviewer evidence, and trusted package-attestation verification.
@@ -120,10 +159,10 @@ Autonomous tests use owned synthetic fixtures, denied controls, and redacted can
 
 ## Remaining validation and product work
 
-1. **Validate the PR #6 ledger successor.** Re-read the exact source head/base and fresh Workbench/Startup/package/Basic/Enterprise conclusions produced after this PROGRESS update. If a workflow fails, inspect its completed job log and repair rather than merging around it. If all required source-head checks succeed, review the final three-code/test-file plus ledger diff and merge with the expected head SHA.
-2. **Verify post-merge main separately.** A merged cleanup needs current main Workbench/browser/startup/package/Basic/Enterprise evidence; historical PR green is not main green. Trusted package signing should remain independently verified on main rather than inferred from PR package smoke.
+1. **Finish PR #7 aggregate validation.** Re-read exact-source Basic `35981763326` and Enterprise `35981763304`. If either fails, inspect the completed failing job log and repair rather than merging around it. If both succeed, add no new code merely to create activity: review the final diff and this ledger successor, then require fresh source-head Workbench/Startup/package/Basic/Enterprise validation before expected-head merge.
+2. **Verify post-merge main separately.** If PR #7 merges, re-read current main Workbench/browser/startup/package/Basic/Enterprise evidence. Trusted package signing must be exercised on main rather than inferred from PR package smoke.
 3. **Keep release claims bounded.** Trusted package provenance/SBOM generation and verification are proven on main, but the portable source package is not a native signed installer and advisory security/compliance/performance jobs are not certifications or benchmarks.
-4. **Continue Gate D/E product work.** Prefer concrete reviewer/action/model/startup value demonstrated by live code and tests over cosmetic additions or expanding into an unrelated security platform. New resource warnings, if any, should be reproduced and fixed at ownership boundaries rather than suppressed.
+4. **Continue Gate D/E product work.** Prefer concrete reviewer/action/model/startup value demonstrated by live code and tests over cosmetic additions or expanding into an unrelated security platform. Coverage summaries must remain evidence-preserving rather than becoming inferred pass/fail or safety scores.
 
 ## Verification discipline
 
