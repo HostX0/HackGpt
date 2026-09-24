@@ -49,42 +49,48 @@ The established Python-matrix workflow deliberately names selected CJS suites an
 - runs the complete Node contract set under a five-minute timeout;
 - requests only `contents: read`, with no credential, attestation or write authority.
 
-On predecessor source `b5129555afd0f535199e00993fa50ab5d2b6fe15`, Frontend Contracts `36004572124`, Evidence Workbench `36004572114`, Startup `36004572000`, PR-context Package `36004572006`, and Basic `36004572001` completed successfully. Enterprise `36004571986` had Python 3.8 legacy-core, Python 3.9/3.10/3.11 full unit/integration lanes, Code Quality, advisory security and non-validating compliance jobs completed successfully while its non-publishing Docker build was still in progress at the last exact read. Advisory jobs are not clean-security/compliance certification claims.
+Predecessor source `956bd3bc355029cdc7535f2c7adfec8f7d56d380` ran Frontend Contracts `36006443204` successfully on Ubuntu 24.04.5 / Node 22.23.2: **6 contract files, 73 passed, 0 failed, 0 skipped, 0 cancelled**. That exact log also emitted GitHub's current warning that `actions/checkout@v4` and `actions/setup-node@v4` target deprecated Node 20 action runtimes and were being forced onto Node 24 by the hosted runner.
+
+The workflow therefore now uses **`actions/checkout@v7`** and **`actions/setup-node@v7`**, matching the current upstream action documentation. `setup-node` also sets `package-manager-cache: false` because this contract job installs no npm dependencies and does not need automatic package-manager caching. Checkout v7 also carries current safer fork-PR handling. This is CI plumbing only; it does not expand repository permissions or execute untrusted code with privileged triggers. The job remains `pull_request`, `contents: read`, and no secrets/signing authority.
+
+Earlier predecessor source `b5129555afd0f535199e00993fa50ab5d2b6fe15` passed Evidence Workbench `36004572114`, Startup `36004572000`, PR-context Package `36004572006`, Frontend Contracts `36004572124`, and Basic `36004572001`. Enterprise `36004571986` had Python 3.8 legacy-core, Python 3.9/3.10/3.11 full unit/integration lanes, Code Quality, advisory security and non-validating compliance jobs successful while its non-publishing Docker build was still in progress at the last exact read. Those results remain source-bound. Advisory jobs are not clean-security/compliance certification claims.
 
 ### Windows launcher runtime selection and no-download policy
 
 The Windows helper previously preferred `py -3`, which could ignore the runtime selected by `actions/setup-python`; a hosted Windows startup lane exposed that as a real timeout. PR #10 first changed `start.cmd` to prefer the already configured `python` command on PATH while retaining `py -3` as a compatibility fallback. The Python `start.py` entry point still enforces Python >=3.11 and retains all startup/preflight checks.
 
-Current primary-source review identified a second reliability/privacy boundary in modern Windows Python behavior: the current CPython install-manager documentation states that `python`/`py` may automatically install a runtime when none is installed, controlled by `PYTHON_MANAGER_AUTOMATIC_INSTALL`, and enabled by default. A launcher that promises dependency-free startup must not silently turn a missing runtime into a download/install operation.
+Current primary-source review identified a second reliability/privacy boundary in modern Windows Python behavior: the current CPython install-manager documentation states that `python`/`py` may automatically install a runtime when none is installed, controlled by `PYTHON_MANAGER_AUTOMATIC_INSTALL`, and enabled by default. A dependency-free launcher must not silently turn a missing runtime into a download/install operation.
 
-Therefore current implementation commits `009b66bbe05ade403fdfd3d66be4a153325efb3d` and `f8521656f927a5daec9a5f55165579707eefef1d` set **`PYTHON_MANAGER_AUTOMATIC_INSTALL=0` before either launcher probe** and add a static regression binding that guard before both `python` and `py` routes. Existing fallback compatibility remains; missing runtimes fail with the existing explicit requirement message instead of authorizing an implicit install. The test also retains the contract that the helper contains no explicit `pip install`, `py install`, `pymanager install`, PowerShell download command, curl, or wget path.
+Current implementation commits `b5dc4d874ea1ecb65ef819df903711456bf2d346` and `d48b95ec19f5e66bb255d5748c6e5d5ad584aa17` set the documented boolean **`PYTHON_MANAGER_AUTOMATIC_INSTALL=false` before either launcher probe** and bind that ordering with a static regression. Existing fallback compatibility remains; a missing runtime follows the existing explicit requirement failure instead of authorizing an implicit install. The regression also retains the contract that the helper contains no explicit `pip install`, `py install`, `pymanager install`, PowerShell download command, curl, or wget path.
 
-This is a local launcher-process setting only. It does not modify the user's global Python manager configuration, install/uninstall runtimes, or download packages.
+This setting is local to the launcher process. It does not modify the user's global Python-manager configuration, install/uninstall runtimes, or download packages.
 
 ### Current-source validation boundary
 
-The current implementation source before this ledger update is **`f8521656f927a5daec9a5f55165579707eefef1d`**. Its fresh hosted workflows were queued/pending when this ledger successor was written and are not called passed. This ledger update creates a newer source head, so all required validation must run again on that exact successor before merge. Historical or predecessor greens do not certify it.
+The current implementation source before this ledger update is **`d48b95ec19f5e66bb255d5748c6e5d5ad584aa17`**. This ledger update creates a newer documentation successor, so all required validation must run again on that exact successor before merge. Historical or predecessor greens do not certify it.
 
 Merge gate for PR #10 remains cumulative:
 
 1. exact latest source: Evidence Workbench including real Chromium browser E2E/accessibility = success;
-2. Workbench Frontend Contracts = success and every CJS contract discovered/executed;
+2. Workbench Frontend Contracts = success and every CJS contract discovered/executed using the current action versions;
 3. Workbench Startup = success on Ubuntu/macOS/Windows;
 4. PR Release Package = deterministic build + exact-package Ubuntu/macOS/Windows smoke success; pull-request signing remains intentionally unavailable and is not called successful signing;
 5. Basic CI = success including Docker build/test;
 6. Enterprise CI = success including Python 3.8 legacy-core, 3.9/3.10/3.11 full unit/integration, fail-closed Black/Flake8, and non-publishing Docker build;
-7. final main/head and six-file-or-successor diff review immediately before expected-head, non-force merge;
+7. final main/head and diff review immediately before expected-head, non-force merge;
 8. merged main is verified separately; trusted main package signing/attestation must execute rather than being inferred from PR smoke.
 
 ## Research applied this round
 
 No external code or dependency was copied.
 
-- **CPython Windows documentation** — https://docs.python.org/3/using/windows.html and current source `Doc/using/windows.rst`. Current guidance recommends `python` for the normal/default runtime and documents that when no runtimes are installed, launch commands may automatically install one if `automatic_install` permits it. `PYTHON_MANAGER_AUTOMATIC_INSTALL` controls that behavior and is enabled by default. Applied lesson: the Workbench helper explicitly disables automatic runtime installation for its own process before probing either launcher route.
-- **actions/setup-python** — https://github.com/actions/setup-python . The action recommends selecting a Python version explicitly and makes that selected interpreter available for subsequent `python` commands. Applied lesson: prefer the configured PATH interpreter before the multi-runtime `py` fallback so CI and user-selected environments are respected.
+- **CPython Windows documentation** — https://docs.python.org/3/using/windows.html and current `Doc/using/windows.rst`. It documents `PYTHON_MANAGER_AUTOMATIC_INSTALL`, default-enabled automatic runtime installs, and the boolean setting used by the launcher. Applied lesson: disable automatic runtime installation for the Workbench launcher process before probing either launch command.
+- **actions/setup-python** — https://github.com/actions/setup-python . It recommends selecting Python explicitly and makes that interpreter available to subsequent `python` commands. Applied lesson: prefer the configured PATH interpreter before the multi-runtime `py` fallback.
+- **actions/checkout** — https://github.com/actions/checkout . Current README is Checkout v7; v5+ moved to Node 24 and v7 adds safer fork pull-request handling. Applied lesson: do not leave a newly introduced workflow on a deprecated Node 20 action runtime.
+- **actions/setup-node** — https://github.com/actions/setup-node . Current README is setup-node v7; v5+ moved to Node 24 and documents disabling automatic package-manager caching when it is not required. Applied lesson: use v7 and `package-manager-cache: false` for this dependency-free contract job.
 - **OWASP ZAP History** — https://www.zaproxy.org/docs/desktop/ui/tabs/history/ . Applied only as a review-UX principle: retain separate execution/context state rather than collapsing history into a single security conclusion.
 
-These sources inform launcher/reviewer design only; HackGPT does not copy their code or claim equivalent semantics.
+These sources inform launcher/reviewer/CI design only; HackGPT does not copy their code or claim equivalent semantics.
 
 ## Preserved AI, privacy, evidence, and execution boundaries
 
