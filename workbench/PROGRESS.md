@@ -45,7 +45,7 @@ Main Evidence Workbench run `35969183904` also completed successfully for that m
 
 ## PR #5: structured reviewer evidence drill-down
 
-Open PR #5 (`feat/reviewer-evidence-drilldown`) returns the sprint to Gate D/E product usability after the trusted release blocker was repaired. Base main is `5b6482bfa08d075078fd0dba0e28ba361ad66628`. The substantive feature commit is `dcbe43fef827e888335b16ab9b97721c470de892`; hosted-contract follow-up `d0658a1bc32da7c08fa8fa649f45ab48d373ae3a` adds the feature assertions to the JavaScript test file that the Workbench workflow actually executes.
+Open PR #5 (`feat/reviewer-evidence-drilldown`) returns the sprint to Gate D/E product usability after the trusted release blocker was repaired. Base main is `5b6482bfa08d075078fd0dba0e28ba361ad66628`. The substantive feature commit is `dcbe43fef827e888335b16ab9b97721c470de892`; hosted-contract follow-up `d0658a1bc32da7c08fa8fa649f45ab48d373ae3a` adds the feature assertions to the JavaScript test file that the Workbench workflow actually executes. Source `254a20c0ef6aa3b826ce8827c8ee12826bdfed16` additionally adds three real workspace-server routing regressions for the new reviewer assets.
 
 The existing report data model, raw evidence, evidence digests, exports, adapters, execution authority, targets, model policy, and network behavior are unchanged. Each rendered finding now receives a structured reviewer panel **before** its existing raw evidence JSON. The panel shows only fields already recorded by the report:
 
@@ -59,7 +59,7 @@ The existing report data model, raw evidence, evidence digests, exports, adapter
 
 Missing source/rule/hash data is shown as `not recorded`; the UI does not infer absent values or promote candidate evidence. The panel states that it is only a structured summary and that raw evidence remains authoritative. Raw JSON stays visible below it and is not mutated by the reviewer layer.
 
-The feature is isolated in `workbench/static/reviewer.js` and `reviewer.css`, loaded after the existing core `app.js`. Recorded strings are assigned through `textContent`; no new `innerHTML`, model call, network request, scanner, target, filesystem access, or execution permission is introduced.
+The feature is isolated in `workbench/static/reviewer.js` and `reviewer.css`, loaded after the existing core `app.js`. Recorded strings are assigned through `textContent`; no new `innerHTML`, model call, network request, scanner, target, filesystem access, or execution permission is introduced. The existing native `<details>/<summary>` finding disclosure remains the interaction surface rather than adding a custom disclosure widget.
 
 ### Local feature validation
 
@@ -72,22 +72,30 @@ The standalone regressions cover asset ordering, normalized provenance/method/sc
 
 ### Hosted exact-source validation
 
-Initial published feature source `dcbe43fef827e888335b16ab9b97721c470de892` passed Evidence Workbench run `35970012530`, Workbench Startup `35970012587`, and PR-context Release Package `35970012523`. The first hosted review identified a coverage gap rather than treating those green workflows as sufficient: the standalone reviewer file was not among the JavaScript files invoked by the Workbench DOM/fetch-double command.
+Initial feature sources exposed and then closed two useful validation gaps: first, the standalone JavaScript reviewer test was not in the hosted DOM/fetch-double command; second, successful static source review alone did not prove the real workspace entry point served the new assets. The current source `254a20c0ef6aa3b826ce8827c8ee12826bdfed16` therefore includes the reviewer assertions in `test_reviewer_ui.cjs` and three `test_reviewer_static_assets.py` regressions through the actual workspace server.
 
-Commit `d0658a1bc32da7c08fa8fa649f45ab48d373ae3a` closes that gap by adding three evidence-drill-down regressions directly to the existing hosted `test_reviewer_ui.cjs` contract. On GitHub's generated PR checkout **`5b885aea83d18e1588c6d8ccd0b37fe60c52ac88`**, Evidence Workbench run **`35970372143`** completed **successfully**:
+For exact source **`254a20c0ef6aa3b826ce8827c8ee12826bdfed16`**, GitHub generated PR checkout **`791703c1164ca8f74fde7961bbff82bc33c3ad20`** against base main `5b6482bfa08d075078fd0dba0e28ba361ad66628`. Evidence Workbench run **`35971160039`** completed **successfully**:
 
 - Python 3.11 / 3.12 / 3.13 native lanes: success;
-- Python 3.13: **405 tests run, 403 passed, 2 explicitly skipped, 0 failed**;
-- hosted frontend DOM/fetch-double contracts: **34 passed / 0 failed / 0 skipped**, including all three new evidence-drill-down tests;
-- real Chromium browser-to-loopback E2E and accessibility: success, with zero runtime exceptions reported by the existing browser harness;
+- Python 3.13.15 on Ubuntu 24.04: **408 tests run, 406 passed, 2 explicitly skipped, 0 failed**;
+- hosted frontend DOM/fetch-double contracts: **34 passed / 0 failed / 0 skipped**;
+- the reviewer tests cover normalized recorded facts, synthetic-proof context with raw evidence unchanged, and untrusted report strings remaining text rather than markup;
+- the real workspace-server regressions prove `reviewer.js` and `reviewer.css` are served through the production static route, the pre-existing adapter asset route remains compatible, and an unreviewed static path remains unavailable;
+- real Chromium browser-to-loopback E2E/accessibility: success, including the existing viewport, accessible-name, keyboard journey, owned synthetic assessment, approved project-adapter/link-report journey and zero runtime exceptions;
 - pinned Semgrep CE owned-fixture validation: success;
 - real assessment-data-free local Ollama compatibility probe: success;
 - fresh-checkout smoke on Ubuntu, macOS, and Windows: success;
 - fail-closed Workbench validation summary: success.
 
-For the same exact source, Workbench Startup run **`35970372302`** and PR-context Release Package run **`35970372197`** completed successfully. The release workflow in PR context continues to build and smoke the package while trusted signing remains gated off; a skipped PR signing job is not called successful signing.
+For the same source, Workbench Startup run **`35971159743`** completed successfully. PR-context Release Package run **`35971159715`** completed successfully for deterministic build and exact package smoke; trusted signing remains intentionally gated off in pull-request context and is not called successful signing.
 
-At this ledger update, Basic run `35970372379` and Enterprise run `35970372303` were still in progress. Basic had completed dependency installation and Flake8 and was executing deterministic installation readiness. Enterprise had already completed Python 3.8 legacy-core, Python 3.10 full, Python 3.11 full, and Code Quality successfully; the Python 3.9 full lane was still installing dependencies. The security/compliance jobs are advisory/non-validating and their successful workflow steps are not security certification. MyPy/Pylint still retain their existing advisory exit semantics and are not relabeled as fail-closed clean checks. **PR #5 must not merge until fresh current-head aggregate Basic and Enterprise conclusions are reviewed.**
+Basic CI run **`35971159907`** completed **successfully**, including dependency installation, Flake8, deterministic installation/readiness/import checks, and Docker build without publication. Enterprise run **`35971159745`** completed **successfully**: Python 3.8 `legacy-core`, Python 3.9/3.10/3.11 full unit/integration lanes, fail-closed Black and Flake8, and Docker Build (no publication) all succeeded. MyPy/Pylint retain their existing advisory semantics; Security Advisory Reports remain advisory; Compliance/Performance jobs are explicitly non-validating. Their workflow success is not a clean-security, certification, or benchmark claim.
+
+The source-bound current-head shipping matrix is therefore green across Workbench, Startup, PR package validation, Basic CI and Enterprise CI. A newer documentation successor created from this ledger must still receive fresh source-head validation before merge; historical green is not transferred automatically.
+
+### Non-failing observations for follow-up
+
+The Python 3.13 Workbench log also emitted two `ResourceWarning` diagnostics while all assertions passed: one reported an unclosed SQLite connection during the cloud-policy API test group, and one reported an unclosed socket during the mixed-public-DNS policy test. They did not fail the current workflow and are not reclassified as shipping failures, but they are concrete reliability/test-hygiene candidates for a later bounded repair rather than signals to suppress warnings.
 
 ## Research applied to reviewer evidence UX
 
@@ -95,7 +103,8 @@ Current primary/comparable documentation was reviewed for this product slice; no
 
 - **DefectDojo – Introduction to Findings** — https://docs.defectdojo.com/triage_findings/findings_workflows/intro_to_findings/ . A finding page separates the vulnerability data from additional details such as request/response pairs, reproduction steps, severity justification, and metadata. Applied lesson: make recorded review facts scannable without replacing the underlying evidence record.
 - **DefectDojo – Findings data** — https://docs.defectdojo.com/asset_modelling/engagements_tests/os__findings/ . Findings retain required metadata plus optional tool/context fields. Applied lesson: normalize only data the finding actually carries; missing values must remain missing rather than being inferred by the UI.
-- **OWASP ZAP alert metadata** — https://www.zaproxy.org/docs/alerts/90022/ and https://www.zaproxy.org/docs/alerts/220000-8/ . ZAP presents alert identity/status/risk/CWE/WASC/solution/reference metadata explicitly. The DOM-XSS guidance also recommends text DOM APIs rather than inserting untrusted strings as HTML. Applied lesson: give reviewers an explicit recorded-facts panel and keep all report-sourced strings on `textContent` paths.
+- **OWASP ZAP – Scan rule alert fields** — https://www.zaproxy.org/docs/contribute/scan-rules/ . ZAP's guidance keeps evidence tied to what was actually present in the request/response and keeps descriptive/remediation fields clear. Applied lesson: do not synthesize proof in the presentation layer; keep the raw recorded evidence authoritative.
+- **W3C WAI-ARIA APG – Disclosure pattern** — https://www.w3.org/WAI/ARIA/apg/patterns/disclosure/ and https://www.w3.org/WAI/ARIA/apg/patterns/disclosure/examples/disclosure-card/ . Disclosure content needs predictable keyboard-operable expansion and a clear control name/focus affordance. Applied lesson: retain the existing native finding `<details>/<summary>` disclosure and put the structured reviewer summary inside it rather than adding a parallel custom JavaScript disclosure.
 
 This research is architecture/UX evidence only. It does not make HackGPT's verification states equivalent to ZAP or DefectDojo states, and no third-party parser/runtime dependency was added.
 
@@ -109,10 +118,11 @@ Autonomous tests use owned synthetic fixtures, denied controls, and redacted can
 
 ## Remaining validation and product work
 
-1. **Finish exact-head validation for PR #5.** Read Basic `35970372379` and Enterprise `35970372303` to completion. If either fails, use the exact completed job logs and repair the defect rather than merging around it. If both succeed and the head/base have not moved, review the five-file PR diff and merge with the expected head SHA.
+1. **Validate this ledger successor before merging PR #5.** Re-read the exact new source head/base and fresh Workbench/Startup/package/Basic/Enterprise conclusions. If a workflow fails, inspect its completed job log and repair rather than merging around it. If all required source-head checks succeed, review the final PR diff and merge with the expected head SHA.
 2. **Verify post-merge main separately.** A merged feature needs current main Workbench/browser/startup/package/Basic/Enterprise evidence; historical PR green is not main green.
-3. **Keep release claims bounded.** Trusted package provenance/SBOM generation and verification are now proven on main, but the portable source package is not a native signed installer and advisory security/compliance/performance jobs are not certifications or benchmarks.
-4. **Continue Gate D/E product work after the reviewer slice.** Prefer concrete reviewer/action/model/startup value demonstrated by live code and tests over cosmetic additions or expanding into an unrelated security platform.
+3. **Keep release claims bounded.** Trusted package provenance/SBOM generation and verification are proven on main, but the portable source package is not a native signed installer and advisory security/compliance/performance jobs are not certifications or benchmarks.
+4. **Repair concrete reliability warnings without suppressing them.** Reproduce the observed SQLite/socket `ResourceWarning` diagnostics, fix ownership/cleanup if they are real resource leaks, and add regressions before claiming them resolved.
+5. **Continue Gate D/E product work.** Prefer concrete reviewer/action/model/startup value demonstrated by live code and tests over cosmetic additions or expanding into an unrelated security platform.
 
 ## Verification discipline
 
