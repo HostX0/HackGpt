@@ -6,83 +6,87 @@ This is the live continuation ledger for the owner's **HostX0/HackGpt** fork. Hi
 
 The fork itself is the product target. Upstream acceptance is not a release gate. Preserve the retained application and Evidence Workbench, keep deterministic no-AI operation, require finite independently approved tool execution, maintain local-first/provider-neutral model contracts, and report limitations rather than universal coverage. No owner-side installation or testing is required.
 
-## Merged foundations
+## Merged foundations through PR #9
 
-The earlier reviewed slices remain in fork `main`:
+The reviewed slices remain in fork `main`:
 
-- PR #2 preserved the original Workbench while adding the reviewed startup/install, model, execution-lifecycle, report, package, CI and reliability foundations.
-- PR #3 repaired trusted portable-release verification without weakening signed provenance/SBOM verification.
-- PR #4 made retest comparison fail closed on ambiguous finding identity, missing scope identity, self-comparison and incompatible method/coverage drift; `not_reproduced` is never presented as `fixed`.
+- PR #2 preserved the original Workbench while adding reviewed startup/install, model, execution-lifecycle, report, package, CI and reliability foundations.
+- PR #3 repaired trusted portable-release verification without weakening provenance/SBOM verification.
+- PR #4 made retest comparison fail closed on ambiguous finding identity, missing scope identity, self-comparison and incompatible method/coverage drift; `not_reproduced` is not a fixed verdict.
 - PR #5 added structured finding-evidence drill-down while preserving raw evidence as authoritative.
-- PR #6 fixed explicit SQLite/HTTP resource ownership rather than suppressing `ResourceWarning` diagnostics.
-- PR #7 added coverage-aware reviewer summaries that keep skipped/inconclusive/error/unknown states visible and do not treat `completed` as a safety verdict.
-- PR #8 added reviewable AI-processing provenance and usage while keeping AI non-evidentiary and preserving exact raw AI records.
+- PR #6 fixed explicit SQLite/HTTP resource ownership rather than suppressing resource diagnostics.
+- PR #7 added coverage-aware reviewer summaries without treating `completed` as a safety verdict.
+- PR #8 added reviewable AI-processing provenance and usage while keeping AI non-evidentiary.
+- PR #9 added reviewable adapter lifecycle authority and a bounded 30-second DevTools startup probe without weakening browser/application assertions.
 
-Detailed source SHAs, prior workflow IDs and bounded evidence for those merged slices remain in this file's Git history and the preserved continuation ledgers above.
+PR #9 source `d87c7d42f985a301a4a4658c98c54bfb0494c2b6` passed Evidence Workbench `35994619392`, Startup `35994619390`, PR Package `35994619373`, Basic `35994619443`, and Enterprise `35994619370`, then merged with expected-head protection and no force update into main **`ab8529b36696e70897a8c068b0f23126fef9e6ee`**. Detailed test counts, prior workflow IDs and implementation history remain in this file's Git history and the preserved continuation ledgers.
 
-## PR #8 merged; post-merge shipping evidence
+## PR #10: reviewable terminal history, durability, frontend discovery, and Windows startup
 
-PR #8 (`feat/ai-review-summary`) was fully validated on exact source `09b162046d48bae34e01ff5af09ed1dafc008ed9`: Evidence Workbench `35988439120`, Workbench Startup `35988439068`, PR-context Release Package `35988439093`, Basic CI `35988439064`, and Enterprise CI `35988439146` all completed successfully before merge. Its final three-file diff was reviewed and merged with expected-head protection and no force update into fork `main` at **`756a87676f4439adc3d603c4074b08921e4cd702`**.
+Branch `feat/run-history-lifecycle-review` starts from exact main `ab8529b36696e70897a8c068b0f23126fef9e6ee`. PR #10 is open at https://github.com/HostX0/HackGpt/pull/10 .
 
-On that merged main revision, Workbench Startup `35992966219`, Basic CI `35992966173`, and trusted Release Package `35992966433` completed successfully. The trusted package path built the deterministic portable source archive, smoke-tested the exact package on Ubuntu/macOS/Windows, generated signed build provenance and CycloneDX SBOM attestations, verified the exact bundles, and uploaded final attested release evidence. This is portable-source release evidence, not native installer signing and not assessment-report signing.
+### Terminal run-history and durability review
 
-Main Evidence Workbench `35992966240` did **not** complete successfully. Its browser job `107611166517` failed before page interaction because Chrome's DevTools endpoint did not become reachable inside the existing 15-second startup wait. Chrome had launched; no Workbench/browser application assertion was reached. This is the second observed occurrence of the same pre-page DevTools startup timing condition: PR #8 had previously recorded one 15-second startup timeout followed by success on the exact unchanged checkout. The repeated main failure is therefore treated as a real CI reliability defect, not erased as a one-off green retry. Post-merge Enterprise state is not reused as a repository-wide green claim in this ledger because it was not independently re-established during the current round.
+The existing report/history authority is unchanged, but terminal state and persistence are now directly reviewable:
 
-## PR #9: reviewable adapter lifecycle authority
+- history rows separate recorded assessment `status`, `verdict`, and `mode` instead of collapsing them into one conclusion label;
+- retest options retain the recorded terminal status;
+- malformed recorded timestamps fail closed to `time invalid`; missing time or target is explicitly `not recorded` rather than browser `Invalid Date` text or invented metadata;
+- selected running reports show persistence pending; explicit durable reports show durable final-report state; explicit `not_durable` results show memory-only state; unrecognized durability metadata fails closed;
+- explicit memory-only or unknown durability disables JSON/Markdown/bundle export and retest controls in the UI, matching the existing server-side durable-review boundary; UI state never makes a report durable;
+- legacy finalized reports remain reviewable under the server's existing compatibility policy and are labeled as legacy durability metadata.
 
-Branch `feat/adapter-lifecycle-review` starts from exact merged main `756a87676f4439adc3d603c4074b08921e4cd702`. PR #9 is open at https://github.com/HostX0/HackGpt/pull/9 . Current implementation source before this ledger successor is **`e386a85b05e01462abc45e88ca9c30d29bad0343`**; GitHub generated PR checkout **`7bb0d59f55f2d92b34fe4111ae92806fcf377b05`** for its exact Workbench run.
+Raw report contents, SQLite atomic finalization, server export/compare checks and lifecycle authority are unchanged. Recorded strings are assigned through `textContent`; no `innerHTML`, new model call, target, scanner, filesystem/network authority, approval, schema or storage mutation is added.
 
-The existing reviewed-adapter execution boundary is unchanged, but its lifecycle is now directly reviewable before the recorded minimized preview:
+### Frontend contract discovery now fails closed
 
-- lifecycle state is normalized to `planned`, `approved`, `executing`, `completed`, `failed`, `cancelled`, `interrupted`, or fail-closed `unknown`;
-- adapter identity and exact plan SHA-256 remain visible;
-- declared maximum objects, requests and timeout remain visible;
-- recorded outcome and receipt usage remain visible when present;
-- candidate-finding count and coverage-record presence remain visible when recorded;
-- `planned` explicitly means approval has not been granted;
-- `approved` explicitly means the exact plan digest is approved but execution has not yet been confirmed;
-- `executing` keeps Stop as a cancellation **request** until a terminal state is confirmed;
-- `completed` with a durable receipt describes adapter execution only; candidate observations are not upgraded to independent verification;
-- `completed` without a usable receipt is not reportable success;
-- `cancelled`, `failed` and `interrupted` do not imply a successful receipt or verification;
-- `interrupted` explicitly warns against automatic retry because execution may have started without durable terminal completion;
-- unrecognized lifecycle state fails closed and does not infer execution, cancellation or durable completion.
+The established Python-matrix workflow deliberately names selected CJS suites and therefore did not automatically execute a newly added standalone frontend contract. PR #10 adds a separate bounded, read-only `Workbench Frontend Contracts` workflow that:
 
-Recorded strings are assigned through `textContent`; no `innerHTML`, model call, new target, scanner, filesystem authority, network authority, approval path, schema change or storage mutation is added.
+- syntax-checks the reviewed frontend entry points;
+- enumerates every `workbench/tests/*.cjs` contract file;
+- fails if no matching contract exists;
+- prints the exact files it executes;
+- runs the complete Node contract set under a five-minute timeout;
+- requests only `contents: read`, with no credential, attestation or write authority.
 
-### Browser contract and startup-reliability follow-through
+On predecessor source `b5129555afd0f535199e00993fa50ab5d2b6fe15`, Frontend Contracts `36004572124`, Evidence Workbench `36004572114`, Startup `36004572000`, PR-context Package `36004572006`, and Basic `36004572001` completed successfully. Enterprise `36004571986` had Python 3.8 legacy-core, Python 3.9/3.10/3.11 full unit/integration lanes, Code Quality, advisory security and non-validating compliance jobs completed successfully while its non-publishing Docker build was still in progress at the last exact read. Advisory jobs are not clean-security/compliance certification claims.
 
-An initial PR #9 Workbench run on source `9dfc83f1f76209ae3a4669c9f95d636788dc3507` correctly caught a browser-contract regression: the real browser E2E still attempted to JSON-parse `adapter-preview` after the UI changed it to a structured human-readable lifecycle summary. That run was not called green. The browser contract was updated to assert the visible `Lifecycle state: COMPLETED` and durable-receipt boundary while preserving the linked-report and candidate-only assertions.
+### Windows launcher runtime selection and no-download policy
 
-During that correction, compare review detected an accidental broad rewrite of `browser_e2e.mjs`. The broad change was restored before proceeding. Relative to main, the intended browser changes are narrow: structured lifecycle assertions plus bounded DevTools startup tolerance.
+The Windows helper previously preferred `py -3`, which could ignore the runtime selected by `actions/setup-python`; a hosted Windows startup lane exposed that as a real timeout. PR #10 first changed `start.cmd` to prefer the already configured `python` command on PATH while retaining `py -3` as a compatibility fallback. The Python `start.py` entry point still enforces Python >=3.11 and retains all startup/preflight checks.
 
-Because merged main had now reproduced the 15-second DevTools startup timeout, current source `e386a85b05e01462abc45e88ca9c30d29bad0343` extends only the existing DevTools-listener wait to a bounded **30 seconds with 100 ms polling**. It does not add a blanket workflow retry, `continue-on-error`, or weaker browser/application assertions. A Chrome process exit still fails immediately and preserves captured stderr.
+Current primary-source review identified a second reliability/privacy boundary in modern Windows Python behavior: the current CPython install-manager documentation states that `python`/`py` may automatically install a runtime when none is installed, controlled by `PYTHON_MANAGER_AUTOMATIC_INSTALL`, and enabled by default. A launcher that promises dependency-free startup must not silently turn a missing runtime into a download/install operation.
 
-### Exact current implementation-head evidence
+Therefore current implementation commits `009b66bbe05ade403fdfd3d66be4a153325efb3d` and `f8521656f927a5daec9a5f55165579707eefef1d` set **`PYTHON_MANAGER_AUTOMATIC_INSTALL=0` before either launcher probe** and add a static regression binding that guard before both `python` and `py` routes. Existing fallback compatibility remains; missing runtimes fail with the existing explicit requirement message instead of authorizing an implicit install. The test also retains the contract that the helper contains no explicit `pip install`, `py install`, `pymanager install`, PowerShell download command, curl, or wget path.
 
-Evidence Workbench run **`35993886322`** on source `e386a85b05e01462abc45e88ca9c30d29bad0343` completed **successfully**. The exact Python 3.13 job `107614387939` checked out generated PR merge `7bb0d59f55f2d92b34fe4111ae92806fcf377b05` on Ubuntu 24.04 with CPython **3.13.15** and ran **411 tests: 409 passed, 2 explicitly skipped, 0 failed**. The hosted frontend command ran **44 JavaScript tests: 44 passed, 0 failed, 0 skipped**. New lifecycle tests are inside the already-hosted adapter suite and cover planned/unapproved authority, approved/completed receipt boundaries, cancelled/interrupted/unknown fail-closed semantics, and text-only rendering of recorded strings.
+This is a local launcher-process setting only. It does not modify the user's global Python manager configuration, install/uninstall runtimes, or download packages.
 
-The same Workbench run passed Python 3.11/3.12/3.13, pinned Semgrep validation on owned fixtures, assessment-data-free live local Ollama compatibility, fresh-install smoke on Ubuntu/macOS/Windows, and the fail-closed validation summary. Real browser job **`107614387739`** succeeded on Ubuntu 24.04.5 / Python 3.13.15 / Node 22.23.2 / Chrome 152.0.7977.82. It exercised the owned loopback assessment, 1440/768/390 viewport checks, keyboard/accessibility checks, exact adapter planning and approval, execution, the structured completed/durable-receipt lifecycle review, linked-report review, zero external assessment targets, and no live model use; it recorded zero runtime exceptions.
+### Current-source validation boundary
 
-Workbench Startup **`35993886298`** completed successfully. PR-context Release Package **`35993886294`** completed successfully for deterministic package build and exact Ubuntu/macOS/Windows package smoke; trusted signing is intentionally unavailable in pull-request context and is not called successful signing.
+The current implementation source before this ledger update is **`f8521656f927a5daec9a5f55165579707eefef1d`**. Its fresh hosted workflows were queued/pending when this ledger successor was written and are not called passed. This ledger update creates a newer source head, so all required validation must run again on that exact successor before merge. Historical or predecessor greens do not certify it.
 
-At this ledger checkpoint, Basic **`35993886364`** and Enterprise **`35993886357`** remain in progress and are therefore neither passed nor failed. Basic's test job has completed successfully while its Docker job is still building. Enterprise Python 3.8 `legacy-core` and Code Quality have completed successfully; the Python 3.9/3.10/3.11 full-runtime lanes are still progressing. Black and Flake8 remain fail-closed; MyPy/Pylint and inherited security/compliance reports retain their existing advisory/non-validating semantics.
+Merge gate for PR #10 remains cumulative:
 
-This ledger commit is a newer documentation successor. Its own exact source head must receive fresh required validation before PR #9 can merge; the successful `e386a85...` evidence remains source-bound to that implementation head.
+1. exact latest source: Evidence Workbench including real Chromium browser E2E/accessibility = success;
+2. Workbench Frontend Contracts = success and every CJS contract discovered/executed;
+3. Workbench Startup = success on Ubuntu/macOS/Windows;
+4. PR Release Package = deterministic build + exact-package Ubuntu/macOS/Windows smoke success; pull-request signing remains intentionally unavailable and is not called successful signing;
+5. Basic CI = success including Docker build/test;
+6. Enterprise CI = success including Python 3.8 legacy-core, 3.9/3.10/3.11 full unit/integration, fail-closed Black/Flake8, and non-publishing Docker build;
+7. final main/head and six-file-or-successor diff review immediately before expected-head, non-force merge;
+8. merged main is verified separately; trusted main package signing/attestation must execute rather than being inferred from PR smoke.
 
-## Research applied to lifecycle review and browser reliability
+## Research applied this round
 
 No external code or dependency was copied.
 
-- **OWASP ZAP Automation Framework GUI** — https://www.zaproxy.org/docs/desktop/addons/automation-framework/gui/ . Plan state plus explicit Run/Stop controls informed the decision to make HackGPT's plan/approve/run/stop lifecycle directly visible without treating Stop as confirmed termination.
-- **OWASP ZAP Automation Framework** — https://www.zaproxy.org/docs/desktop/addons/automation-framework/ . Some jobs may take time to stop. Applied lesson: keep cancellation request distinct from an observed terminal state.
-- **DefectDojo Finding Status Definitions** — https://docs.defectdojo.com/triage_findings/findings_workflows/finding_status_definitions/ . Status has specific workflow meaning. Applied lesson: explain HackGPT's own lifecycle semantics instead of mapping state names to inferred security conclusions.
-- **DefectDojo Introduction to Findings** — https://docs.defectdojo.com/triage_findings/findings_workflows/intro_to_findings/ . Scanner discovery and verification are distinct concepts. Applied lesson: completed adapter execution remains candidate evidence until separately verified.
-- **Chrome Headless debugging** — https://developer.chrome.com/docs/automation-and-testing/debug-headless and current Chromium headless test source. Chrome exposes remote debugging through the DevTools listener, whose startup is asynchronous in Chromium's own test handling. Applied lesson: use bounded startup tolerance/diagnostics rather than hiding browser failures or weakening application assertions.
+- **CPython Windows documentation** — https://docs.python.org/3/using/windows.html and current source `Doc/using/windows.rst`. Current guidance recommends `python` for the normal/default runtime and documents that when no runtimes are installed, launch commands may automatically install one if `automatic_install` permits it. `PYTHON_MANAGER_AUTOMATIC_INSTALL` controls that behavior and is enabled by default. Applied lesson: the Workbench helper explicitly disables automatic runtime installation for its own process before probing either launcher route.
+- **actions/setup-python** — https://github.com/actions/setup-python . The action recommends selecting a Python version explicitly and makes that selected interpreter available for subsequent `python` commands. Applied lesson: prefer the configured PATH interpreter before the multi-runtime `py` fallback so CI and user-selected environments are respected.
+- **OWASP ZAP History** — https://www.zaproxy.org/docs/desktop/ui/tabs/history/ . Applied only as a review-UX principle: retain separate execution/context state rather than collapsing history into a single security conclusion.
 
-These sources inform lifecycle/UX/reliability design only; HackGPT's states are not asserted to be equivalent to ZAP or DefectDojo states.
+These sources inform launcher/reviewer design only; HackGPT does not copy their code or claim equivalent semantics.
 
-## Preserved reliability, AI, privacy, and execution boundaries
+## Preserved AI, privacy, evidence, and execution boundaries
 
 The retained application still uses exact scoped authorization, finite typed adapter declarations, exact-plan approval, bounded effects/requests/time/output, candidate-only imported observations, cancellation/deadline paths, durable receipts, integrity-checked reports, conservative retesting, structured reviewer evidence, coverage-aware review, explicit AI-processing provenance and trusted package-attestation verification.
 
@@ -92,15 +96,13 @@ Autonomous tests use owned synthetic fixtures, denied controls and redacted cana
 
 ## Remaining validation and product work
 
-1. **Finish exact-head PR #9 Basic and Enterprise validation.** Re-read Basic `35993886364` and Enterprise `35993886357`. If either fails, inspect the completed failing job log and repair rather than merging around it.
-2. **Validate this documentation successor.** The PROGRESS update creates a newer source head; historical `e386a85...` green cannot be transferred automatically. Require fresh Workbench, Startup, PR Package, Basic and Enterprise results for the exact successor before merge.
-3. **Merge only after final review.** Re-read main and PR head immediately before merge, review the final diff, and use expected-head protection with no force update.
-4. **Verify merged main separately.** Require Workbench/browser/startup/package/Basic/Enterprise on the actual merge revision. Trusted package signing/attestation must be exercised on main rather than inferred from PR smoke.
-5. **Keep browser evidence truthful.** Main's repeated 15-second pre-page timeout remains part of the record. The bounded 30-second startup change does not make future browser failures ignorable.
-6. **Continue Gate D/E product work after shipping paths are green.** Prefer explicit tool/approval/cancellation/history state, actionable reviewer flows, and dependable installation/startup over cosmetic additions or platform sprawl.
+1. **Validate the exact PR #10 successor.** Require all merge-gate workflows above on the exact newest source. If one fails, inspect its completed log and repair the failure rather than merging around it.
+2. **Merge only after final review.** Re-read main and PR head immediately before merge, review the final diff, and use expected-head protection with no force update.
+3. **Verify merged main separately.** Require Workbench/browser/frontend/startup/package/Basic/Enterprise on the actual merge revision. Trusted signing/attestation must run on main.
+4. **Continue Gate D/E product work after shipping paths are green.** Prefer explicit model/tool/cancellation/history state, actionable reviewer flows, and dependable install/startup over cosmetic additions or platform sprawl.
 
 ## Verification discipline
 
-For every newer candidate, distinguish source head from GitHub's generated PR checkout, local DOM tests from real browser E2E, protocol doubles from live model compatibility, individual jobs from aggregate workflows, PR package smoke from trusted-main signing, and portable-source packaging from native installers. A historical green run never certifies a later commit. No findings is not a security guarantee; failed reproduction is not proof of impossibility; `not_reproduced` is explicitly not a fixed verdict.
+For every newer candidate, distinguish source head from GitHub's generated PR checkout, DOM contracts from real browser E2E, protocol doubles from live model compatibility, individual jobs from aggregate workflows, PR package smoke from trusted-main signing, and portable-source packaging from native installers. A historical green run never certifies a later commit. No findings is not a security guarantee; failed reproduction is not proof of impossibility; `not_reproduced` is explicitly not a fixed verdict.
 
 See [ROADMAP.md](ROADMAP.md) for cumulative Gates A-E, [README.md](README.md) and [START_HERE.md](START_HERE.md) for the current user path, [OLLAMA.md](OLLAMA.md) for model boundaries, and [PRODUCT_DIRECTION.md](PRODUCT_DIRECTION.md) for direction rather than shipped claims.
