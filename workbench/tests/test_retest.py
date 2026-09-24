@@ -10,12 +10,16 @@ def report(
     findings=None,
     checks=None,
     status="completed",
+    mode="analyst",
+    engine_version="0.1.0",
 ):
     return {
         "id": run,
         "target": target,
         "environment": environment,
         "status": status,
+        "mode": mode,
+        "engine_version": engine_version,
         "findings": findings or [],
         "checks": checks or [],
     }
@@ -28,8 +32,10 @@ def finding(
     remediation="Add a scoped CSP",
     evidence_sha="e" * 64,
     finding_id="f-1",
+    source=None,
+    evidence=None,
 ):
-    return {
+    item = {
         "fingerprint": fp,
         "rule": rule,
         "title": title,
@@ -37,6 +43,11 @@ def finding(
         "evidence_sha256": evidence_sha,
         "id": finding_id,
     }
+    if source is not None:
+        item["source"] = source
+    if evidence is not None:
+        item["evidence"] = evidence
+    return item
 
 
 class RetestTests(unittest.TestCase):
@@ -148,6 +159,136 @@ class RetestTests(unittest.TestCase):
     def test_running_report_rejected(self):
         with self.assertRaises(ValueError):
             compare_reports(report("a"), report("b", status="running"))
+
+    def test_exact_adapter_version_allows_not_reproduced(self):
+        prior = finding(
+            "x",
+            rule="web/missing-content-security-policy",
+            source="adapter/native-web-headers/1",
+        )
+        current = report(
+            "b",
+            environment="synthetic_lab",
+            checks=[
+                {
+                    "tool": "native-web-headers",
+                    "status": "completed",
+                    "adapter": {"id": "native-web-headers", "version": "1"},
+                }
+            ],
+        )
+        diff = compare_reports(report("a", findings=[prior]), current)
+        item = diff["items"][0]
+        self.assertEqual(item["state"], "not_reproduced")
+        self.assertEqual(item["recheck"]["coverage"]["status"], "completed")
+        self.assertEqual(
+            item["recheck"]["coverage"]["expected_adapter"],
+            {"id": "native-web-headers", "version": "1"},
+        )
+
+    def test_adapter_version_change_is_not_retested(self):
+        prior = finding(
+            "x",
+            rule="web/missing-content-security-policy",
+            source="adapter/native-web-headers/1",
+        )
+        current = report(
+            "b",
+            checks=[
+                {
+                    "tool": "native-web-headers",
+                    "status": "completed",
+                    "adapter": {"id": "native-web-headers", "version": "2"},
+                }
+            ],
+        )
+        item = compare_reports(report("a", findings=[prior]), current)["items"][0]
+        self.assertEqual(item["state"], "not_retested")
+        self.assertEqual(item["recheck"]["coverage"]["status"], "version_changed")
+        self.assertEqual(
+            item["recheck"]["coverage"]["observed_adapters"],
+            [{"id": "native-web-headers", "version": "2"}],
+        )
+
+    def test_missing_prior_adapter_identity_is_not_retested(self):
+        prior = finding("x", rule="web/missing-content-security-policy")
+        current = report(
+            "b",
+            checks=[
+                {
+                    "tool": "native-web-headers",
+                    "status": "completed",
+                    "adapter": {"id": "native-web-headers", "version": "1"},
+                }
+            ],
+        )
+        item = compare_reports(report("a", findings=[prior]), current)["items"][0]
+        self.assertEqual(item["state"], "not_retested")
+        self.assertEqual(item["recheck"]["coverage"]["status"], "identity_unknown")
+
+    def test_legacy_method_change_is_not_retested(self):
+        prior = finding("x", evidence={"method": "HEAD"})
+        current = report(
+            "b",
+            checks=[
+                {
+                    "tool": "http_baseline",
+                    "status": "completed",
+                    "evidence": {"method": "GET"},
+                }
+            ],
+        )
+        item = compare_reports(report("a", findings=[prior]), current)["items"][0]
+        self.assertEqual(item["state"], "not_retested")
+        self.assertEqual(item["recheck"]["coverage"]["status"], "method_changed")
+        self.assertEqual(item["recheck"]["coverage"]["expected_method"], "HEAD")
+        self.assertEqual(item["recheck"]["coverage"]["observed_methods"], ["GET"])
+
+    def test_same_fingerprint_remains_present_despite_adapter_version_drift(self):
+        prior = finding(
+            "same",
+            rule="web/missing-content-security-policy",
+            source="adapter/native-web-headers/1",
+        )
+        current_finding = finding(
+            "same",
+            rule="web/missing-content-security-policy",
+            source="adapter/native-web-headers/2",
+        )
+        current = report(
+            "b",
+            findings=[current_finding],
+            checks=[
+                {
+                    "tool": "native-web-headers",
+                    "status": "completed",
+                    "adapter": {"id": "native-web-headers", "version": "2"},
+                }
+            ],
+        )
+        item = compare_reports(report("a", findings=[prior]), current)["items"][0]
+        self.assertEqual(item["state"], "still_present")
+        self.assertEqual(item["recheck"]["coverage"]["status"], "version_changed")
+
+    def test_mode_and_engine_drift_are_reported_without_overriding_exact_coverage(self):
+        current = report(
+            "b",
+            mode="verify",
+            engine_version="0.2.0",
+            checks=[{"tool": "http_baseline", "status": "completed"}],
+        )
+        diff = compare_reports(
+            report(
+                "a",
+                findings=[finding("x")],
+                mode="analyst",
+                engine_version="0.1.0",
+            ),
+            current,
+        )
+        self.assertFalse(diff["scope_comparison"]["same_mode"])
+        self.assertFalse(diff["scope_comparison"]["same_engine_version"])
+        self.assertEqual(diff["items"][0]["state"], "not_reproduced")
 
 
 if __name__ == "__main__":
