@@ -105,7 +105,7 @@ try {
     const response = await fetch(`http://127.0.0.1:${debugPort}/json/version`).catch(() => null);
     if (!response?.ok) return null;
     return response.json();
-  }, 'Chrome DevTools endpoint');
+  }, 'Chrome DevTools endpoint', 30000, 100);
   assert(version.webSocketDebuggerUrl, 'Chrome DevTools websocket URL missing');
 
   socket = new WebSocket(version.webSocketDebuggerUrl);
@@ -226,7 +226,8 @@ try {
   await waitFor(() => evaluate("!document.getElementById('adapter-execute').disabled"), 'exact plan approval');
   await evaluate("document.getElementById('adapter-execute').click()");
   await waitFor(() => evaluate("!document.getElementById('adapter-report').disabled"), 'owned adapter receipt');
-  assert(await evaluate("JSON.parse(document.getElementById('adapter-preview').textContent).status === 'completed'"), 'adapter did not finish');
+  assert(await evaluate("document.getElementById('adapter-preview').textContent.includes('Lifecycle state: COMPLETED')"), 'adapter did not render completed lifecycle state');
+  assert(await evaluate("document.getElementById('adapter-preview').textContent.includes('Durable receipt: present')"), 'adapter did not render durable receipt boundary');
   await evaluate("document.getElementById('adapter-report').click()");
   await waitFor(() => evaluate("!document.getElementById('adapter-open-report').disabled"), 'linked candidate report');
   await evaluate("document.getElementById('adapter-open-report').click()");

@@ -103,6 +103,91 @@
       Array.isArray(record.receipt.result.findings) && record.receipt.result.coverage;
   }
 
+  function lifecycleStatus(value) {
+    return ['planned', 'approved', 'executing', 'completed', 'failed', 'cancelled', 'interrupted'].includes(value) ? value : 'unknown';
+  }
+
+  function recordedNumber(value) {
+    return Number.isInteger(value) && value >= 0 ? String(value) : 'not reported';
+  }
+
+  function previewRecord(record) {
+    return {
+      id: record && record.id,
+      status: record && record.status,
+      declaration: record && record.declaration,
+      request_summary: record && record.request_summary,
+      plan_sha256: record && record.plan_sha256,
+      outcome: record && record.outcome ? record.outcome : null,
+      usage: record && record.receipt ? record.receipt.usage : null,
+      candidate_findings: record && record.receipt && record.receipt.result && Array.isArray(record.receipt.result.findings) ? record.receipt.result.findings.length : null,
+      coverage: record && record.receipt && record.receipt.result ? record.receipt.result.coverage : null,
+    };
+  }
+
+  function adapterReviewText(record) {
+    const status = lifecycleStatus(record && record.status);
+    const declaration = record && record.declaration && typeof record.declaration === 'object' ? record.declaration : {};
+    const declaredAdapter = declaration.adapter && typeof declaration.adapter === 'object' ? declaration.adapter : {};
+    const limits = declaration.limits && typeof declaration.limits === 'object' ? declaration.limits : {};
+    const receipt = record && record.receipt && typeof record.receipt === 'object' ? record.receipt : null;
+    const result = receipt && receipt.result && typeof receipt.result === 'object' ? receipt.result : null;
+    const usage = receipt && receipt.usage && typeof receipt.usage === 'object' ? receipt.usage : null;
+    const outcomeCode = record && record.outcome && typeof record.outcome.code === 'string' && record.outcome.code.trim() ? record.outcome.code.trim() : 'not recorded';
+    const adapter = typeof record?.adapter_id === 'string' && record.adapter_id.trim() ? record.adapter_id.trim() :
+      (typeof declaredAdapter.id === 'string' && declaredAdapter.id.trim() ? declaredAdapter.id.trim() : 'not recorded');
+    const planDigest = typeof record?.plan_sha256 === 'string' && /^[a-f0-9]{64}$/.test(record.plan_sha256) ? record.plan_sha256 : 'not recorded';
+    const lines = [
+      'Adapter lifecycle review',
+      'Lifecycle state: ' + status.toUpperCase(),
+      'Adapter: ' + adapter,
+      'Plan digest: ' + planDigest,
+      'Max objects: ' + recordedNumber(limits.max_objects),
+      'Max requests: ' + recordedNumber(limits.max_requests),
+      'Timeout seconds: ' + recordedNumber(limits.timeout_seconds),
+      'Recorded outcome: ' + outcomeCode,
+      'Authority boundary: only the exact reviewed plan digest can be approved; lifecycle state never expands adapter scope, effects, requests or time limits.',
+    ];
+
+    if (status === 'planned') {
+      lines.push('Approval: not granted. Execution remains disabled until the exact plan digest is approved.');
+    } else if (status === 'approved') {
+      lines.push('Approval: exact plan digest approved. Execution has not yet been confirmed.');
+    } else if (status === 'executing') {
+      lines.push('Approval: exact plan digest approved. Execution is in progress; Stop is a cancellation request until a terminal state is confirmed.');
+    } else if (status === 'completed') {
+      lines.push(receipt ?
+        'Durable receipt: present. Completion describes adapter execution only; returned findings remain candidate observations until separately verified.' :
+        'Durable receipt: not recorded. Do not treat this completed state as reportable success; check run status.');
+    } else if (status === 'cancelled') {
+      lines.push('Terminal state: cancelled. No successful receipt or verification claim is inferred.');
+    } else if (status === 'failed') {
+      lines.push('Terminal state: failed. No successful receipt or verification claim is inferred.');
+    } else if (status === 'interrupted') {
+      lines.push('Terminal state: interrupted. Execution may have started, but durable completion is not claimed; do not automatically retry.');
+    } else {
+      lines.push('Lifecycle state: unknown. Fail closed: execution, cancellation and durable completion are not inferred from an unrecognized state.');
+    }
+
+    if (usage) {
+      lines.push(
+        'Objects tested: ' + recordedNumber(usage.objects_tested),
+        'Network requests: ' + recordedNumber(usage.network_requests),
+        'Elapsed milliseconds: ' + recordedNumber(usage.elapsed_ms)
+      );
+    }
+    if (result) {
+      const findingCount = Array.isArray(result.findings) ? result.findings.length : null;
+      lines.push('Candidate findings recorded: ' + (findingCount === null ? 'not reported' : String(findingCount)));
+      if (result.coverage && typeof result.coverage === 'object') {
+        lines.push('Coverage record: present; review the recorded coverage and limitations before drawing conclusions.');
+      }
+    }
+
+    lines.push('', 'Recorded lifecycle preview:', JSON.stringify(previewRecord(record), null, 2));
+    return lines.join('\n');
+  }
+
   function outcome(record) {
     assertCurrent(record);
     show(record);
@@ -135,18 +220,10 @@
   }
 
   function show(record) {
-    byId('adapter-preview').textContent = JSON.stringify({
-      id: record.id,
-      status: record.status,
-      declaration: record.declaration,
-      request_summary: record.request_summary,
-      plan_sha256: record.plan_sha256,
-      outcome: record.outcome || null,
-      usage: record.receipt ? record.receipt.usage : null,
-      candidate_findings: record.receipt && record.receipt.result && Array.isArray(record.receipt.result.findings) ? record.receipt.result.findings.length : null,
-      coverage: record.receipt && record.receipt.result ? record.receipt.result.coverage : null,
-    }, null, 2);
+    byId('adapter-preview').textContent = adapterReviewText(record);
   }
+
+  globalThis.adapterLifecycleReviewText = adapterReviewText;
 
   byId('adapter-kind').addEventListener('change', syncTargetLabel);
   byId('adapter-reset').addEventListener('click', resetPlan);
