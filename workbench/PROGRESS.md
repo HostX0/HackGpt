@@ -149,9 +149,43 @@ No external code or dependency was copied.
 
 These sources informed presentation semantics only; HackGPT's status model is not asserted to be equivalent to DefectDojo's.
 
+## PR #7 merged and PR #8: reviewable AI processing provenance
+
+PR #7's documentation successor `cef18508cf4ac389505c188b0b6d863f2cd8fc82` subsequently completed exact-head Evidence Workbench `35982310473`, Workbench Startup `35982310628`, PR-context Release Package `35982310634`, Basic CI `35982310639`, and Enterprise CI `35982310635` successfully. Its final three-file diff was reviewed, then PR #7 was merged with expected-head protection and no force update into fork `main` at **`dcebc888d8c9d3689cfb26d5dc1e2a4c672d2262`**. Post-merge Workbench Startup `35986740373` and trusted Release Package `35986740395` completed successfully; the trusted package path remains distinct from native installer or report signing.
+
+Branch `feat/ai-review-summary` starts from that exact merged main. Current source for PR #8 is **`3fa6278823c8292d1c38f6b49174ca4093c6f2e5`** and GitHub generated PR checkout **`7c3808e582ad17b99c75a94cf8c26c7ee49c1387`**. The existing AI report record is unchanged, but the reviewer surface now provides a structured post-run summary before the raw JSON:
+
+- recorded AI status, provider, model, processing policy, cloud-processing approval, and reported execution location are shown explicitly;
+- `not_requested`, `running`, `completed`, `unavailable`, and the engine's terminal `cancelled` state are preserved; unrecognized statuses fail closed to `unknown`;
+- `local_only`/`cloud_allowed` policy and `local_reported`/`cloud_reported` location are deliberately separate facts;
+- the UI states that processing approval does not prove where inference actually ran and that reported location is daemon metadata rather than a no-egress attestation;
+- inference attempts, responses received, and daemon-reported prompt/output token counts are shown when valid; missing/invalid counters stay `not reported`, never invented as zero;
+- billing cost is explicitly not estimated by the workbench;
+- AI interpretation remains commentary only: it never changes verification, scope, tool authority, approval, or evidence;
+- the exact raw `report.ai` record remains visible and authoritative, and recorded strings are rendered through `textContent` rather than HTML.
+
+No provider/model fallback, model call, new network request, scanner, target, filesystem authority, schema change, or storage mutation is introduced by this reviewer layer.
+
+### Exact PR #8 validation checkpoint
+
+Before publication, Linux / Node `v22.16.0` focused checks passed `node --check` and **5/5** AI-review contracts, including the real engine `cancelled` state, with 0 failed/skipped.
+
+On current source `3fa627882...`, Workbench Startup **`35987744487`** and PR-context Release Package **`35987744425`** completed successfully. Evidence Workbench **`35987744383`** initially recorded a browser job failure `107594270845` before page interaction because Chrome's DevTools endpoint did not become reachable within the existing 15-second startup wait. The source and generated checkout were not changed or weakened. A retry on the **same exact checkout** produced browser job `107595381449`, which completed successfully including real browser-to-loopback E2E/accessibility and evidence upload. Chromium's current own headless remote-debugging test source documents that the DevTools listener starts asynchronously and has no reliable immediate-start signal; the first failure therefore remains recorded as startup-timing evidence rather than being erased or misclassified as an application assertion failure.
+
+The same exact generated checkout ran **411 Python tests: 409 passed, 2 explicitly skipped, 0 failed** on Ubuntu 24.04 / CPython 3.13.15. The hosted frontend command ran **42 JavaScript tests: 42 passed, 0 failed, 0 skipped**; tests 39–42 are the new hosted AI reviewer contracts. Python 3.11/3.12/3.13 native jobs, pinned Semgrep owned-fixture validation, assessment-data-free real local Ollama compatibility, fresh-install smoke on Ubuntu/macOS/Windows, and the Workbench validation summary all completed successfully after the browser retry. Enterprise Code Quality passed fail-closed Black and Flake8; MyPy/Pylint retain their existing advisory semantics. Basic and remaining Enterprise/Docker lanes were still executing at this ledger checkpoint, so PR #8 is not merged and aggregate success is not claimed yet.
+
+### Research applied to AI review and browser evidence
+
+No external code or dependency was copied.
+
+- **Ollama Chat API** — https://docs.ollama.com/api/chat . The response schema reports `prompt_eval_count` and `eval_count`; these are treated only as daemon-reported token telemetry. Missing values are not converted to zero or billing estimates.
+- **W3C WCAG status messages / ARIA22** — https://www.w3.org/WAI/WCAG21/Understanding/status-messages and https://www.w3.org/WAI/WCAG21/Techniques/aria/ARIA22 . Applied lesson: live status changes should be programmatically available without moving focus, while the completed report needs persistent review context. The existing polite live status remains; this slice improves persistent post-run review.
+- **OWASP ZAP LLM alert review** — https://www.zaproxy.org/docs/desktop/addons/alert-filters/llm/ . Applied lesson: AI involvement should be reviewable. HackGPT deliberately does **not** adopt the ability for model review to change finding confidence; AI stays non-evidentiary commentary.
+- **Chrome Headless debugging / Chromium headless test source** — https://developer.chrome.com/docs/automation-and-testing/debug-headless and https://chromium.googlesource.com/chromium/src/+/main/headless/test/headless_policy_browsertest.cc . Chrome exposes remote debugging through its DevTools listener, and Chromium's own test source explicitly notes listener startup is asynchronous. That evidence supports retrying the unchanged browser-checkout after a pre-page startup timeout without relabeling the initial failed attempt as a pass.
+
 ## Preserved reliability, AI, privacy, and execution boundaries
 
-The original Workbench and later contributions remain intact: integrity-checked reports, explicit failed/skipped/inconclusive coverage, exact request-digest approval, finite typed adapters, candidate-only imported observations, bounded public-web scope, durable execution receipts, cancellation/deadline paths, owned synthetic proof with a denied control, pinned Semgrep runner, delayed-response UI transaction guards, selection-bound exports/comparisons, linked-report navigation, startup diagnostics/locking, exact-once adapter lifecycle execution, terminal-persistence-failure handling, conservative retesting, structured reviewer evidence, and trusted package-attestation verification.
+The original Workbench and later contributions remain intact: integrity-checked reports, explicit failed/skipped/inconclusive coverage, exact request-digest approval, finite typed adapters, candidate-only imported observations, bounded public-web scope, durable execution receipts, cancellation/deadline paths, owned synthetic proof with a denied control, pinned Semgrep runner, delayed-response UI transaction guards, selection-bound exports/comparisons, linked-report navigation, startup diagnostics/locking, exact-once adapter lifecycle execution, terminal-persistence-failure handling, conservative retesting, structured reviewer evidence, coverage-aware review, and trusted package-attestation verification.
 
 AI remains optional and provider-neutral at the evidence/action/report boundary. Ollama is the implemented reference adapter, not a mandatory gateway. Deterministic no-AI remains available. Localhost transport does not attest local inference; external processing requires explicit engagement-specific approval and minimized disclosed fields. Model output never expands scope, grants tool authority, or upgrades candidate evidence to verification.
 
@@ -159,10 +193,11 @@ Autonomous tests use owned synthetic fixtures, denied controls, and redacted can
 
 ## Remaining validation and product work
 
-1. **Finish PR #7 aggregate validation.** Re-read exact-source Basic `35981763326` and Enterprise `35981763304`. If either fails, inspect the completed failing job log and repair rather than merging around it. If both succeed, add no new code merely to create activity: review the final diff and this ledger successor, then require fresh source-head Workbench/Startup/package/Basic/Enterprise validation before expected-head merge.
-2. **Verify post-merge main separately.** If PR #7 merges, re-read current main Workbench/browser/startup/package/Basic/Enterprise evidence. Trusted package signing must be exercised on main rather than inferred from PR package smoke.
-3. **Keep release claims bounded.** Trusted package provenance/SBOM generation and verification are proven on main, but the portable source package is not a native signed installer and advisory security/compliance/performance jobs are not certifications or benchmarks.
-4. **Continue Gate D/E product work.** Prefer concrete reviewer/action/model/startup value demonstrated by live code and tests over cosmetic additions or expanding into an unrelated security platform. Coverage summaries must remain evidence-preserving rather than becoming inferred pass/fail or safety scores.
+1. **Finish PR #8 aggregate validation.** Re-read exact-source Basic `35987744304` and Enterprise `35987744298`. If either fails, inspect the completed failing job log and repair rather than merging around it. If both succeed, re-read main/head, review the final diff and merge only with expected-head protection.
+2. **Verify post-merge main separately.** If PR #8 merges, require current main Workbench/browser/startup/package/Basic/Enterprise evidence. Trusted package signing must be exercised on main rather than inferred from PR package smoke.
+3. **Keep browser retry evidence truthful.** The first current-head browser attempt failed before page interaction; the same-checkout retry succeeded. Do not transform that history into an initial green claim. If this startup timing recurs, improve bounded startup diagnostics/tolerance rather than hiding browser failures.
+4. **Keep release claims bounded.** Trusted package provenance/SBOM generation and verification are proven on main, but the portable source package is not a native signed installer and advisory security/compliance/performance jobs are not certifications or benchmarks.
+5. **Continue Gate D/E product work.** Prefer explicit model/tool state, cancellation/history clarity, reviewer/actionability, and reliable startup/install flows over cosmetic additions or platform sprawl.
 
 ## Verification discipline
 
