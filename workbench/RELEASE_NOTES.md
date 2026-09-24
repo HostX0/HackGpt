@@ -13,6 +13,10 @@ PR #1 and PR #2 are merged into the HostX0 fork; this is not upstream acceptance
 - Make dependency-free startup diagnostics actionable without leaking local exception details: `--check-install --json` reports stable failure stages/codes for application files, SQLite, workspace preparation/write access, unsafe lock objects and loopback-port availability while preserving the no-report/no-model/no-scanner preflight boundary.
 - Repair trusted portable-release attestation verification after post-merge main exposed an output-name mismatch: package build, three-OS exact-byte smoke and both GitHub/Sigstore signatures succeeded, but the verifier received `_release/.tar.gz`. The release workflow now uses one `package_basename` output consistently and verifies the exact preserved provenance and CycloneDX SBOM bundles against the package, repository and source revision before evidence upload. Pull requests still receive no OIDC/attestation write authority. This verifies supply-chain claims for package bytes; it is not native code signing, assessment-report signing or security certification.
 
+### Release failure propagation and pre-sign integrity
+
+The concurrent release-verification repair is retained. Add a check of the exact revision-bound package name and downloaded SHA-256 before signing, and require both verification commands to match the expected signer workflow. Offline shell replay covers missing/tampered artifacts and either verifier's nonzero status, without claiming a fake verifier proves cryptographic integrity. The release tests and original product features remain. See PROGRESS.md for source reconciliation, exact validation and the current owner-authorized ongoing development scope.
+
 ## 0.1.0 review preview
 
 This is an isolated contribution under `workbench/`; it does not replace the legacy HackGPT entry points and is not a claim of complete penetration-testing coverage.

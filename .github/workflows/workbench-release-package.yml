@@ -129,6 +129,16 @@ jobs:
         with:
           name: workbench-release-candidate-${{ github.sha }}
           path: _release
+      - name: Validate downloaded package identity
+        env:
+          PACKAGE_BASENAME: ${{ needs.build-package.outputs.package_basename }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          : "${PACKAGE_BASENAME:?Missing package basename from build-package}"
+          test "$PACKAGE_BASENAME" = "hackgpt-evidence-workbench-${GITHUB_SHA}"
+          test -s "_release/${PACKAGE_BASENAME}.tar.gz"
+          sha256sum --check --strict _release/SHA256SUMS
       - name: Generate signed build provenance attestation
         id: provenance
         uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4
@@ -173,12 +183,14 @@ jobs:
             --bundle _release/provenance.sigstore.json \
             --predicate-type https://slsa.dev/provenance/v1 \
             --source-digest "$GITHUB_SHA" \
+            --signer-workflow "$GITHUB_REPOSITORY/.github/workflows/workbench-release-package.yml" \
             2>&1 | tee _release/provenance-verification.txt
           gh attestation verify "$PACKAGE" \
             --repo "$GITHUB_REPOSITORY" \
             --bundle _release/sbom-attestation.sigstore.json \
             --predicate-type https://cyclonedx.org/bom \
             --source-digest "$GITHUB_SHA" \
+            --signer-workflow "$GITHUB_REPOSITORY/.github/workflows/workbench-release-package.yml" \
             2>&1 | tee _release/sbom-attestation-verification.txt
       - name: Upload attested portable release evidence
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
