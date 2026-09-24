@@ -231,7 +231,7 @@ try {
   await waitFor(() => evaluate("!document.getElementById('adapter-open-report').disabled"), 'linked candidate report');
   await evaluate("document.getElementById('adapter-open-report').click()");
   await waitFor(() => evaluate("document.getElementById('run-status').textContent.includes('project://') && !document.getElementById('export-json').disabled"), 'linked report review');
-  assert(await evaluate("document.activeElement.id === 'verdict'"), 'report navigation did not focus its conclusion');
+  await waitFor(() => evaluate("document.activeElement.id === 'verdict'"), 'linked report conclusion focus');
   assert(await evaluate("Number(document.getElementById('count-verified').textContent) === 0"), 'adapter observations were promoted to verified');
   assert(await evaluate("!document.getElementById('use-ai').checked"), 'report review enabled AI');
   assert(await evaluate(`!document.body.innerText.includes(${JSON.stringify(launchToken)})`), 'token leaked during adapter review');
