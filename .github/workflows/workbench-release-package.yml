@@ -109,7 +109,12 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
+  # Pull requests, especially fork-originated upstream contributions, intentionally stop
+  # after exact-package cross-platform smoke. Attestation needs repository write/OIDC
+  # authority and therefore only runs for trusted push/manual contexts after the same
+  # build-package and package-smoke jobs have succeeded.
   attest-package:
+    if: github.event_name != 'pull_request'
     needs: [build-package, package-smoke]
     runs-on: ubuntu-latest
     timeout-minutes: 6
@@ -155,7 +160,7 @@ jobs:
             "sbom_attestation_id=$SBOM_ID" \
             "sbom_attestation_url=$SBOM_URL" \
             > _release/ATTESTATIONS.txt
-          gh attestation verify "_release/${{ needs.build-package.outputs.package-basename }}.tar.gz" \
+          gh attestation verify "_release/${{ needs.build-package.outputs.package_basename }}.tar.gz" \
             --repo "$GITHUB_REPOSITORY" 2>&1 | tee _release/attestation-verification.txt
       - name: Upload attested portable release evidence
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
@@ -174,7 +179,9 @@ jobs:
           retention-days: 7
 
 # The portable source archive is built once, then the exact SHA-256-addressed bytes are
-# extracted and smoke-tested on GitHub-hosted Ubuntu, macOS and Windows before signing.
-# The workflow does not publish a release, registry object, website or scanner image.
-# GitHub/Sigstore attestations provide build provenance/SBOM bindings, not a security
-# certification, code-signing identity for a native installer or universal coverage claim.
+# extracted and smoke-tested on GitHub-hosted Ubuntu, macOS and Windows. Trusted push or
+# manual runs then sign that already-smoked archive. Pull requests never receive the
+# repository write/OIDC authority needed for attestations. The workflow does not publish
+# a release, registry object, website or scanner image. GitHub/Sigstore attestations bind
+# provenance/SBOM to source bytes; they are not a security certification or native
+# code-signing identity.

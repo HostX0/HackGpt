@@ -4,7 +4,9 @@ from workbench.evidence_safety import summarize_records
 
 class EvidenceSafetyTests(unittest.TestCase):
     def test_real_values_are_not_exported(self):
-        result = summarize_records([{"id": 1, "email": "person@example.test", "password": "secret"}])
+        result = summarize_records(
+            [{"id": 1, "email": "person@example.test", "password": "secret"}]
+        )
         rendered = repr(result)
         self.assertNotIn("person@example.test", rendered)
         self.assertNotIn("secret", rendered)
@@ -12,8 +14,12 @@ class EvidenceSafetyTests(unittest.TestCase):
         self.assertEqual(result["columns"], ["email", "id", "password"])
 
     def test_synthetic_canary_is_retained_as_proof(self):
-        result = summarize_records([{"id": 1, "marker": "HACKGPT-SYNTHETIC-abc123", "name": "do-not-export"}])
-        self.assertEqual(result["synthetic_canaries"][0]["value"], "HACKGPT-SYNTHETIC-abc123")
+        result = summarize_records(
+            [{"id": 1, "marker": "HACKGPT-SYNTHETIC-abc123", "name": "do-not-export"}]
+        )
+        self.assertEqual(
+            result["synthetic_canaries"][0]["value"], "HACKGPT-SYNTHETIC-abc123"
+        )
         self.assertNotIn("do-not-export", repr(result))
 
     def test_hash_changes_when_source_changes(self):
@@ -26,4 +32,5 @@ class EvidenceSafetyTests(unittest.TestCase):
             summarize_records({"id": 1})
 
 
-if __name__ == "__main__": unittest.main()
+if __name__ == "__main__":
+    unittest.main()

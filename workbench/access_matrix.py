@@ -5,6 +5,7 @@ explicit operator-defined expectations against normalized observations from a se
 scoped test harness. Unauthorized-access mismatches become candidate observations only;
 independent verification remains a separate workbench authority.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -32,11 +33,21 @@ class AccessExpectation:
 
     @classmethod
     def parse(cls, value: Any) -> "AccessExpectation":
-        if not isinstance(value, dict) or set(value) != {"role", "resource", "should_allow"}:
-            raise ValueError("expectation must contain exactly role, resource and should_allow")
+        if not isinstance(value, dict) or set(value) != {
+            "role",
+            "resource",
+            "should_allow",
+        }:
+            raise ValueError(
+                "expectation must contain exactly role, resource and should_allow"
+            )
         if type(value["should_allow"]) is not bool:
             raise ValueError("should_allow must be boolean")
-        return cls(_id(value["role"], "role"), _id(value["resource"], "resource"), value["should_allow"])
+        return cls(
+            _id(value["role"], "role"),
+            _id(value["resource"], "resource"),
+            value["should_allow"],
+        )
 
 
 @dataclass(frozen=True)
@@ -48,14 +59,26 @@ class AccessObservation:
 
     @classmethod
     def parse(cls, value: Any) -> "AccessObservation":
-        if not isinstance(value, dict) or set(value) != {"role", "resource", "observed", "control_confirmed"}:
-            raise ValueError("observation must contain exactly role, resource, observed and control_confirmed")
+        if not isinstance(value, dict) or set(value) != {
+            "role",
+            "resource",
+            "observed",
+            "control_confirmed",
+        }:
+            raise ValueError(
+                "observation must contain exactly role, resource, observed and control_confirmed"
+            )
         observed = value["observed"]
         if observed not in _ALLOWED_OBSERVED:
             raise ValueError("invalid observed access state")
         if type(value["control_confirmed"]) is not bool:
             raise ValueError("control_confirmed must be boolean")
-        return cls(_id(value["role"], "role"), _id(value["resource"], "resource"), observed, value["control_confirmed"])
+        return cls(
+            _id(value["role"], "role"),
+            _id(value["resource"], "resource"),
+            observed,
+            value["control_confirmed"],
+        )
 
 
 def evaluate_access_matrix(
@@ -73,7 +96,11 @@ def evaluate_access_matrix(
     """
     if not isinstance(expectations, list) or not isinstance(observations, list):
         raise ValueError("expectations and observations must be lists")
-    if not expectations or len(expectations) > MAX_CASES or len(observations) > MAX_CASES:
+    if (
+        not expectations
+        or len(expectations) > MAX_CASES
+        or len(observations) > MAX_CASES
+    ):
         raise ValueError("access matrix must contain from 1 to 256 bounded cases")
     if not isinstance(version, str) or not version.strip() or len(version) > 64:
         raise ValueError("matrix version must be a short non-empty string")
@@ -102,58 +129,97 @@ def evaluate_access_matrix(
         key = (item.role, item.resource)
         observation = observed_map.get(key)
         if observation is None:
-            cases.append({"role": item.role, "resource": item.resource, "expected": "allowed" if item.should_allow else "denied", "observed": "not_tested", "result": "inconclusive"})
+            cases.append(
+                {
+                    "role": item.role,
+                    "resource": item.resource,
+                    "expected": "allowed" if item.should_allow else "denied",
+                    "observed": "not_tested",
+                    "result": "inconclusive",
+                }
+            )
             incomplete += 1
             continue
 
         expected_state = "allowed" if item.should_allow else "denied"
         if observation.observed in {"error", "skipped"}:
-            cases.append({"role": item.role, "resource": item.resource, "expected": expected_state, "observed": observation.observed, "result": "inconclusive"})
+            cases.append(
+                {
+                    "role": item.role,
+                    "resource": item.resource,
+                    "expected": expected_state,
+                    "observed": observation.observed,
+                    "result": "inconclusive",
+                }
+            )
             incomplete += 1
             continue
 
         completed += 1
-        matches = (item.should_allow and observation.observed == "allowed") or ((not item.should_allow) and observation.observed == "denied")
+        matches = (item.should_allow and observation.observed == "allowed") or (
+            (not item.should_allow) and observation.observed == "denied"
+        )
         result = "matched" if matches else "mismatch"
-        cases.append({"role": item.role, "resource": item.resource, "expected": expected_state, "observed": observation.observed, "result": result})
+        cases.append(
+            {
+                "role": item.role,
+                "resource": item.resource,
+                "expected": expected_state,
+                "observed": observation.observed,
+                "result": result,
+            }
+        )
 
         # Only an unexpected allow represents a confidentiality/authorization candidate.
         # An unexpected denial remains a policy mismatch in the case matrix but is not
         # converted into an exploitability claim.
         if (not item.should_allow) and observation.observed == "allowed":
             confidence = 0.9 if observation.control_confirmed else 0.45
-            findings.append({
-                "rule": "access-control/unexpected-allow",
-                "title": f"Role {item.role} reached restricted resource {item.resource}",
-                "severity": "high",
-                "confidence": confidence,
-                "evidence": {
-                    "role": item.role,
-                    "resource": item.resource,
-                    "expected": "denied",
-                    "observed": "allowed",
-                    "denied_control_confirmed": observation.control_confirmed,
-                    "credentials_included": False,
-                    "response_body_included": False,
-                    "customer_records_included": False,
-                },
-                "remediation": "Enforce authorization for this role/resource boundary and re-run the same declared matrix with a denied control.",
-                "external_id": f"{item.role}:{item.resource}",
-            })
+            findings.append(
+                {
+                    "rule": "access-control/unexpected-allow",
+                    "title": f"Role {item.role} reached restricted resource {item.resource}",
+                    "severity": "high",
+                    "confidence": confidence,
+                    "evidence": {
+                        "role": item.role,
+                        "resource": item.resource,
+                        "expected": "denied",
+                        "observed": "allowed",
+                        "denied_control_confirmed": observation.control_confirmed,
+                        "credentials_included": False,
+                        "response_body_included": False,
+                        "customer_records_included": False,
+                    },
+                    "remediation": "Enforce authorization for this role/resource boundary and re-run the same declared matrix with a denied control.",
+                    "external_id": f"{item.role}:{item.resource}",
+                }
+            )
 
     status = "completed" if incomplete == 0 else "partial"
     notes = [
         "Access-matrix input is execution-neutral and accepts no credentials, response bodies or customer records.",
         "Unexpected allows remain candidate observations until a separate workbench verification step proves impact.",
     ]
-    normalized = normalize_adapter_result({
-        "schema": ADAPTER_SCHEMA,
-        "adapter": {"id": "access-matrix", "version": version.strip()},
-        "status": status,
-        "coverage": {"objects_tested": completed, "objects_total": len(expected), "notes": notes},
-        "findings": findings,
-        **({"error": f"{incomplete} declared matrix case(s) were not completed"} if incomplete else {}),
-    }, asset_key=asset_key)
+    normalized = normalize_adapter_result(
+        {
+            "schema": ADAPTER_SCHEMA,
+            "adapter": {"id": "access-matrix", "version": version.strip()},
+            "status": status,
+            "coverage": {
+                "objects_tested": completed,
+                "objects_total": len(expected),
+                "notes": notes,
+            },
+            "findings": findings,
+            **(
+                {"error": f"{incomplete} declared matrix case(s) were not completed"}
+                if incomplete
+                else {}
+            ),
+        },
+        asset_key=asset_key,
+    )
     normalized["cases"] = cases
     normalized["matrix_summary"] = {
         "declared_cases": len(expected),

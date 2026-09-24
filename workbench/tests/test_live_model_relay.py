@@ -1,4 +1,5 @@
 """Regression tests for the test-only live-model loopback relay."""
+
 from __future__ import annotations
 
 import json
@@ -15,7 +16,9 @@ class _CatalogHandler(BaseHTTPRequestHandler):
         if self.path != "/api/tags":
             self.send_error(404)
             return
-        body = json.dumps({"models": [{"name": "fixture", "digest": "sha256:" + "a" * 64}]}).encode("utf-8")
+        body = json.dumps(
+            {"models": [{"name": "fixture", "digest": "sha256:" + "a" * 64}]}
+        ).encode("utf-8")
         self.send_response(200)
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(body)))
@@ -40,7 +43,9 @@ class LiveModelRelayTests(unittest.TestCase):
         thread.start()
         try:
             with _LoopbackRelay("127.0.0.1", server.server_port) as relay_port:
-                with urllib.request.urlopen(f"http://127.0.0.1:{relay_port}/api/tags", timeout=3) as response:
+                with urllib.request.urlopen(
+                    f"http://127.0.0.1:{relay_port}/api/tags", timeout=3
+                ) as response:
                     value = json.load(response)
             self.assertEqual(value["models"][0]["name"], "fixture")
         finally:

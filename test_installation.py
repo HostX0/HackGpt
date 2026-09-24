@@ -1,194 +1,286 @@
 #!/usr/bin/env python3
 """
-HackGPT Test Suite
-Run this script to validate your HackGPT installation
+HackGPT installation readiness checks.
+
+The default profile checks the legacy application's core local prerequisites and
+reports optional workstation capabilities separately. ``--ci`` is deterministic
+and offline: it never calls external AI APIs, never requires Ollama, and only
+requires the system tools installed by the CI workflow.
 """
 
-import os
-import sys
-import subprocess
+import argparse
 import importlib
+import os
+import shutil
+import subprocess
+import sys
 from pathlib import Path
 
-def test_python_dependencies():
-    """Test if all Python dependencies are installed"""
-    print("🐍 Testing Python dependencies...")
-    
-    required_packages = [
-        'requests', 'openai', 'rich', 'speechrecognition',
-        'pyttsx3', 'pypandoc', 'cvss', 'flask'
-    ]
-    
-    missing = []
-    for package in required_packages:
-        try:
-            importlib.import_module(package)
-            print(f"  ✅ {package}")
-        except ImportError:
-            missing.append(package)
-            print(f"  ❌ {package}")
-    
-    return len(missing) == 0, missing
+PROJECT_ROOT = Path(__file__).resolve().parent
 
-def test_system_tools():
-    """Test if required system tools are installed"""
-    print("\n🔧 Testing system tools...")
-    
-    required_tools = [
-        'nmap', 'masscan', 'nikto', 'gobuster', 'sqlmap',
-        'hydra', 'theharvester', 'enum4linux', 'whatweb'
-    ]
-    
+CORE_IMPORTS = {
+    "requests": "requests",
+    "openai": "openai",
+    "rich": "rich",
+    "python-dotenv": "dotenv",
+    "SpeechRecognition": "speech_recognition",
+    "pyttsx3": "pyttsx3",
+    "pypandoc": "pypandoc",
+    "Flask": "flask",
+    "flask-cors": "flask_cors",
+    "redis": "redis",
+    "psycopg2": "psycopg2",
+    "SQLAlchemy": "sqlalchemy",
+    "Celery": "celery",
+    "docker": "docker",
+    "kubernetes": "kubernetes",
+    "python-consul": "consul",
+    "PyJWT": "jwt",
+    "bcrypt": "bcrypt",
+    "ldap3": "ldap3",
+    "psutil": "psutil",
+    "numpy": "numpy",
+    "pandas": "pandas",
+    "matplotlib": "matplotlib",
+    "seaborn": "seaborn",
+    "scikit-learn": "sklearn",
+    "websockets": "websockets",
+    "aiohttp": "aiohttp",
+}
+
+CI_REQUIRED_TOOLS = ("nmap", "nikto", "gobuster")
+OPTIONAL_WORKSTATION_TOOLS = (
+    "masscan",
+    "sqlmap",
+    "hydra",
+    "theharvester",
+    "enum4linux",
+    "whatweb",
+)
+
+
+def _print_result(ok, label):
+    print("  {0} {1}".format("OK" if ok else "MISSING", label))
+
+
+def test_python_dependencies(imports=None):
+    """Import the packages used directly by the legacy entry point."""
+    print("Testing Python dependencies...")
+    imports = CORE_IMPORTS if imports is None else imports
+    missing = []
+    for package_name, module_name in imports.items():
+        try:
+            importlib.import_module(module_name)
+            _print_result(True, package_name)
+        except (ImportError, ModuleNotFoundError):
+            missing.append(package_name)
+            _print_result(False, package_name)
+    return not missing, missing
+
+
+def test_system_tools(
+    required_tools=CI_REQUIRED_TOOLS, optional_tools=OPTIONAL_WORKSTATION_TOOLS
+):
+    """Require the CI-provisioned tools and report broader workstation tools."""
+    print("\nTesting system tools...")
     missing = []
     for tool in required_tools:
-        result = subprocess.run(['which', tool], capture_output=True, text=True)
-        if result.returncode == 0:
-            print(f"  ✅ {tool}")
-        else:
+        found = shutil.which(tool) is not None
+        _print_result(found, tool)
+        if not found:
             missing.append(tool)
-            print(f"  ❌ {tool}")
-    
-    return len(missing) == 0, missing
 
-def test_ollama():
-    """Test if ollama is installed and model is available"""
-    print("\n🤖 Testing local AI (Ollama)...")
-    
-    # Check if ollama is installed
-    result = subprocess.run(['which', 'ollama'], capture_output=True, text=True)
-    if result.returncode != 0:
-        print("  ❌ Ollama not installed")
-        return False, ["ollama"]
-    
-    print("  ✅ Ollama installed")
-    
-    # Check if model is available
-    result = subprocess.run(['ollama', 'list'], capture_output=True, text=True)
-    if 'llama2:7b' in result.stdout:
-        print("  ✅ Llama2 model available")
-        return True, []
-    else:
-        print("  ❌ Llama2 model not found")
-        return False, ["llama2:7b model"]
+    for tool in optional_tools:
+        found = shutil.which(tool) is not None
+        status = "available" if found else "optional/unavailable"
+        print("  INFO {0}: {1}".format(tool, status))
 
-def test_permissions():
-    """Test if required directories and permissions are set"""
-    print("\n📁 Testing permissions...")
-    
-    # Test reports directory
-    reports_dir = Path('/reports')
-    if reports_dir.exists() and os.access(reports_dir, os.W_OK):
-        print("  ✅ /reports directory writable")
-        reports_ok = True
-    else:
-        print("  ❌ /reports directory not writable")
-        reports_ok = False
-    
-    # Test hackgpt.py executable
-    hackgpt_path = Path('./hackgpt.py')
-    if hackgpt_path.exists() and os.access(hackgpt_path, os.X_OK):
-        print("  ✅ hackgpt.py is executable")
-        script_ok = True
-    else:
-        print("  ❌ hackgpt.py not executable")
-        script_ok = False
-    
-    return reports_ok and script_ok, []
+    return not missing, missing
 
-def test_openai_api():
-    """Test OpenAI API key if provided"""
-    print("\n🌐 Testing OpenAI API...")
-    
-    api_key = os.getenv('OPENAI_API_KEY')
-    if not api_key:
-        print("  ℹ️  No OpenAI API key found (will use local AI)")
-        return True, []
-    
-    try:
-        import openai
-        openai.api_key = api_key
-        
-        # Test API with a simple request
-        response = openai.ChatCompletion.create(
-            model="gpt-3.5-turbo",
-            messages=[{"role": "user", "content": "Test"}],
-            max_tokens=5
+
+def test_ollama(required=False):
+    """Check a local Ollama daemon without requiring it unless explicitly requested."""
+    print("\nChecking optional local AI (Ollama)...")
+    ollama = shutil.which("ollama")
+    if not ollama:
+        print(
+            "  INFO Ollama is not installed; deterministic/no-AI operation remains available."
         )
-        print("  ✅ OpenAI API working")
-        return True, []
-    except Exception as e:
-        print(f"  ❌ OpenAI API error: {e}")
-        return False, [str(e)]
+        return (not required), ([] if not required else ["ollama"])
 
-def run_basic_functionality_test():
-    """Run a basic functionality test"""
-    print("\n🚀 Testing basic functionality...")
-    
     try:
-        # Import the main HackGPT class
-        sys.path.insert(0, '.')
-        from hackgpt import HackGPT, AIEngine, ToolManager
-        
-        print("  ✅ HackGPT imports successful")
-        
-        # Test AI Engine initialization
-        ai = AIEngine()
-        print("  ✅ AI Engine initialized")
-        
-        # Test Tool Manager
-        tools = ToolManager()
-        print("  ✅ Tool Manager initialized")
-        
-        # Test HackGPT main class
-        hackgpt = HackGPT()
-        print("  ✅ HackGPT main class initialized")
-        
+        result = subprocess.run(
+            [ollama, "list"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        if required:
+            return False, ["ollama: {0}".format(exc)]
+        print("  INFO Ollama could not be queried: {0}".format(exc))
         return True, []
-        
-    except Exception as e:
-        print(f"  ❌ Functionality test failed: {e}")
-        return False, [str(e)]
 
-def main():
-    """Run all tests"""
-    print("🔥 HackGPT Installation Test Suite 🔥")
-    print("=" * 40)
-    
-    all_passed = True
-    all_issues = []
-    
-    # Run all tests
-    tests = [
+    if result.returncode != 0:
+        if required:
+            return False, ["ollama list returned {0}".format(result.returncode)]
+        print(
+            "  INFO Ollama is installed but unavailable; no-AI operation remains available."
+        )
+        return True, []
+
+    model_lines = [line for line in result.stdout.splitlines()[1:] if line.strip()]
+    print("  OK Ollama responded; {0} model row(s) reported.".format(len(model_lines)))
+    if required and not model_lines:
+        return False, ["ollama has no locally listed model"]
+    return True, []
+
+
+def test_permissions(project_root=PROJECT_ROOT, require_reports=False):
+    """Validate repository-local paths; never assume an absolute /reports directory."""
+    print("\nTesting local paths and permissions...")
+    project_root = Path(project_root)
+    issues = []
+
+    script_path = project_root / "hackgpt.py"
+    script_ok = script_path.is_file()
+    _print_result(script_ok, str(script_path))
+    if not script_ok:
+        issues.append("missing hackgpt.py")
+
+    if require_reports:
+        reports_dir = project_root / "reports"
+        reports_ok = reports_dir.is_dir() and os.access(str(reports_dir), os.W_OK)
+        _print_result(reports_ok, str(reports_dir))
+        if not reports_ok:
+            issues.append("repository reports directory is missing or not writable")
+    else:
+        writable = project_root.is_dir() and os.access(str(project_root), os.W_OK)
+        _print_result(writable, "repository working directory is writable")
+        if not writable:
+            issues.append("repository working directory is not writable")
+
+    return not issues, issues
+
+
+def test_external_api_configuration():
+    """Report external inference configuration without sending a paid/network request."""
+    print("\nChecking optional external AI configuration...")
+    if os.getenv("OPENAI_API_KEY"):
+        print("  INFO OPENAI_API_KEY is configured; no network request was sent.")
+    else:
+        print("  INFO no external AI credential configured.")
+    return True, []
+
+
+def _subprocess_detail(result, fallback="legacy import failed"):
+    """Return bounded diagnostics without allowing stderr warnings to hide stdout errors."""
+    parts = []
+    stdout = (result.stdout or "").strip()
+    stderr = (result.stderr or "").strip()
+    if stdout:
+        parts.append("stdout:\n{0}".format(stdout))
+    if stderr:
+        parts.append("stderr:\n{0}".format(stderr))
+    detail = "\n".join(parts) or fallback
+    return detail[-2000:]
+
+
+def run_basic_functionality_test(project_root=PROJECT_ROOT):
+    """Import the legacy public entry points in an isolated subprocess."""
+    print("\nTesting legacy entry-point imports...")
+    code = (
+        "from hackgpt import HackGPT, AIEngine, ToolManager; "
+        "print('HackGPT legacy imports successful')"
+    )
+    try:
+        result = subprocess.run(
+            [sys.executable, "-c", code],
+            cwd=str(project_root),
+            capture_output=True,
+            text=True,
+            timeout=30,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        return False, ["legacy import smoke: {0}".format(exc)]
+
+    if result.returncode != 0:
+        return False, [_subprocess_detail(result)]
+
+    print("  OK HackGPT, AIEngine and ToolManager import successfully.")
+    return True, []
+
+
+def build_checks(ci=False, require_ollama=False, require_reports=False):
+    """Return the named checks for the selected profile."""
+    checks = [
         ("Python Dependencies", test_python_dependencies),
         ("System Tools", test_system_tools),
-        ("Local AI (Ollama)", test_ollama),
-        ("Permissions", test_permissions),
-        ("OpenAI API", test_openai_api),
-        ("Basic Functionality", run_basic_functionality_test)
+        (
+            "Permissions",
+            lambda: test_permissions(require_reports=(require_reports and not ci)),
+        ),
+        ("Legacy Import Smoke", run_basic_functionality_test),
     ]
-    
-    for test_name, test_func in tests:
+    if not ci:
+        checks.extend(
+            [
+                ("Local AI (Ollama)", lambda: test_ollama(required=require_ollama)),
+                ("External AI Configuration", test_external_api_configuration),
+            ]
+        )
+    return checks
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(description="Validate HackGPT local prerequisites")
+    parser.add_argument(
+        "--ci",
+        action="store_true",
+        help="run deterministic offline checks suitable for GitHub Actions",
+    )
+    parser.add_argument(
+        "--require-ollama",
+        action="store_true",
+        help="fail the default profile if Ollama and at least one local model are unavailable",
+    )
+    parser.add_argument(
+        "--require-reports",
+        action="store_true",
+        help="require the repository-local reports directory to exist and be writable",
+    )
+    args = parser.parse_args(argv)
+
+    profile = "CI/offline" if args.ci else "local/core"
+    print("HackGPT Installation Readiness Checks ({0})".format(profile))
+    print("=" * 52)
+
+    all_issues = []
+    for test_name, test_func in build_checks(
+        ci=args.ci,
+        require_ollama=args.require_ollama,
+        require_reports=args.require_reports,
+    ):
         passed, issues = test_func()
         if not passed:
-            all_passed = False
-            all_issues.extend(issues)
-    
-    # Summary
-    print("\n" + "=" * 40)
-    if all_passed:
-        print("🎉 All tests passed! HackGPT is ready to use.")
-        print("\nQuick start:")
-        print("  ./hackgpt.py                    # Interactive mode")
-        print("  ./hackgpt.py --web             # Web dashboard")
-        print("  ./hackgpt.py --voice           # Voice commands")
-    else:
-        print("❌ Some tests failed. Issues found:")
+            all_issues.extend("{0}: {1}".format(test_name, issue) for issue in issues)
+
+    print("\n" + "=" * 52)
+    if all_issues:
+        print("Required checks failed:")
         for issue in all_issues:
-            print(f"  - {issue}")
-        print("\nRun './install.sh' to fix missing dependencies.")
-    
-    print("\n" + "=" * 40)
-    return 0 if all_passed else 1
+            print("  - {0}".format(issue))
+        return 1
+
+    print("Required checks passed.")
+    if args.ci:
+        print(
+            "Optional scanners, Ollama and external provider access were not required."
+        )
+    return 0
+
 
 if __name__ == "__main__":
     sys.exit(main())

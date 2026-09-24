@@ -1,6 +1,9 @@
 import unittest
 
-from workbench.execution_contracts import EXECUTION_SCHEMA, normalize_execution_declaration
+from workbench.execution_contracts import (
+    EXECUTION_SCHEMA,
+    normalize_execution_declaration,
+)
 
 
 def declaration(**updates):
@@ -59,8 +62,14 @@ class ExecutionDeclarationTests(unittest.TestCase):
             normalize_execution_declaration(declaration(launcher="fixed_binary"))
 
     def test_limits_are_bounded_and_typed(self):
-        for field, bad in (("max_objects", 0), ("max_objects", 100001), ("max_requests", -1),
-                           ("max_requests", 10001), ("timeout_seconds", 0), ("timeout_seconds", 3601)):
+        for field, bad in (
+            ("max_objects", 0),
+            ("max_objects", 100001),
+            ("max_requests", -1),
+            ("max_requests", 10001),
+            ("timeout_seconds", 0),
+            ("timeout_seconds", 3601),
+        ):
             value = declaration()
             value["limits"] = dict(value["limits"], **{field: bad})
             with self.subTest(field=field, bad=bad), self.assertRaises(ValueError):

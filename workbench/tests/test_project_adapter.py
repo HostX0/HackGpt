@@ -47,11 +47,15 @@ class ProjectMetadataAdapterTests(unittest.TestCase):
             root = Path(directory)
             for index in range(5):
                 (root / f"file-{index}.txt").write_text("x")
-            result = ProjectMetadataAdapter(ProjectScanPolicy(max_files=2)).run(root, asset_key="project-fixture")
+            result = ProjectMetadataAdapter(ProjectScanPolicy(max_files=2)).run(
+                root, asset_key="project-fixture"
+            )
         self.assertEqual(result["status"], "partial")
         self.assertEqual(result["coverage"]["objects_tested"], 2)
         self.assertIsNone(result["coverage"]["objects_total"])
-        self.assertTrue(any("partial" in note.lower() for note in result["coverage"]["notes"]))
+        self.assertTrue(
+            any("partial" in note.lower() for note in result["coverage"]["notes"])
+        )
 
     def test_excluded_directory_is_not_scanned_and_is_disclosed(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -63,7 +67,9 @@ class ProjectMetadataAdapterTests(unittest.TestCase):
             result = ProjectMetadataAdapter().run(root, asset_key="project-fixture")
         self.assertEqual(result["findings"], [])
         self.assertEqual(result["coverage"]["objects_tested"], 1)
-        self.assertTrue(any("node_modules" in note for note in result["coverage"]["notes"]))
+        self.assertTrue(
+            any("node_modules" in note for note in result["coverage"]["notes"])
+        )
 
     def test_symlink_outside_root_is_never_followed(self):
         if not hasattr(os, "symlink"):
@@ -79,7 +85,9 @@ class ProjectMetadataAdapterTests(unittest.TestCase):
             result = ProjectMetadataAdapter().run(root, asset_key="project-fixture")
         self.assertEqual(result["findings"], [])
         self.assertEqual(result["coverage"]["objects_tested"], 0)
-        self.assertTrue(any("symlink" in note.lower() for note in result["coverage"]["notes"]))
+        self.assertTrue(
+            any("symlink" in note.lower() for note in result["coverage"]["notes"])
+        )
 
     def test_symlink_root_is_rejected(self):
         if not hasattr(os, "symlink"):
@@ -100,14 +108,20 @@ class ProjectMetadataAdapterTests(unittest.TestCase):
 
     def test_policy_rejects_unbounded_or_unsafe_values(self):
         for kwargs in (
-            {"max_files": 0}, {"max_files": 5001}, {"max_depth": 17}, {"timeout_seconds": 0},
-            {"excluded_dirs": frozenset({"../outside"})}, {"excluded_dirs": {"node_modules"}},
+            {"max_files": 0},
+            {"max_files": 5001},
+            {"max_depth": 17},
+            {"timeout_seconds": 0},
+            {"excluded_dirs": frozenset({"../outside"})},
+            {"excluded_dirs": {"node_modules"}},
         ):
             with self.subTest(kwargs=kwargs), self.assertRaises(ValueError):
                 ProjectScanPolicy(**kwargs)
 
     def test_execution_declaration_reflects_policy_and_has_no_execution_escape(self):
-        declaration = ProjectMetadataAdapter(ProjectScanPolicy(max_files=77, timeout_seconds=9)).execution_declaration()
+        declaration = ProjectMetadataAdapter(
+            ProjectScanPolicy(max_files=77, timeout_seconds=9)
+        ).execution_declaration()
         self.assertEqual(declaration["launcher"], "native_python")
         self.assertEqual(declaration["effect_level"], "read_only")
         self.assertEqual(declaration["filesystem"], "read_only_metadata")
@@ -125,7 +139,9 @@ class ProjectMetadataAdapterTests(unittest.TestCase):
             adapter = ProjectMetadataAdapter()
             first = adapter.run(root, asset_key="same-project")
             second = adapter.run(root, asset_key="same-project")
-        self.assertEqual(first["findings"][0]["fingerprint"], second["findings"][0]["fingerprint"])
+        self.assertEqual(
+            first["findings"][0]["fingerprint"], second["findings"][0]["fingerprint"]
+        )
 
     def test_fingerprint_changes_between_assets(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -134,7 +150,9 @@ class ProjectMetadataAdapterTests(unittest.TestCase):
             adapter = ProjectMetadataAdapter()
             first = adapter.run(root, asset_key="project-a")
             second = adapter.run(root, asset_key="project-b")
-        self.assertNotEqual(first["findings"][0]["fingerprint"], second["findings"][0]["fingerprint"])
+        self.assertNotEqual(
+            first["findings"][0]["fingerprint"], second["findings"][0]["fingerprint"]
+        )
 
     def test_pre_cancelled_scan_stops_before_filesystem_walk(self):
         cancel = threading.Event()
@@ -143,7 +161,9 @@ class ProjectMetadataAdapterTests(unittest.TestCase):
             root = Path(directory)
             (root / ".env").write_text("SHOULD_NOT_BE_CLASSIFIED")
             with self.assertRaises(InterruptedError):
-                ProjectMetadataAdapter().run(root, asset_key="project-fixture", cancel=cancel)
+                ProjectMetadataAdapter().run(
+                    root, asset_key="project-fixture", cancel=cancel
+                )
 
     def test_cooperative_cancel_stops_during_metadata_walk(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -152,7 +172,9 @@ class ProjectMetadataAdapterTests(unittest.TestCase):
                 (root / f"file-{index:02}.txt").write_text("x")
             cancel = _StepCancel(trigger_at=5)
             with self.assertRaises(InterruptedError):
-                ProjectMetadataAdapter().run(root, asset_key="project-fixture", cancel=cancel)
+                ProjectMetadataAdapter().run(
+                    root, asset_key="project-fixture", cancel=cancel
+                )
         self.assertGreaterEqual(cancel.calls, 5)
 
 

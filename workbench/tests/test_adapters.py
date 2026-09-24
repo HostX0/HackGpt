@@ -14,23 +14,27 @@ ASSET = "asset:test-project"
 
 class AdapterParserTests(unittest.TestCase):
     def test_semgrep_minimizes_source_content_and_stays_candidate(self):
-        raw = json.dumps({
-            "results": [{
-                "check_id": "python.lang.security.audit.exec-used",
-                "path": "app/main.py",
-                "start": {"line": 10},
-                "end": {"line": 10},
-                "extra": {
-                    "message": "Dynamic execution",
-                    "severity": "ERROR",
-                    "fingerprint": "abc",
-                    "lines": "exec(user_input)",
-                    "metavars": {"$X": {"abstract_content": "user_input"}},
-                },
-            }],
-            "paths": {"scanned": ["app/main.py", "app/util.py"]},
-            "errors": [],
-        })
+        raw = json.dumps(
+            {
+                "results": [
+                    {
+                        "check_id": "python.lang.security.audit.exec-used",
+                        "path": "app/main.py",
+                        "start": {"line": 10},
+                        "end": {"line": 10},
+                        "extra": {
+                            "message": "Dynamic execution",
+                            "severity": "ERROR",
+                            "fingerprint": "abc",
+                            "lines": "exec(user_input)",
+                            "metavars": {"$X": {"abstract_content": "user_input"}},
+                        },
+                    }
+                ],
+                "paths": {"scanned": ["app/main.py", "app/util.py"]},
+                "errors": [],
+            }
+        )
         result = parse_semgrep_json(raw, version="1.163.0", asset_key=ASSET)
         self.assertEqual(result["status"], "completed")
         self.assertEqual(result["coverage"]["objects_tested"], 2)
@@ -44,7 +48,13 @@ class AdapterParserTests(unittest.TestCase):
 
     def test_semgrep_errors_force_partial_coverage(self):
         result = parse_semgrep_json(
-            json.dumps({"results": [], "paths": {"scanned": ["a.py"]}, "errors": [{"message": "parse failed"}]}),
+            json.dumps(
+                {
+                    "results": [],
+                    "paths": {"scanned": ["a.py"]},
+                    "errors": [{"message": "parse failed"}],
+                }
+            ),
             version="1.0",
             asset_key=ASSET,
         )
@@ -58,23 +68,29 @@ class AdapterParserTests(unittest.TestCase):
             parse_semgrep_json("{", version="1", asset_key=ASSET)
 
     def test_trivy_vulnerability_is_minimized(self):
-        raw = json.dumps({
-            "SchemaVersion": 2,
-            "Results": [{
-                "Target": "requirements.txt",
-                "Class": "lang-pkgs",
-                "Type": "pip",
-                "Vulnerabilities": [{
-                    "VulnerabilityID": "CVE-2026-1234",
-                    "PkgName": "demo",
-                    "InstalledVersion": "1.0",
-                    "FixedVersion": "1.1",
-                    "Severity": "HIGH",
-                    "Title": "Example vulnerability",
-                    "Description": "very long advisory",
-                }],
-            }],
-        })
+        raw = json.dumps(
+            {
+                "SchemaVersion": 2,
+                "Results": [
+                    {
+                        "Target": "requirements.txt",
+                        "Class": "lang-pkgs",
+                        "Type": "pip",
+                        "Vulnerabilities": [
+                            {
+                                "VulnerabilityID": "CVE-2026-1234",
+                                "PkgName": "demo",
+                                "InstalledVersion": "1.0",
+                                "FixedVersion": "1.1",
+                                "Severity": "HIGH",
+                                "Title": "Example vulnerability",
+                                "Description": "very long advisory",
+                            }
+                        ],
+                    }
+                ],
+            }
+        )
         result = parse_trivy_json(raw, version="0.68.0", asset_key=ASSET)
         finding = result["findings"][0]
         self.assertEqual(finding["severity"], "high")
@@ -83,20 +99,28 @@ class AdapterParserTests(unittest.TestCase):
         self.assertNotIn("Description", json.dumps(finding))
 
     def test_trivy_secret_never_retains_match_or_code(self):
-        raw = json.dumps({
-            "Results": [{
-                "Target": "config.env",
-                "Secrets": [{
-                    "RuleID": "aws-access-key",
-                    "Title": "AWS key",
-                    "Severity": "CRITICAL",
-                    "StartLine": 2,
-                    "EndLine": 2,
-                    "Match": "AKIA-REAL-SECRET",
-                    "Code": {"Lines": [{"Content": "AWS_KEY=AKIA-REAL-SECRET"}]},
-                }],
-            }],
-        })
+        raw = json.dumps(
+            {
+                "Results": [
+                    {
+                        "Target": "config.env",
+                        "Secrets": [
+                            {
+                                "RuleID": "aws-access-key",
+                                "Title": "AWS key",
+                                "Severity": "CRITICAL",
+                                "StartLine": 2,
+                                "EndLine": 2,
+                                "Match": "AKIA-REAL-SECRET",
+                                "Code": {
+                                    "Lines": [{"Content": "AWS_KEY=AKIA-REAL-SECRET"}]
+                                },
+                            }
+                        ],
+                    }
+                ],
+            }
+        )
         result = parse_trivy_json(raw, version="0.68.0", asset_key=ASSET)
         finding = result["findings"][0]
         serialized = json.dumps(finding)
@@ -105,51 +129,67 @@ class AdapterParserTests(unittest.TestCase):
         self.assertFalse(finding["evidence"]["embedded_code_included"])
 
     def test_trivy_misconfig_omits_embedded_code(self):
-        raw = json.dumps({
-            "Results": [{
-                "Target": "Dockerfile",
-                "Misconfigurations": [{
-                    "ID": "DS001",
-                    "Title": "Bad config",
-                    "Severity": "MEDIUM",
-                    "Resolution": "Use safe config",
-                    "CauseMetadata": {
-                        "Resource": "Dockerfile",
-                        "StartLine": 4,
-                        "EndLine": 5,
-                        "Code": {"Lines": [{"Content": "password=secret"}]},
-                    },
-                }],
-            }],
-        })
+        raw = json.dumps(
+            {
+                "Results": [
+                    {
+                        "Target": "Dockerfile",
+                        "Misconfigurations": [
+                            {
+                                "ID": "DS001",
+                                "Title": "Bad config",
+                                "Severity": "MEDIUM",
+                                "Resolution": "Use safe config",
+                                "CauseMetadata": {
+                                    "Resource": "Dockerfile",
+                                    "StartLine": 4,
+                                    "EndLine": 5,
+                                    "Code": {"Lines": [{"Content": "password=secret"}]},
+                                },
+                            }
+                        ],
+                    }
+                ],
+            }
+        )
         result = parse_trivy_json(raw, version="0.68.0", asset_key=ASSET)
         serialized = json.dumps(result)
         self.assertNotIn("password=secret", serialized)
         self.assertEqual(result["findings"][0]["evidence"]["start_line"], 4)
 
     def test_nuclei_drops_request_response_curl_and_extracted_values(self):
-        raw = json.dumps({
-            "template-id": "tech-detect",
-            "template-url": "https://templates.invalid/tech",
-            "info": {"name": "Technology detection", "severity": "info"},
-            "matched-at": "https://example.test/admin?token=secret",
-            "matcher-name": "wordpress",
-            "type": "http",
-            "request": "GET /admin",
-            "response": "secret-body",
-            "curl-command": "curl -H Authorization:secret",
-            "extracted-results": ["secret-value"],
-        })
+        raw = json.dumps(
+            {
+                "template-id": "tech-detect",
+                "template-url": "https://templates.invalid/tech",
+                "info": {"name": "Technology detection", "severity": "info"},
+                "matched-at": "https://example.test/admin?token=secret",
+                "matcher-name": "wordpress",
+                "type": "http",
+                "request": "GET /admin",
+                "response": "secret-body",
+                "curl-command": "curl -H Authorization:secret",
+                "extracted-results": ["secret-value"],
+            }
+        )
         result = parse_nuclei_jsonl(raw + "\n", version="3.4.0", asset_key=ASSET)
         finding = result["findings"][0]
         serialized = json.dumps(finding)
-        for secret in ("secret-body", "Authorization:secret", "secret-value", "token=secret"):
+        for secret in (
+            "secret-body",
+            "Authorization:secret",
+            "secret-value",
+            "token=secret",
+        ):
             self.assertNotIn(secret, serialized)
         self.assertEqual(finding["evidence"]["path"], "/admin")
         self.assertEqual(result["status"], "partial")
 
     def test_nuclei_truncated_line_fails_closed(self):
-        raw = json.dumps({"template-id": "a", "info": {"name": "A", "severity": "low"}}) + '\n{"template-id":'
+        raw = (
+            json.dumps({"template-id": "a", "info": {"name": "A", "severity": "low"}})
+            + '\n{"template-id":'
+        )
         with self.assertRaisesRegex(ValueError, "truncated"):
             parse_nuclei_jsonl(raw, version="3", asset_key=ASSET)
 
@@ -161,7 +201,12 @@ class AdapterParserTests(unittest.TestCase):
 
     def test_output_limit_and_utf8_enforced(self):
         with self.assertRaisesRegex(ValueError, "too large"):
-            parse_scanner_output("semgrep-json", "x" * (MAX_OUTPUT_BYTES + 1), version="1", asset_key=ASSET)
+            parse_scanner_output(
+                "semgrep-json",
+                "x" * (MAX_OUTPUT_BYTES + 1),
+                version="1",
+                asset_key=ASSET,
+            )
         with self.assertRaisesRegex(ValueError, "UTF-8"):
             parse_scanner_output("trivy-json", b"\xff", version="1", asset_key=ASSET)
 
@@ -172,16 +217,24 @@ class AdapterParserTests(unittest.TestCase):
             parse_scanner_output("trivy-json", "{}", version="", asset_key=ASSET)
 
     def test_fingerprint_is_stable_for_same_semantic_finding(self):
-        raw = json.dumps({
-            "results": [{
-                "check_id": "x.rule",
-                "path": "a.py",
-                "start": {"line": 1},
-                "end": {"line": 1},
-                "extra": {"message": "x", "severity": "INFO", "fingerprint": "stable"},
-            }],
-            "errors": [],
-        })
+        raw = json.dumps(
+            {
+                "results": [
+                    {
+                        "check_id": "x.rule",
+                        "path": "a.py",
+                        "start": {"line": 1},
+                        "end": {"line": 1},
+                        "extra": {
+                            "message": "x",
+                            "severity": "INFO",
+                            "fingerprint": "stable",
+                        },
+                    }
+                ],
+                "errors": [],
+            }
+        )
         one = parse_semgrep_json(raw, version="1", asset_key=ASSET)["findings"][0]
         two = parse_semgrep_json(raw, version="1", asset_key=ASSET)["findings"][0]
         self.assertEqual(one["fingerprint"], two["fingerprint"])

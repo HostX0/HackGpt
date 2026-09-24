@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -207,6 +207,34 @@ try {
   assert(Number(await evaluate("document.getElementById('count-verified').textContent")) >= 1, 'owned synthetic verification did not render a verified lab finding');
   assert((await evaluate("document.getElementById('verdict').textContent")).includes('verified in synthetic lab only'), 'UI did not preserve synthetic-only verdict wording');
   assert(await evaluate("document.getElementById('history-list').textContent.includes('lab')"), 'finalized run did not appear in browser history UI');
+  // Exercise the existing approved metadata adapter -> report path on an owned directory.
+  const projectDir = join(workRoot, 'owned-project');
+  await mkdir(projectDir);
+  await writeFile(join(projectDir, 'README.md'), 'Owned browser integration fixture. No secrets.\n');
+  await evaluate(`(() => {
+    document.getElementById('adapter-kind').value = 'project';
+    document.getElementById('adapter-kind').dispatchEvent(new Event('change', {bubbles:true}));
+    document.getElementById('adapter-asset').value = 'browser-owned-project';
+    document.getElementById('adapter-target').value = ${JSON.stringify(projectDir)};
+    document.getElementById('adapter-plan').click();
+    return true;
+  })()`);
+  await waitFor(() => evaluate("!document.getElementById('adapter-approve').disabled"), 'adapter authority preview');
+  assert(await evaluate("document.getElementById('adapter-execute').disabled"), 'planning alone enabled execution');
+  assert(await evaluate("document.getElementById('adapter-target').disabled"), 'planned scope was editable');
+  await evaluate("document.getElementById('adapter-approve').click()");
+  await waitFor(() => evaluate("!document.getElementById('adapter-execute').disabled"), 'exact plan approval');
+  await evaluate("document.getElementById('adapter-execute').click()");
+  await waitFor(() => evaluate("!document.getElementById('adapter-report').disabled"), 'owned adapter receipt');
+  assert(await evaluate("JSON.parse(document.getElementById('adapter-preview').textContent).status === 'completed'"), 'adapter did not finish');
+  await evaluate("document.getElementById('adapter-report').click()");
+  await waitFor(() => evaluate("!document.getElementById('adapter-open-report').disabled"), 'linked candidate report');
+  await evaluate("document.getElementById('adapter-open-report').click()");
+  await waitFor(() => evaluate("document.getElementById('run-status').textContent.includes('project://') && !document.getElementById('export-json').disabled"), 'linked report review');
+  assert(await evaluate("document.activeElement.id === 'verdict'"), 'report navigation did not focus its conclusion');
+  assert(await evaluate("Number(document.getElementById('count-verified').textContent) === 0"), 'adapter observations were promoted to verified');
+  assert(await evaluate("!document.getElementById('use-ai').checked"), 'report review enabled AI');
+  assert(await evaluate(`!document.body.innerText.includes(${JSON.stringify(launchToken)})`), 'token leaked during adapter review');
   assert(runtimeExceptions.length === 0, `browser runtime exceptions observed: ${runtimeExceptions.length}`);
 
   const summary = {
@@ -218,6 +246,9 @@ try {
     viewport_widths: viewportWidths,
     keyboard_reached: keyboardTargets,
     unnamed_focusable_controls: 0,
+    approved_project_adapter_completed: true,
+    linked_report_reviewed: true,
+    linked_report_focus_verified: true,
     synthetic_assessment_completed: true,
     verified_lab_finding_rendered: true,
     runtime_exceptions: 0,

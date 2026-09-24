@@ -27,14 +27,18 @@ COPY requirements.txt .
 # Install Python dependencies
 RUN pip3 install -r requirements.txt --break-system-packages
 
-# Copy the rest of the application
+# Copy the rest of the application. .dockerignore excludes local credentials,
+# generated reports, caches and other host-only state from the build context.
 COPY . .
 
-# Run installation script
-RUN chmod +x install.sh && ./install.sh
+# Preserve the full host installer while using its deterministic container mode here.
+# Container builds must not upgrade the base distribution, run a background model
+# daemon, fetch a model, or create host-style global command links.
+RUN chmod +x install.sh && HACKGPT_INSTALL_CONTEXT=container ./install.sh
 
-# Create reports directory
-RUN mkdir -p /reports && chmod 755 /reports
+# Keep both the historical external report path and the application-local runtime dirs.
+RUN mkdir -p /reports /hackgpt/reports /hackgpt/logs /hackgpt/templates /hackgpt/database/migrations \
+    && chmod 755 /reports /hackgpt/reports /hackgpt/logs /hackgpt/templates /hackgpt/database/migrations
 
 # Expose web dashboard port
 EXPOSE 5000

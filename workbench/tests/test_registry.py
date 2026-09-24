@@ -19,11 +19,20 @@ class _StepCancel:
 class ExecutionRegistryTests(unittest.TestCase):
     def test_describe_returns_only_reviewed_adapters(self):
         declarations = ExecutionRegistry().describe()
-        self.assertEqual({item["adapter"]["id"] for item in declarations}, {
-            "native-project-metadata", "native-web-headers", "semgrep-project-local",
-        })
+        self.assertEqual(
+            {item["adapter"]["id"] for item in declarations},
+            {
+                "native-project-metadata",
+                "native-web-headers",
+                "semgrep-project-local",
+            },
+        )
         self.assertTrue(all("command" not in item for item in declarations))
-        semgrep = next(item for item in declarations if item["adapter"]["id"] == "semgrep-project-local")
+        semgrep = next(
+            item
+            for item in declarations
+            if item["adapter"]["id"] == "semgrep-project-local"
+        )
         self.assertEqual(semgrep["launcher"], "fixed_container")
         self.assertEqual(semgrep["network"], "none")
         self.assertFalse(semgrep["writes"])
@@ -34,26 +43,40 @@ class ExecutionRegistryTests(unittest.TestCase):
             registry.execute("python-module", {"command": "anything"})
         with tempfile.TemporaryDirectory() as directory:
             with self.assertRaises(ValueError):
-                registry.execute("native-project-metadata", {
-                    "root": directory, "asset_key": "fixture", "command": "anything"
-                })
+                registry.execute(
+                    "native-project-metadata",
+                    {"root": directory, "asset_key": "fixture", "command": "anything"},
+                )
             with self.assertRaises(ValueError):
-                registry.plan("semgrep-project-local", {
-                    "root": directory, "asset_key": "fixture", "command": "anything"
-                })
+                registry.plan(
+                    "semgrep-project-local",
+                    {"root": directory, "asset_key": "fixture", "command": "anything"},
+                )
 
     def test_filesystem_policy_blocks_project_adapters_but_not_web(self):
-        registry = ExecutionRegistry(RegistryPolicy(allow_filesystem=False, allow_network=True))
-        self.assertEqual([item["adapter"]["id"] for item in registry.describe()], ["native-web-headers"])
+        registry = ExecutionRegistry(
+            RegistryPolicy(allow_filesystem=False, allow_network=True)
+        )
+        self.assertEqual(
+            [item["adapter"]["id"] for item in registry.describe()],
+            ["native-web-headers"],
+        )
         with tempfile.TemporaryDirectory() as directory:
             with self.assertRaises(PermissionError):
-                registry.execute("native-project-metadata", {"root": directory, "asset_key": "fixture"})
+                registry.execute(
+                    "native-project-metadata",
+                    {"root": directory, "asset_key": "fixture"},
+                )
             with self.assertRaises(PermissionError):
-                registry.plan("semgrep-project-local", {"root": directory, "asset_key": "fixture"})
+                registry.plan(
+                    "semgrep-project-local", {"root": directory, "asset_key": "fixture"}
+                )
 
     def test_network_policy_blocks_web_but_offline_semgrep_remains_describable(self):
         calls = []
-        registry = ExecutionRegistry(RegistryPolicy(allow_filesystem=True, allow_network=False))
+        registry = ExecutionRegistry(
+            RegistryPolicy(allow_filesystem=True, allow_network=False)
+        )
         ids = {item["adapter"]["id"] for item in registry.describe()}
         self.assertIn("semgrep-project-local", ids)
         self.assertNotIn("native-web-headers", ids)
@@ -67,12 +90,15 @@ class ExecutionRegistryTests(unittest.TestCase):
 
     def test_semgrep_plan_is_sanitized_and_does_not_probe_docker(self):
         with tempfile.TemporaryDirectory() as directory:
-            plan = ExecutionRegistry().plan("semgrep-project-local", {
-                "root": directory,
-                "asset_key": "fixture",
-                "max_files": 20,
-                "timeout_seconds": 30,
-            })
+            plan = ExecutionRegistry().plan(
+                "semgrep-project-local",
+                {
+                    "root": directory,
+                    "asset_key": "fixture",
+                    "max_files": 20,
+                    "timeout_seconds": 30,
+                },
+            )
         summary = plan["request_summary"]
         self.assertEqual(plan["declaration"]["launcher"], "fixed_container")
         self.assertEqual(plan["declaration"]["network"], "none")
@@ -102,8 +128,12 @@ class ExecutionRegistryTests(unittest.TestCase):
             },
         )
         self.assertTrue(result["findings"])
-        self.assertTrue(all(item["verification"] == "candidate" for item in result["findings"]))
-        self.assertTrue(all(item["evidence"]["body_read"] is False for item in result["findings"]))
+        self.assertTrue(
+            all(item["verification"] == "candidate" for item in result["findings"])
+        )
+        self.assertTrue(
+            all(item["evidence"]["body_read"] is False for item in result["findings"])
+        )
 
     def test_pre_cancelled_execution_stops_before_adapter_io(self):
         cancel = threading.Event()
@@ -133,7 +163,11 @@ class ExecutionRegistryTests(unittest.TestCase):
         self.assertGreaterEqual(cancel.calls, 4)
 
     def test_invalid_policy_is_rejected(self):
-        for kwargs in ({"max_effect": "unbounded"}, {"allow_filesystem": 1}, {"allow_network": None}):
+        for kwargs in (
+            {"max_effect": "unbounded"},
+            {"allow_filesystem": 1},
+            {"allow_network": None},
+        ):
             with self.subTest(kwargs=kwargs), self.assertRaises(ValueError):
                 RegistryPolicy(**kwargs)
 

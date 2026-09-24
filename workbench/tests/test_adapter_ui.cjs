@@ -89,6 +89,25 @@ test('approve binds digest then execute resends the planned typed request', asyn
   assert.match(h.nodes['adapter-status'].textContent, /durable receipt/);
 });
 
+test('completed receipt can be linked once to ordinary report review', async () => {
+  const reportId = 'c'.repeat(32);
+  const h = harness(async (path) => {
+    if (path === '/api/adapters/plan') return planned();
+    if (path.endsWith('/approve')) return {...planned('approved'), outcome: {code: 'approved_exact_plan'}};
+    if (path.endsWith('/execute')) return {...planned('completed'), outcome: {code: 'completed_with_candidate_result'}, receipt: {
+      usage: {objects_tested: 2, network_requests: 0, elapsed_ms: 3}, result: {findings: [{verification: 'candidate'}], coverage: {objects_tested: 2}},
+    }};
+    if (path.endsWith('/report')) return {id: reportId, created: true};
+    throw new Error('unexpected path ' + path);
+  });
+  await h.trigger('adapter-plan'); await h.trigger('adapter-approve'); await h.trigger('adapter-execute');
+  assert.equal(h.nodes['adapter-report'].disabled, false);
+  await h.trigger('adapter-report');
+  assert.deepEqual(h.requests[3].body, {});
+  assert.match(h.nodes['adapter-status'].textContent, new RegExp(reportId));
+  assert.match(h.nodes['adapter-status'].textContent, /Use Run history/);
+});
+
 test('Semgrep adapter uses only reviewed bounded fields and explains offline container policy', async () => {
   const h = harness(async () => planned());
   h.nodes['adapter-kind'].value = 'semgrep';

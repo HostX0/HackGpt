@@ -24,20 +24,24 @@ ASSET = "asset:semgrep-fixture"
 def semgrep_output(*, vulnerable: bool = True):
     results = []
     if vulnerable:
-        results.append({
-            "check_id": "hackgpt.python.dynamic-eval",
-            "path": "app.py",
-            "start": {"line": 2},
-            "end": {"line": 2},
-            "extra": {
-                "message": "Dynamic eval executes a runtime expression and requires security review.",
-                "severity": "WARNING",
-                "fingerprint": "fixture-fingerprint",
-                "lines": "return eval(user_input)",
-                "metavars": {"$X": {"abstract_content": "user_input"}},
-            },
-        })
-    return json.dumps({"results": results, "paths": {"scanned": ["app.py"]}, "errors": []}).encode()
+        results.append(
+            {
+                "check_id": "hackgpt.python.dynamic-eval",
+                "path": "app.py",
+                "start": {"line": 2},
+                "end": {"line": 2},
+                "extra": {
+                    "message": "Dynamic eval executes a runtime expression and requires security review.",
+                    "severity": "WARNING",
+                    "fingerprint": "fixture-fingerprint",
+                    "lines": "return eval(user_input)",
+                    "metavars": {"$X": {"abstract_content": "user_input"}},
+                },
+            }
+        )
+    return json.dumps(
+        {"results": results, "paths": {"scanned": ["app.py"]}, "errors": []}
+    ).encode()
 
 
 class FakeSemgrepAdapter(SemgrepContainerAdapter):
@@ -55,13 +59,17 @@ class FakeSemgrepAdapter(SemgrepContainerAdapter):
     def _ensure_image_present(docker):
         return None
 
-    def _execute_docker(self, docker, command, *, container_name, deadline, cancel=None):
+    def _execute_docker(
+        self, docker, command, *, container_name, deadline, cancel=None
+    ):
         self.commands.append(list(command))
         return self.return_code, self.output
 
 
 class SemgrepRunnerTests(unittest.TestCase):
-    def fixture(self, directory, text="def parse(user_input):\n    return eval(user_input)\n"):
+    def fixture(
+        self, directory, text="def parse(user_input):\n    return eval(user_input)\n"
+    ):
         root = Path(directory)
         (root / "app.py").write_text(text, encoding="utf-8")
         return root
@@ -80,7 +88,9 @@ class SemgrepRunnerTests(unittest.TestCase):
 
     def test_declaration_is_fixed_container_read_only_and_offline(self):
         declaration = SemgrepContainerAdapter().execution_declaration()
-        self.assertEqual(declaration["adapter"], {"id": ADAPTER_ID, "version": ADAPTER_VERSION})
+        self.assertEqual(
+            declaration["adapter"], {"id": ADAPTER_ID, "version": ADAPTER_VERSION}
+        )
         self.assertEqual(declaration["launcher"], "fixed_container")
         self.assertEqual(declaration["effect_level"], "read_only")
         self.assertEqual(declaration["filesystem"], "read_only_content")
@@ -94,7 +104,9 @@ class SemgrepRunnerTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root = self.fixture(directory)
             adapter = SemgrepContainerAdapter()
-            command = adapter._build_command("/usr/bin/docker", root.resolve(), "hackgpt-semgrep-test")
+            command = adapter._build_command(
+                "/usr/bin/docker", root.resolve(), "hackgpt-semgrep-test"
+            )
         joined = " ".join(command)
         self.assertIn("--pull never", joined)
         self.assertIn("--network none", joined)
@@ -104,7 +116,11 @@ class SemgrepRunnerTests(unittest.TestCase):
         self.assertIn("--user", command)
         self.assertIn(SEMGREP_IMAGE, command)
         self.assertNotIn("--privileged", command)
-        mounts = [command[index + 1] for index, value in enumerate(command[:-1]) if value == "-v"]
+        mounts = [
+            command[index + 1]
+            for index, value in enumerate(command[:-1])
+            if value == "-v"
+        ]
         self.assertTrue(any(value.endswith(":/src:ro") for value in mounts))
         self.assertTrue(any(value.endswith(":/workbench.yml:ro") for value in mounts))
         self.assertIn("SEMGREP_SEND_METRICS=off", command)
@@ -119,7 +135,9 @@ class SemgrepRunnerTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             adapter = FakeSemgrepAdapter()
             result = adapter.run(self.fixture(directory), asset_key=ASSET)
-        self.assertEqual(result["adapter"], {"id": ADAPTER_ID, "version": ADAPTER_VERSION})
+        self.assertEqual(
+            result["adapter"], {"id": ADAPTER_ID, "version": ADAPTER_VERSION}
+        )
         self.assertEqual(result["status"], "completed")
         self.assertEqual(result["coverage"]["objects_tested"], 1)
         self.assertEqual(result["coverage"]["objects_total"], 1)
@@ -133,7 +151,9 @@ class SemgrepRunnerTests(unittest.TestCase):
 
     def test_runner_does_not_hide_scanner_failure_or_diagnostic_text(self):
         with tempfile.TemporaryDirectory() as directory:
-            adapter = FakeSemgrepAdapter(return_code=7, output=b"customer-secret-diagnostic")
+            adapter = FakeSemgrepAdapter(
+                return_code=7, output=b"customer-secret-diagnostic"
+            )
             result = adapter.run(self.fixture(directory), asset_key=ASSET)
         self.assertEqual(result["status"], "error")
         self.assertEqual(result["findings"], [])
@@ -183,18 +203,32 @@ class SemgrepRunnerTests(unittest.TestCase):
                 SemgrepContainerAdapter().plan_metadata(link, asset_key=ASSET)
 
 
-@unittest.skipUnless(os.environ.get("HACKGPT_RUN_REAL_SEMGREP") == "1", "real pinned Semgrep container integration is opt-in")
+@unittest.skipUnless(
+    os.environ.get("HACKGPT_RUN_REAL_SEMGREP") == "1",
+    "real pinned Semgrep container integration is opt-in",
+)
 class SemgrepContainerIntegrationTests(unittest.TestCase):
     @staticmethod
     def _owned_fixture_diagnostic(adapter, directory):
         """Return bounded stderr only for the synthetic CI fixture if runner startup fails."""
-        command = adapter._build_command("docker", Path(directory).resolve(), "hackgpt-semgrep-diagnostic")
-        completed = subprocess.run(command, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=30, check=False)
+        command = adapter._build_command(
+            "docker", Path(directory).resolve(), "hackgpt-semgrep-diagnostic"
+        )
+        completed = subprocess.run(
+            command,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            timeout=30,
+            check=False,
+        )
         text = completed.stderr.decode("utf-8", "replace")[-4000:]
         return f"exit={completed.returncode}; stderr={text}"
 
     def test_owned_vulnerable_and_fixed_projects(self):
-        adapter = SemgrepContainerAdapter(SemgrepPolicy(max_files=10, timeout_seconds=90))
+        adapter = SemgrepContainerAdapter(
+            SemgrepPolicy(max_files=10, timeout_seconds=90)
+        )
         with tempfile.TemporaryDirectory() as vulnerable_dir, tempfile.TemporaryDirectory() as fixed_dir:
             Path(vulnerable_dir, "app.py").write_text(
                 "def parse(user_input):\n    return eval(user_input)\n",
@@ -206,13 +240,26 @@ class SemgrepContainerIntegrationTests(unittest.TestCase):
             )
             vulnerable = adapter.run(vulnerable_dir, asset_key="asset:owned-vulnerable")
             if vulnerable["status"] != "completed":
-                self.fail("owned vulnerable fixture failed: " + self._owned_fixture_diagnostic(adapter, vulnerable_dir))
+                self.fail(
+                    "owned vulnerable fixture failed: "
+                    + self._owned_fixture_diagnostic(adapter, vulnerable_dir)
+                )
             fixed = adapter.run(fixed_dir, asset_key="asset:owned-fixed")
             if fixed["status"] != "completed":
-                self.fail("owned fixed fixture failed: " + self._owned_fixture_diagnostic(adapter, fixed_dir))
+                self.fail(
+                    "owned fixed fixture failed: "
+                    + self._owned_fixture_diagnostic(adapter, fixed_dir)
+                )
 
-        self.assertTrue(any(item["rule"] == "hackgpt.python.dynamic-eval" for item in vulnerable["findings"]))
-        self.assertTrue(all(item["verification"] == "candidate" for item in vulnerable["findings"]))
+        self.assertTrue(
+            any(
+                item["rule"] == "hackgpt.python.dynamic-eval"
+                for item in vulnerable["findings"]
+            )
+        )
+        self.assertTrue(
+            all(item["verification"] == "candidate" for item in vulnerable["findings"])
+        )
         self.assertEqual(fixed["findings"], [])
         self.assertNotIn("eval(user_input)", json.dumps(vulnerable))
         self.assertEqual(vulnerable["adapter"]["id"], ADAPTER_ID)

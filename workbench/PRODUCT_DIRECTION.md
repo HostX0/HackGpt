@@ -31,14 +31,14 @@ The new evidence-safety helper follows this rule: ordinary record values are omi
 
 | Candidate | User value | Acceptance evidence | Current state |
 |---|---|---|---|
-| Coverage-aware retest | Prevents a broken/missing scanner from falsely marking a vulnerability fixed. | Comparable fixtures distinguish still-present, new, not-reproduced and not-retested. | Conservative comparison module added; UI/API integration pending. |
-| Evidence replay/review bundle | Lets another reviewer inspect evidence without repeating risky actions. | Checksummed JSON/Markdown/manifest with optional retest diff; no claim of signature/authorship. | Bundle builder added; server/UI export integration pending. |
-| Adapter verification firewall | Prevents third-party scanner output from declaring itself independently verified. | Versioned parser forces imported findings to candidate state and rejects unsupported fields. | Contract/parser foundation added; real scanner adapters pending. |
+| Coverage-aware retest | Prevents a broken/missing scanner from falsely marking a vulnerability fixed. | Comparable fixtures distinguish still-present, new, not-reproduced and not-retested. | Comparison and remediation-bound rechecks implemented in API/GUI; further reviewer validation remains ongoing. |
+| Evidence replay/review bundle | Lets another reviewer inspect evidence without repeating risky actions. | Checksummed JSON/Markdown/manifest with optional retest diff; no claim of signature/authorship. | Unsigned JSON/Markdown bundle implemented through API/GUI; not a universally sanitized client handover. |
+| Adapter verification firewall | Prevents third-party scanner output from declaring itself independently verified. | Versioned parser forces imported findings to candidate state and rejects unsupported fields. | Candidate-only parsers and one pinned offline Semgrep runner implemented; other runners remain future work. |
 | Privacy-preserving database proof | Demonstrates data-layer impact without copying customer rows into reports. | Ordinary values omitted; only designated synthetic canaries may be shown. | Helper/tests added; live adapter integration pending. |
-| Permission/effect preview | Shows requests, roles and excluded assets before execution. | Planner output cannot exceed independently enforced scope/action registry. | Basic scope/approval exists; full preview pending. |
-| Role-difference matrix | Makes access-control failures understandable across designated test roles. | Owned vulnerable/fixed fixtures with independent denied controls and no real records. | One canary exists; matrix pending. |
+| Permission/effect preview | Shows requests, roles and excluded assets before execution. | Planner output cannot exceed independently enforced scope/action registry. | Finite registry, typed previews and exact digest approval implemented in durable API/GUI lifecycle. |
+| Role-difference matrix | Makes access-control failures understandable across designated test roles. | Owned vulnerable/fixed fixtures with independent denied controls and no real records. | Execution-neutral role/resource matrix implemented; real authentication/request runner remains unimplemented. |
 | Knowledge provenance/freshness | Shows which dated source supports advice, including uncertainty. | Source revisions/licenses/conflict tests/evaluation/rollback. | Planned; no updater/training runs. |
-| Comparable model budget view | Helps choose local/remote models using measured usefulness/resource usage. | Fixed eval cases plus labeled known/unknown usage/latency/memory. | Protocol usage exists; real benchmarking pending. |
+| Comparable model budget view | Helps choose local/remote models using measured usefulness/resource usage. | Fixed eval cases plus labeled known/unknown usage/latency/memory. | Protocol usage and one real local-model compatibility case exist; quality/GPU/provider benchmarking remains unimplemented. |
 
 ## Knowledge updates are not model self-training
 

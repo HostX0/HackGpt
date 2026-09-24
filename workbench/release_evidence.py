@@ -5,6 +5,7 @@ sample report without contacting an external assessment target. It is review evi
 not a signed release, installer, SBOM for the legacy application, or security
 certification.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -71,18 +72,22 @@ def _optional_scanner_runner(root: Path) -> dict[str, Any]:
     pin_path = root / "tooling" / "semgrep-1.177.0.json"
     rules_path = root / "rules" / "semgrep_workbench.yml"
     if not pin_path.is_file() or not rules_path.is_file():
-        raise ValueError("pinned Semgrep runner metadata or repository-authored rules are missing")
+        raise ValueError(
+            "pinned Semgrep runner metadata or repository-authored rules are missing"
+        )
     metadata = semgrep_tool_public_metadata()
-    metadata.update({
-        "adapter_id": "semgrep-project-local",
-        "adapter_version": "1.177.0-r1",
-        "distribution": "optional-preinstalled-container",
-        "pin_path": "tooling/semgrep-1.177.0.json",
-        "pin_sha256": _sha256(pin_path),
-        "rules_path": "rules/semgrep_workbench.yml",
-        "rules_sha256": _sha256(rules_path),
-        "validated_platform": "linux/amd64",
-    })
+    metadata.update(
+        {
+            "adapter_id": "semgrep-project-local",
+            "adapter_version": "1.177.0-r1",
+            "distribution": "optional-preinstalled-container",
+            "pin_path": "tooling/semgrep-1.177.0.json",
+            "pin_sha256": _sha256(pin_path),
+            "rules_path": "rules/semgrep_workbench.yml",
+            "rules_sha256": _sha256(rules_path),
+            "validated_platform": "linux/amd64",
+        }
+    )
     return metadata
 
 
@@ -94,7 +99,10 @@ def source_review_manifest(root: Path) -> dict[str, Any]:
         raise ValueError("missing required review documentation: " + ", ".join(missing))
     blocked = find_forbidden_artifacts(root)
     if blocked:
-        raise ValueError("forbidden runtime/secret artifacts found in workbench tree: " + ", ".join(blocked))
+        raise ValueError(
+            "forbidden runtime/secret artifacts found in workbench tree: "
+            + ", ".join(blocked)
+        )
     scanner = _optional_scanner_runner(root)
     return {
         "schema": RELEASE_EVIDENCE_SCHEMA,
@@ -114,7 +122,8 @@ def source_review_manifest(root: Path) -> dict[str, Any]:
             "signed_release": False,
         },
         "review_documents": [
-            {"path": name, "sha256": _sha256(root / name)} for name in _REQUIRED_REVIEW_DOCS
+            {"path": name, "sha256": _sha256(root / name)}
+            for name in _REQUIRED_REVIEW_DOCS
         ],
         "notes": [
             "Python standard-library modules are not enumerated as third-party packages.",
@@ -131,7 +140,9 @@ def cyclonedx_bom() -> dict[str, Any]:
     """Return a CycloneDX inventory including the optional pinned scanner runtime."""
     from .semgrep_runner import SEMGREP_IMAGE, SEMGREP_IMAGE_DIGEST, SEMGREP_VERSION
 
-    serial = uuid.uuid5(uuid.NAMESPACE_URL, f"https://github.com/HostX0/HackGpt/workbench/{__version__}")
+    serial = uuid.uuid5(
+        uuid.NAMESPACE_URL, f"https://github.com/HostX0/HackGpt/workbench/{__version__}"
+    )
     digest_hex = SEMGREP_IMAGE_DIGEST.removeprefix("sha256:")
     return {
         "bomFormat": "CycloneDX",
@@ -146,29 +157,34 @@ def cyclonedx_bom() -> dict[str, Any]:
                 "bom-ref": f"pkg:generic/hackgpt-evidence-workbench@{__version__}",
                 "properties": [
                     {"name": "hackgpt:scope", "value": "isolated-workbench-only"},
-                    {"name": "hackgpt:third-party-python-runtime-packages", "value": "none"},
+                    {
+                        "name": "hackgpt:third-party-python-runtime-packages",
+                        "value": "none",
+                    },
                     {"name": "hackgpt:bundled-scanners", "value": "none"},
                     {"name": "hackgpt:optional-scanner-runners", "value": "semgrep-ce"},
                 ],
             }
         },
-        "components": [{
-            "type": "container",
-            "name": "semgrep/semgrep",
-            "version": SEMGREP_VERSION,
-            "scope": "optional",
-            "bom-ref": f"container:semgrep/semgrep@{SEMGREP_IMAGE_DIGEST}",
-            "hashes": [{"alg": "SHA-256", "content": digest_hex}],
-            "licenses": [{"license": {"id": "LGPL-2.1-or-later"}}],
-            "properties": [
-                {"name": "hackgpt:image-reference", "value": SEMGREP_IMAGE},
-                {"name": "hackgpt:bundled", "value": "false"},
-                {"name": "hackgpt:automatic-pull", "value": "false"},
-                {"name": "hackgpt:validated-platform", "value": "linux/amd64"},
-                {"name": "hackgpt:container-network", "value": "none"},
-                {"name": "hackgpt:rules-source", "value": "repository-authored"},
-            ],
-        }],
+        "components": [
+            {
+                "type": "container",
+                "name": "semgrep/semgrep",
+                "version": SEMGREP_VERSION,
+                "scope": "optional",
+                "bom-ref": f"container:semgrep/semgrep@{SEMGREP_IMAGE_DIGEST}",
+                "hashes": [{"alg": "SHA-256", "content": digest_hex}],
+                "licenses": [{"license": {"id": "LGPL-2.1-or-later"}}],
+                "properties": [
+                    {"name": "hackgpt:image-reference", "value": SEMGREP_IMAGE},
+                    {"name": "hackgpt:bundled", "value": "false"},
+                    {"name": "hackgpt:automatic-pull", "value": "false"},
+                    {"name": "hackgpt:validated-platform", "value": "linux/amd64"},
+                    {"name": "hackgpt:container-network", "value": "none"},
+                    {"name": "hackgpt:rules-source", "value": "repository-authored"},
+                ],
+            }
+        ],
     }
 
 
@@ -176,29 +192,41 @@ def synthetic_sample_report() -> dict[str, Any]:
     """Run the owned disposable authorization fixture and return its sealed report."""
     from .engine import Assessment, Scope, verify_integrity
 
-    scope = Scope.parse({
-        "target": "lab",
-        "mode": "verify",
-        "authorized": True,
-        "authorization": "RELEASE-SAMPLE-SYNTHETIC",
-        "approve_verification": True,
-        "use_ai": False,
-        "model": "",
-        "allow_cloud": False,
-    })
+    scope = Scope.parse(
+        {
+            "target": "lab",
+            "mode": "verify",
+            "authorized": True,
+            "authorization": "RELEASE-SAMPLE-SYNTHETIC",
+            "approve_verification": True,
+            "use_ai": False,
+            "model": "",
+            "allow_cloud": False,
+        }
+    )
     report = Assessment(scope).run()
     if report.get("target") != "lab://ephemeral-authorization-fixture":
         raise RuntimeError("synthetic sample escaped its declared lab target")
-    if report.get("environment") != "synthetic_lab" or report.get("verdict") != "verified_in_synthetic_lab_only":
-        raise RuntimeError("synthetic sample did not demonstrate the expected owned fixture boundary")
+    if (
+        report.get("environment") != "synthetic_lab"
+        or report.get("verdict") != "verified_in_synthetic_lab_only"
+    ):
+        raise RuntimeError(
+            "synthetic sample did not demonstrate the expected owned fixture boundary"
+        )
     if not verify_integrity(report):
         raise RuntimeError("synthetic sample report failed integrity validation")
-    if any(item.get("evidence", {}).get("credentials_sent") is True for item in report.get("findings", [])):
+    if any(
+        item.get("evidence", {}).get("credentials_sent") is True
+        for item in report.get("findings", [])
+    ):
         raise RuntimeError("synthetic sample unexpectedly used credentials")
     return report
 
 
-def write_release_evidence(output_dir: Path, root: Path | None = None) -> dict[str, str]:
+def write_release_evidence(
+    output_dir: Path, root: Path | None = None
+) -> dict[str, str]:
     """Write bounded review evidence and return relative output names with SHA-256 digests."""
     from .engine import markdown
 
@@ -211,7 +239,8 @@ def write_release_evidence(output_dir: Path, root: Path | None = None) -> dict[s
     outputs = {
         "release-manifest.json": json.dumps(manifest, indent=2, sort_keys=True) + "\n",
         "sbom.cdx.json": json.dumps(sbom, indent=2, sort_keys=True) + "\n",
-        "synthetic-sample-report.json": json.dumps(sample, indent=2, sort_keys=True) + "\n",
+        "synthetic-sample-report.json": json.dumps(sample, indent=2, sort_keys=True)
+        + "\n",
         "synthetic-sample-report.md": markdown(sample) + "\n",
     }
     digests: dict[str, str] = {}
@@ -219,19 +248,27 @@ def write_release_evidence(output_dir: Path, root: Path | None = None) -> dict[s
         path = output_dir / name
         path.write_text(content, encoding="utf-8")
         digests[name] = _sha256(path)
-    checksums = "".join(f"{digest}  {name}\n" for name, digest in sorted(digests.items()))
+    checksums = "".join(
+        f"{digest}  {name}\n" for name, digest in sorted(digests.items())
+    )
     (output_dir / "SHA256SUMS").write_text(checksums, encoding="utf-8")
     digests["SHA256SUMS"] = _sha256(output_dir / "SHA256SUMS")
     return digests
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Generate bounded Evidence Workbench release-review evidence")
+    parser = argparse.ArgumentParser(
+        description="Generate bounded Evidence Workbench release-review evidence"
+    )
     parser.add_argument("--output-dir", type=Path, required=True)
     parser.add_argument("--root", type=Path, default=Path(__file__).resolve().parent)
     args = parser.parse_args()
     digests = write_release_evidence(args.output_dir, args.root)
-    print(json.dumps({"schema": RELEASE_EVIDENCE_SCHEMA, "outputs": digests}, sort_keys=True))
+    print(
+        json.dumps(
+            {"schema": RELEASE_EVIDENCE_SCHEMA, "outputs": digests}, sort_keys=True
+        )
+    )
 
 
 if __name__ == "__main__":

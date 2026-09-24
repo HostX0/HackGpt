@@ -4,6 +4,7 @@ This adapter deliberately does not execute subprocesses, read file contents, fol
 symlinks, or access the network. It inventories eligible project paths and reports
 candidate exposure observations from filenames only. Secret values are never read.
 """
+
 from __future__ import annotations
 
 import os
@@ -18,16 +19,46 @@ ADAPTER_VERSION = "1"
 MAX_FILES_LIMIT = 5000
 MAX_DEPTH = 16
 MAX_RELATIVE_PATH = 512
-DEFAULT_EXCLUDED_DIRS = frozenset({".git", ".hg", ".svn", "node_modules", "vendor", "dist", "build", "__pycache__"})
+DEFAULT_EXCLUDED_DIRS = frozenset(
+    {".git", ".hg", ".svn", "node_modules", "vendor", "dist", "build", "__pycache__"}
+)
 
 _SECRET_FILENAMES = {
-    ".env": ("project/exposed-env-file", "Environment file present in project tree", "medium"),
-    ".env.local": ("project/exposed-env-file", "Local environment file present in project tree", "medium"),
-    ".env.production": ("project/exposed-env-file", "Production environment file present in project tree", "high"),
-    "id_rsa": ("project/private-key-file", "Private-key filename present in project tree", "high"),
-    "id_ed25519": ("project/private-key-file", "Private-key filename present in project tree", "high"),
-    "credentials.json": ("project/credential-file", "Credential filename present in project tree", "high"),
-    "service-account.json": ("project/credential-file", "Service-account filename present in project tree", "high"),
+    ".env": (
+        "project/exposed-env-file",
+        "Environment file present in project tree",
+        "medium",
+    ),
+    ".env.local": (
+        "project/exposed-env-file",
+        "Local environment file present in project tree",
+        "medium",
+    ),
+    ".env.production": (
+        "project/exposed-env-file",
+        "Production environment file present in project tree",
+        "high",
+    ),
+    "id_rsa": (
+        "project/private-key-file",
+        "Private-key filename present in project tree",
+        "high",
+    ),
+    "id_ed25519": (
+        "project/private-key-file",
+        "Private-key filename present in project tree",
+        "high",
+    ),
+    "credentials.json": (
+        "project/credential-file",
+        "Credential filename present in project tree",
+        "high",
+    ),
+    "service-account.json": (
+        "project/credential-file",
+        "Service-account filename present in project tree",
+        "high",
+    ),
 }
 _SECRET_SUFFIXES = {".pem", ".key", ".p12", ".pfx", ".jks"}
 
@@ -42,17 +73,41 @@ class ProjectScanPolicy:
     timeout_seconds: int = 30
 
     def __post_init__(self) -> None:
-        if isinstance(self.max_files, bool) or not isinstance(self.max_files, int) or not 1 <= self.max_files <= MAX_FILES_LIMIT:
-            raise ValueError(f"max_files must be an integer from 1 to {MAX_FILES_LIMIT}")
-        if isinstance(self.max_depth, bool) or not isinstance(self.max_depth, int) or not 0 <= self.max_depth <= MAX_DEPTH:
+        if (
+            isinstance(self.max_files, bool)
+            or not isinstance(self.max_files, int)
+            or not 1 <= self.max_files <= MAX_FILES_LIMIT
+        ):
+            raise ValueError(
+                f"max_files must be an integer from 1 to {MAX_FILES_LIMIT}"
+            )
+        if (
+            isinstance(self.max_depth, bool)
+            or not isinstance(self.max_depth, int)
+            or not 0 <= self.max_depth <= MAX_DEPTH
+        ):
             raise ValueError(f"max_depth must be an integer from 0 to {MAX_DEPTH}")
-        if isinstance(self.timeout_seconds, bool) or not isinstance(self.timeout_seconds, int) or not 1 <= self.timeout_seconds <= 120:
+        if (
+            isinstance(self.timeout_seconds, bool)
+            or not isinstance(self.timeout_seconds, int)
+            or not 1 <= self.timeout_seconds <= 120
+        ):
             raise ValueError("timeout_seconds must be an integer from 1 to 120")
-        if not isinstance(self.excluded_dirs, frozenset) or len(self.excluded_dirs) > 64:
+        if (
+            not isinstance(self.excluded_dirs, frozenset)
+            or len(self.excluded_dirs) > 64
+        ):
             raise ValueError("excluded_dirs must be a bounded frozenset")
         for name in self.excluded_dirs:
-            if (not isinstance(name, str) or not name or len(name) > 120 or "/" in name or "\\" in name
-                    or name in {".", ".."} or any(ord(ch) < 32 or ord(ch) == 127 for ch in name)):
+            if (
+                not isinstance(name, str)
+                or not name
+                or len(name) > 120
+                or "/" in name
+                or "\\" in name
+                or name in {".", ".."}
+                or any(ord(ch) < 32 or ord(ch) == 127 for ch in name)
+            ):
                 raise ValueError("invalid excluded directory name")
 
 
@@ -112,7 +167,9 @@ class ProjectMetadataAdapter:
             self._check_cancel(cancel)
             if time.monotonic() >= expires_at:
                 partial = True
-                notes.append("Cooperative project scan deadline reached before all eligible paths were visited.")
+                notes.append(
+                    "Cooperative project scan deadline reached before all eligible paths were visited."
+                )
                 break
             directory, depth = stack.pop()
             if depth > self.policy.max_depth:
@@ -157,7 +214,9 @@ class ProjectMetadataAdapter:
                     errors += 1
                     partial = True
                     continue
-                if len(relative) > MAX_RELATIVE_PATH or any(ord(ch) < 32 or ord(ch) == 127 for ch in relative):
+                if len(relative) > MAX_RELATIVE_PATH or any(
+                    ord(ch) < 32 or ord(ch) == 127 for ch in relative
+                ):
                     errors += 1
                     partial = True
                     continue
@@ -166,13 +225,19 @@ class ProjectMetadataAdapter:
                     findings.append(finding)
 
         if excluded_seen:
-            notes.append("Excluded directory names observed: " + ", ".join(sorted(excluded_seen)) + ".")
+            notes.append(
+                "Excluded directory names observed: "
+                + ", ".join(sorted(excluded_seen))
+                + "."
+            )
         if symlinks_skipped:
             notes.append(f"Skipped {symlinks_skipped} symlink path(s).")
         if errors:
             notes.append(f"Could not safely classify {errors} filesystem object(s).")
         if partial:
-            notes.append("Coverage is partial because a configured bound or filesystem error was reached.")
+            notes.append(
+                "Coverage is partial because a configured bound or filesystem error was reached."
+            )
 
         payload = {
             "schema": ADAPTER_SCHEMA,
@@ -201,7 +266,11 @@ class ProjectMetadataAdapter:
         basename = Path(relative_path).name.lower()
         rule_info = _SECRET_FILENAMES.get(basename)
         if rule_info is None and Path(basename).suffix.lower() in _SECRET_SUFFIXES:
-            rule_info = ("project/key-material-file", "Key-material filename present in project tree", "high")
+            rule_info = (
+                "project/key-material-file",
+                "Key-material filename present in project tree",
+                "high",
+            )
         if rule_info is None:
             return None
         rule, title, severity = rule_info

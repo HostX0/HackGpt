@@ -4,6 +4,7 @@ The declaration describes authority required by an adapter; it does not grant th
 authority. Launchers must independently enforce these limits and never accept model-
 generated command strings.
 """
+
 from __future__ import annotations
 
 import re
@@ -22,7 +23,11 @@ def _text(value: Any, field: str, maximum: int) -> str:
     if not isinstance(value, str):
         raise ValueError(f"{field} must be text")
     value = value.strip()
-    if not value or len(value) > maximum or any(ord(ch) < 32 or ord(ch) == 127 for ch in value):
+    if (
+        not value
+        or len(value) > maximum
+        or any(ord(ch) < 32 or ord(ch) == 127 for ch in value)
+    ):
         raise ValueError(f"invalid {field}")
     return value
 
@@ -48,11 +53,22 @@ class ExecutionDeclaration:
         if not isinstance(payload, dict):
             raise ValueError("execution declaration must be an object")
         required = {
-            "schema", "adapter", "launcher", "effect_level", "filesystem", "network",
-            "subprocess", "writes", "follows_symlinks", "limits", "coverage_unit",
+            "schema",
+            "adapter",
+            "launcher",
+            "effect_level",
+            "filesystem",
+            "network",
+            "subprocess",
+            "writes",
+            "follows_symlinks",
+            "limits",
+            "coverage_unit",
         }
         if set(payload) != required:
-            raise ValueError("execution declaration fields do not match the v1 contract")
+            raise ValueError(
+                "execution declaration fields do not match the v1 contract"
+            )
         if payload.get("schema") != EXECUTION_SCHEMA:
             raise ValueError("unsupported execution declaration schema")
         adapter = payload.get("adapter")
@@ -66,7 +82,12 @@ class ExecutionDeclaration:
         effect = payload.get("effect_level")
         filesystem = payload.get("filesystem")
         network = payload.get("network")
-        if launcher not in _LAUNCHERS or effect not in _EFFECTS or filesystem not in _FILESYSTEM or network not in _NETWORK:
+        if (
+            launcher not in _LAUNCHERS
+            or effect not in _EFFECTS
+            or filesystem not in _FILESYSTEM
+            or network not in _NETWORK
+        ):
             raise ValueError("unsupported execution authority")
         for field in ("subprocess", "writes", "follows_symlinks"):
             if type(payload.get(field)) is not bool:
@@ -75,16 +96,32 @@ class ExecutionDeclaration:
         writes = payload["writes"]
         follows_symlinks = payload["follows_symlinks"]
         limits = payload.get("limits")
-        if not isinstance(limits, dict) or set(limits) != {"max_objects", "max_requests", "timeout_seconds"}:
+        if not isinstance(limits, dict) or set(limits) != {
+            "max_objects",
+            "max_requests",
+            "timeout_seconds",
+        }:
             raise ValueError("execution limits must be explicit")
         max_objects = limits["max_objects"]
         max_requests = limits["max_requests"]
         timeout_seconds = limits["timeout_seconds"]
-        if isinstance(max_objects, bool) or not isinstance(max_objects, int) or not 1 <= max_objects <= 100_000:
+        if (
+            isinstance(max_objects, bool)
+            or not isinstance(max_objects, int)
+            or not 1 <= max_objects <= 100_000
+        ):
             raise ValueError("invalid max_objects")
-        if isinstance(max_requests, bool) or not isinstance(max_requests, int) or not 0 <= max_requests <= 10_000:
+        if (
+            isinstance(max_requests, bool)
+            or not isinstance(max_requests, int)
+            or not 0 <= max_requests <= 10_000
+        ):
             raise ValueError("invalid max_requests")
-        if isinstance(timeout_seconds, bool) or not isinstance(timeout_seconds, int) or not 1 <= timeout_seconds <= 3600:
+        if (
+            isinstance(timeout_seconds, bool)
+            or not isinstance(timeout_seconds, int)
+            or not 1 <= timeout_seconds <= 3600
+        ):
             raise ValueError("invalid timeout_seconds")
         coverage_unit = _text(payload.get("coverage_unit"), "coverage unit", 80)
 
@@ -93,7 +130,9 @@ class ExecutionDeclaration:
         if network == "scoped_target" and max_requests == 0:
             raise ValueError("networked adapters require a positive request budget")
         if launcher == "native_python" and subprocess:
-            raise ValueError("native_python launcher cannot declare subprocess execution")
+            raise ValueError(
+                "native_python launcher cannot declare subprocess execution"
+            )
         if launcher in {"fixed_binary", "fixed_container"} and not subprocess:
             raise ValueError("external launcher must declare subprocess execution")
         if effect == "read_only" and writes:
@@ -101,9 +140,21 @@ class ExecutionDeclaration:
         if follows_symlinks and filesystem == "none":
             raise ValueError("symlink traversal requires filesystem authority")
 
-        return cls(adapter_id, version, launcher, effect, filesystem, network, subprocess,
-                   writes, follows_symlinks, max_objects, max_requests, timeout_seconds,
-                   coverage_unit)
+        return cls(
+            adapter_id,
+            version,
+            launcher,
+            effect,
+            filesystem,
+            network,
+            subprocess,
+            writes,
+            follows_symlinks,
+            max_objects,
+            max_requests,
+            timeout_seconds,
+            coverage_unit,
+        )
 
     def public(self) -> dict[str, Any]:
         return {

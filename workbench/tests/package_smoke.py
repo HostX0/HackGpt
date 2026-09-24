@@ -6,6 +6,7 @@ recorded SHA-256, checks package metadata against the workflow revision, then ru
 packaged Workbench's compile and owned-loopback fresh-install smoke from an extracted
 copy. It does not contact an assessment target or invoke an optional scanner runtime.
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -29,17 +30,29 @@ def _sha256(path: Path) -> str:
 def _package_in(directory: Path) -> Path:
     packages = sorted(directory.glob("hackgpt-evidence-workbench-*.tar.gz"))
     if len(packages) != 1:
-        raise RuntimeError(f"expected exactly one portable package, found {len(packages)}")
+        raise RuntimeError(
+            f"expected exactly one portable package, found {len(packages)}"
+        )
     return packages[0]
 
 
 def _expected_digest(directory: Path) -> str:
     checksum_path = directory / "SHA256SUMS"
-    lines = [line.strip() for line in checksum_path.read_text(encoding="utf-8").splitlines() if line.strip()]
+    lines = [
+        line.strip()
+        for line in checksum_path.read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
     if len(lines) != 1:
-        raise RuntimeError("release checksum file must contain exactly one package digest")
+        raise RuntimeError(
+            "release checksum file must contain exactly one package digest"
+        )
     parts = lines[0].split()
-    if len(parts) != 2 or len(parts[0]) != 64 or any(ch not in "0123456789abcdef" for ch in parts[0].lower()):
+    if (
+        len(parts) != 2
+        or len(parts[0]) != 64
+        or any(ch not in "0123456789abcdef" for ch in parts[0].lower())
+    ):
         raise RuntimeError("release checksum record is malformed")
     return parts[0].lower()
 
@@ -57,7 +70,9 @@ def _safe_members(archive: tarfile.TarFile) -> list[tarfile.TarInfo]:
 
 def main() -> int:
     if len(sys.argv) != 2:
-        raise SystemExit("usage: python -m workbench.tests.package_smoke <artifact-directory>")
+        raise SystemExit(
+            "usage: python -m workbench.tests.package_smoke <artifact-directory>"
+        )
     directory = Path(sys.argv[1]).resolve()
     package = _package_in(directory)
     actual = _sha256(package)
@@ -72,38 +87,67 @@ def main() -> int:
             archive.extractall(destination, members=members, filter="data")
         roots = [path for path in destination.iterdir() if path.is_dir()]
         if len(roots) != 1:
-            raise RuntimeError("portable package must extract to exactly one top-level directory")
+            raise RuntimeError(
+                "portable package must extract to exactly one top-level directory"
+            )
         root = roots[0]
-        manifest = json.loads((root / "PACKAGE-MANIFEST.json").read_text(encoding="utf-8"))
+        manifest = json.loads(
+            (root / "PACKAGE-MANIFEST.json").read_text(encoding="utf-8")
+        )
         if manifest.get("schema") != "hackgpt.portable-source-release/v1":
             raise RuntimeError("portable package manifest schema is invalid")
         expected_revision = os.environ.get("GITHUB_SHA")
-        if expected_revision and manifest.get("checked_out_revision") != expected_revision:
-            raise RuntimeError("portable package revision does not match the workflow checkout")
-        if manifest.get("entrypoint") != "python -m workbench" or manifest.get("native_installer") is not False:
+        if (
+            expected_revision
+            and manifest.get("checked_out_revision") != expected_revision
+        ):
+            raise RuntimeError(
+                "portable package revision does not match the workflow checkout"
+            )
+        if (
+            manifest.get("entrypoint") != "python -m workbench"
+            or manifest.get("native_installer") is not False
+        ):
             raise RuntimeError("portable package entrypoint/type metadata is invalid")
         if manifest.get("third_party_python_runtime_packages") != []:
-            raise RuntimeError("portable package unexpectedly declares third-party Python runtime packages")
+            raise RuntimeError(
+                "portable package unexpectedly declares third-party Python runtime packages"
+            )
         if manifest.get("bundled_scanner_binaries_or_images") != []:
-            raise RuntimeError("portable package unexpectedly bundles scanner binaries/images")
+            raise RuntimeError(
+                "portable package unexpectedly bundles scanner binaries/images"
+            )
         if not (root / "release-evidence" / "sbom.cdx.json").is_file():
             raise RuntimeError("portable package is missing its CycloneDX SBOM")
 
-        subprocess.run([sys.executable, "-m", "compileall", "-q", "workbench"], cwd=root, check=True)
-        subprocess.run([sys.executable, "-m", "workbench.tests.fresh_install_smoke"], cwd=root, check=True)
+        subprocess.run(
+            [sys.executable, "-m", "compileall", "-q", "workbench"],
+            cwd=root,
+            check=True,
+        )
+        subprocess.run(
+            [sys.executable, "-m", "workbench.tests.fresh_install_smoke"],
+            cwd=root,
+            check=True,
+        )
 
-    print(json.dumps({
-        "schema": "hackgpt.portable-source-package-smoke/v1",
-        "package": package.name,
-        "sha256": actual,
-        "revision": os.environ.get("GITHUB_SHA", "unknown"),
-        "platform": sys.platform,
-        "python": sys.version.split()[0],
-        "compile": "passed",
-        "fresh_install_smoke": "passed",
-        "external_assessment_target": False,
-        "optional_scanner_executed": False,
-    }, sort_keys=True))
+    print(
+        json.dumps(
+            {
+                "schema": "hackgpt.portable-source-package-smoke/v1",
+                "package": package.name,
+                "sha256": actual,
+                "revision": os.environ.get("GITHUB_SHA", "unknown"),
+                "platform": sys.platform,
+                "python": sys.version.split()[0],
+                "compile": "passed",
+                "fresh_install_smoke": "passed",
+                "external_assessment_target": False,
+                "optional_scanner_executed": False,
+            },
+            sort_keys=True,
+        )
+    )
     return 0
 
 

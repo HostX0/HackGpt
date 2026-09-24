@@ -3,6 +3,7 @@
 Adapters may report observations, confidence and evidence, but they cannot promote their
 own output to an independently verified state. Verification is a separate workbench step.
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -19,7 +20,9 @@ _ID = re.compile(r"[a-z0-9][a-z0-9._/-]{0,95}")
 
 
 def _canonical(value: Any) -> bytes:
-    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=True).encode()
+    return json.dumps(
+        value, sort_keys=True, separators=(",", ":"), ensure_ascii=True
+    ).encode()
 
 
 def _digest(value: Any) -> str:
@@ -30,7 +33,11 @@ def _text(value: Any, name: str, maximum: int, *, allow_empty: bool = False) -> 
     if not isinstance(value, str):
         raise ValueError(f"{name} must be text")
     value = value.strip()
-    if (not value and not allow_empty) or len(value) > maximum or any(ord(c) < 32 or ord(c) == 127 for c in value):
+    if (
+        (not value and not allow_empty)
+        or len(value) > maximum
+        or any(ord(c) < 32 or ord(c) == 127 for c in value)
+    ):
         raise ValueError(f"invalid {name}")
     return value
 
@@ -81,7 +88,11 @@ def normalize_adapter_result(payload: Any, *, asset_key: str) -> dict[str, Any]:
     asset_key = _text(asset_key, "asset key", 160)
 
     coverage = payload.get("coverage", {})
-    if not isinstance(coverage, dict) or set(coverage) - {"objects_tested", "objects_total", "notes"}:
+    if not isinstance(coverage, dict) or set(coverage) - {
+        "objects_tested",
+        "objects_total",
+        "notes",
+    }:
         raise ValueError("invalid coverage object")
     tested = coverage.get("objects_tested")
     total = coverage.get("objects_total")
@@ -109,7 +120,15 @@ def normalize_adapter_result(payload: Any, *, asset_key: str) -> dict[str, Any]:
     for item in findings:
         if not isinstance(item, dict):
             raise ValueError("each finding must be an object")
-        fields = {"rule", "title", "severity", "confidence", "evidence", "remediation", "external_id"}
+        fields = {
+            "rule",
+            "title",
+            "severity",
+            "confidence",
+            "evidence",
+            "remediation",
+            "external_id",
+        }
         if set(item) - fields:
             raise ValueError("finding contains unsupported fields")
         rule = _text(item.get("rule"), "rule", 160)
@@ -118,34 +137,54 @@ def normalize_adapter_result(payload: Any, *, asset_key: str) -> dict[str, Any]:
         if severity not in _ALLOWED_SEVERITY:
             raise ValueError("invalid severity")
         confidence = item.get("confidence")
-        if not isinstance(confidence, (int, float)) or isinstance(confidence, bool) or not math.isfinite(confidence) or not 0 <= confidence <= 1:
+        if (
+            not isinstance(confidence, (int, float))
+            or isinstance(confidence, bool)
+            or not math.isfinite(confidence)
+            or not 0 <= confidence <= 1
+        ):
             raise ValueError("confidence must be a finite number from 0 to 1")
         evidence = _bounded_json(item.get("evidence", {}), "evidence")
-        remediation = _text(item.get("remediation", "Not supplied by adapter"), "remediation", 2000)
+        remediation = _text(
+            item.get("remediation", "Not supplied by adapter"), "remediation", 2000
+        )
         external_id = item.get("external_id")
         if external_id is not None:
             external_id = _text(external_id, "external id", 200)
-        fingerprint = _digest({"asset": asset_key, "adapter": identity.adapter_id, "rule": rule, "external_id": external_id})
-        normalized.append({
-            "id": fingerprint[:16],
-            "fingerprint": fingerprint,
-            "rule": rule,
-            "title": title,
-            "severity": severity,
-            "confidence": float(confidence),
-            "verification": "candidate",
-            "evidence": evidence,
-            "evidence_sha256": _digest(evidence),
-            "remediation": remediation,
-            "source": f"adapter/{identity.adapter_id}/{identity.version}",
-            "external_id": external_id,
-        })
+        fingerprint = _digest(
+            {
+                "asset": asset_key,
+                "adapter": identity.adapter_id,
+                "rule": rule,
+                "external_id": external_id,
+            }
+        )
+        normalized.append(
+            {
+                "id": fingerprint[:16],
+                "fingerprint": fingerprint,
+                "rule": rule,
+                "title": title,
+                "severity": severity,
+                "confidence": float(confidence),
+                "verification": "candidate",
+                "evidence": evidence,
+                "evidence_sha256": _digest(evidence),
+                "remediation": remediation,
+                "source": f"adapter/{identity.adapter_id}/{identity.version}",
+                "external_id": external_id,
+            }
+        )
 
     return {
         "schema": ADAPTER_SCHEMA,
         "adapter": {"id": identity.adapter_id, "version": identity.version},
         "status": status,
-        "coverage": {"objects_tested": tested, "objects_total": total, "notes": clean_notes},
+        "coverage": {
+            "objects_tested": tested,
+            "objects_total": total,
+            "notes": clean_notes,
+        },
         "findings": normalized,
         "error": error,
         "verification_authority": "workbench_only",

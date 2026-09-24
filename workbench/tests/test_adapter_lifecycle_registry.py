@@ -7,7 +7,9 @@ from workbench.registry import ExecutionRegistry, RegistryPolicy
 
 
 class RealRegistryLifecycleTests(unittest.TestCase):
-    def test_native_project_receipt_survives_durable_lifecycle_without_persisting_root(self):
+    def test_native_project_receipt_survives_durable_lifecycle_without_persisting_root(
+        self,
+    ):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp) / "customer-project"
             root.mkdir()
@@ -15,7 +17,9 @@ class RealRegistryLifecycleTests(unittest.TestCase):
             (root / "README.md").write_text("safe", encoding="utf-8")
             database = Path(temp) / "state" / "reports.sqlite3"
             registry = ExecutionRegistry(
-                RegistryPolicy(max_effect="read_only", allow_filesystem=True, allow_network=False)
+                RegistryPolicy(
+                    max_effect="read_only", allow_filesystem=True, allow_network=False
+                )
             )
             lifecycle = AdapterLifecycle(database, registry)
             request = {
@@ -27,15 +31,25 @@ class RealRegistryLifecycleTests(unittest.TestCase):
             }
 
             planned = lifecycle.plan("native-project-metadata", request)
-            self.assertEqual(planned["request_summary"]["project_label"], "customer-project")
+            self.assertEqual(
+                planned["request_summary"]["project_label"], "customer-project"
+            )
             self.assertFalse(planned["request_summary"]["full_path_included"])
             lifecycle.approve(planned["id"], planned["plan_sha256"])
-            completed = lifecycle.execute(planned["id"], "native-project-metadata", request)
+            completed = lifecycle.execute(
+                planned["id"], "native-project-metadata", request
+            )
 
             self.assertEqual(completed["status"], "completed")
-            self.assertEqual(completed["receipt"]["result"]["verification_authority"], "workbench_only")
+            self.assertEqual(
+                completed["receipt"]["result"]["verification_authority"],
+                "workbench_only",
+            )
             self.assertTrue(
-                all(item["verification"] == "candidate" for item in completed["receipt"]["result"]["findings"])
+                all(
+                    item["verification"] == "candidate"
+                    for item in completed["receipt"]["result"]["findings"]
+                )
             )
             raw = database.read_bytes()
             self.assertNotIn(str(root).encode(), raw)

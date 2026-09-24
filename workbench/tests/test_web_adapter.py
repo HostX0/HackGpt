@@ -17,11 +17,24 @@ class WebHeaderAdapterTests(unittest.TestCase):
             },
         )
         self.assertEqual(result["status"], "completed")
-        self.assertEqual({finding["rule"] for finding in result["findings"]}, {
-            "web/missing-content-security-policy", "web/missing-content-type-options",
-        })
-        self.assertTrue(all(finding["verification"] == "candidate" for finding in result["findings"]))
-        self.assertTrue(all(finding["evidence"]["body_read"] is False for finding in result["findings"]))
+        self.assertEqual(
+            {finding["rule"] for finding in result["findings"]},
+            {
+                "web/missing-content-security-policy",
+                "web/missing-content-type-options",
+            },
+        )
+        self.assertTrue(
+            all(
+                finding["verification"] == "candidate" for finding in result["findings"]
+            )
+        )
+        self.assertTrue(
+            all(
+                finding["evidence"]["body_read"] is False
+                for finding in result["findings"]
+            )
+        )
 
     def test_fixed_fixture_has_no_findings(self):
         result = WebHeaderAdapter().run(
@@ -56,7 +69,9 @@ class WebHeaderAdapterTests(unittest.TestCase):
         )
         self.assertEqual(result["status"], "partial")
         self.assertEqual(result["findings"], [])
-        self.assertTrue(any("inconclusive" in note for note in result["coverage"]["notes"]))
+        self.assertTrue(
+            any("inconclusive" in note for note in result["coverage"]["notes"])
+        )
 
     def test_non_html_does_not_apply_html_rules(self):
         result = WebHeaderAdapter().run(
@@ -70,7 +85,11 @@ class WebHeaderAdapterTests(unittest.TestCase):
             },
         )
         self.assertEqual(result["findings"], [])
-        self.assertTrue(any("not identified as HTML" in note for note in result["coverage"]["notes"]))
+        self.assertTrue(
+            any(
+                "not identified as HTML" in note for note in result["coverage"]["notes"]
+            )
+        )
 
     def test_query_target_is_rejected_before_reader(self):
         calls = []
@@ -106,7 +125,11 @@ class WebHeaderAdapterTests(unittest.TestCase):
             }
             payload[field] = value
             with self.subTest(field=field), self.assertRaises(ValueError):
-                WebHeaderAdapter().run("https://example.com", asset_key="web-fixture", reader=lambda _, p=payload: p)
+                WebHeaderAdapter().run(
+                    "https://example.com",
+                    asset_key="web-fixture",
+                    reader=lambda _, p=payload: p,
+                )
 
     def test_unapproved_header_is_rejected(self):
         with self.assertRaises(ValueError):
@@ -122,27 +145,53 @@ class WebHeaderAdapterTests(unittest.TestCase):
             )
 
     def test_execution_declaration_is_passive_and_one_request(self):
-        declaration = WebHeaderAdapter(WebHeaderPolicy(timeout_seconds=9)).execution_declaration()
+        declaration = WebHeaderAdapter(
+            WebHeaderPolicy(timeout_seconds=9)
+        ).execution_declaration()
         self.assertEqual(declaration["effect_level"], "passive")
         self.assertEqual(declaration["network"], "scoped_target")
         self.assertEqual(declaration["filesystem"], "none")
         self.assertFalse(declaration["subprocess"])
-        self.assertEqual(declaration["limits"], {"max_objects": 1, "max_requests": 1, "timeout_seconds": 9})
+        self.assertEqual(
+            declaration["limits"],
+            {"max_objects": 1, "max_requests": 1, "timeout_seconds": 9},
+        )
 
     def test_policy_is_fixed_to_one_request_and_bounded_timeout(self):
-        for kwargs in ({"max_requests": 0}, {"max_requests": 2}, {"timeout_seconds": 0}, {"timeout_seconds": 61}):
+        for kwargs in (
+            {"max_requests": 0},
+            {"max_requests": 2},
+            {"timeout_seconds": 0},
+            {"timeout_seconds": 61},
+        ):
             with self.subTest(kwargs=kwargs), self.assertRaises(ValueError):
                 WebHeaderPolicy(**kwargs)
 
     def test_fingerprint_is_stable_and_asset_scoped(self):
         def reader(_):
-            return {"status": 200, "headers": {"content-type": "text/html"}, "method": "HEAD", "redirect_followed": False}
+            return {
+                "status": 200,
+                "headers": {"content-type": "text/html"},
+                "method": "HEAD",
+                "redirect_followed": False,
+            }
 
-        one = WebHeaderAdapter().run("https://example.com", asset_key="asset-a", reader=reader)
-        two = WebHeaderAdapter().run("https://example.com", asset_key="asset-a", reader=reader)
-        other = WebHeaderAdapter().run("https://example.com", asset_key="asset-b", reader=reader)
-        self.assertEqual([f["fingerprint"] for f in one["findings"]], [f["fingerprint"] for f in two["findings"]])
-        self.assertNotEqual(one["findings"][0]["fingerprint"], other["findings"][0]["fingerprint"])
+        one = WebHeaderAdapter().run(
+            "https://example.com", asset_key="asset-a", reader=reader
+        )
+        two = WebHeaderAdapter().run(
+            "https://example.com", asset_key="asset-a", reader=reader
+        )
+        other = WebHeaderAdapter().run(
+            "https://example.com", asset_key="asset-b", reader=reader
+        )
+        self.assertEqual(
+            [f["fingerprint"] for f in one["findings"]],
+            [f["fingerprint"] for f in two["findings"]],
+        )
+        self.assertNotEqual(
+            one["findings"][0]["fingerprint"], other["findings"][0]["fingerprint"]
+        )
 
 
 if __name__ == "__main__":

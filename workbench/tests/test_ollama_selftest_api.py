@@ -1,4 +1,5 @@
 """Loopback API tests for the assessment-data-free Ollama compatibility probe."""
+
 import http.client
 import json
 import tempfile
@@ -29,16 +30,22 @@ class SelfTestApiTests(unittest.TestCase):
         headers = {"Content-Type": "application/json"}
         if auth:
             headers["Authorization"] = "Bearer self-test-token"
-        conn = http.client.HTTPConnection("127.0.0.1", self.server.server_port, timeout=3)
+        conn = http.client.HTTPConnection(
+            "127.0.0.1", self.server.server_port, timeout=3
+        )
         try:
-            conn.request("POST", "/api/models/self-test", body=json.dumps(body), headers=headers)
+            conn.request(
+                "POST", "/api/models/self-test", body=json.dumps(body), headers=headers
+            )
             response = conn.getresponse()
             return response.status, json.loads(response.read())
         finally:
             conn.close()
 
     @patch("workbench.server.Ollama")
-    def test_self_test_is_authenticated_and_forwards_only_fixed_options(self, ollama_class):
+    def test_self_test_is_authenticated_and_forwards_only_fixed_options(
+        self, ollama_class
+    ):
         client = Mock()
         client.self_test.return_value = {
             "provider": "ollama",
@@ -61,7 +68,13 @@ class SelfTestApiTests(unittest.TestCase):
 
     @patch("workbench.server.Ollama")
     def test_extra_fields_are_rejected_before_model_access(self, ollama_class):
-        status, _ = self.call({"model": "local:test", "require_tools": False, "target": "https://example.com"})
+        status, _ = self.call(
+            {
+                "model": "local:test",
+                "require_tools": False,
+                "target": "https://example.com",
+            }
+        )
         self.assertEqual(status, 400)
         ollama_class.assert_not_called()
 

@@ -2,6 +2,8 @@
 const $ = (id) => document.getElementById(id);
 let token = sessionStorage.getItem('hackgpt-token') || '';
 let selectedRun = null;
+let selectionEpoch = 0;
+let comparisonEpoch = 0;
 let polling = null;
 let running = false;
 let starting = false;
@@ -175,19 +177,29 @@ $('scan-form').addEventListener('submit', async (event) => {
 async function selectRun(id) {
   if (polling) clearTimeout(polling);
   selectedRun = id;
+  selectionEpoch += 1;
+  comparisonEpoch += 1;
+  ['export-json', 'export-md', 'export-bundle', 'compare'].forEach((name) => { $(name).disabled = true; });
+  $('compare-run').disabled = true;
+  $('run-status').textContent = 'Loading selected report...';
+  $('verdict').textContent = 'Waiting for the selected evidence';
+  $('findings').replaceChildren();
+  $('coverage-content').textContent = 'Loading selected coverage...';
   $('compare-content').textContent = 'Select a finalized earlier run after viewing the current report.';
   await poll(id);
 }
 async function poll(id) {
+  const epoch = selectionEpoch;
   try {
     const report = await api('/api/runs/' + id);
-    if (id !== selectedRun) return;
+    if (id !== selectedRun || epoch !== selectionEpoch) return;
     render(report);
     if (report.status === 'running') polling = setTimeout(() => poll(id), 900);
     else await loadHistory();
   } catch (error) {
-    running = false; $('start').disabled = false; $('cancel').disabled = true;
-    notice(error.message + ' Reconnect before assuming the run has stopped.', true);
+    if (id !== selectedRun || epoch !== selectionEpoch) return;
+    running = true; $('start').disabled = true; $('cancel').disabled = false; $('refresh').disabled = false;
+    notice(error.message + ' Outcome unconfirmed. Use Refresh to check status before assuming the run has stopped.', true);
   }
 }
 function updateRetestOptions() {
@@ -259,36 +271,64 @@ async function loadHistory() {
   });
   updateRetestOptions();
 }
-$('compare-run').addEventListener('change', () => { $('compare').disabled = running || !selectedRun || !$('compare-run').value; });
+$('compare-run').addEventListener('change', () => { comparisonEpoch += 1; $('compare').disabled = running || !selectedRun || !$('compare-run').value; });
 $('compare').addEventListener('click', async () => {
   const previous = $('compare-run').value;
   if (!previous || !selectedRun || previous === selectedRun || running) return;
+  const current = selectedRun;
+  const epoch = ++comparisonEpoch;
+  const selection = selectionEpoch;
+  const stillCurrent = () => current === selectedRun && epoch === comparisonEpoch && selection === selectionEpoch && previous === $('compare-run').value;
   $('compare').disabled = true;
   $('compare-content').textContent = 'Comparing finalized evidence and comparable coverage…';
   try {
-    const result = await api('/api/runs/' + previous + '/compare/' + selectedRun);
+    const result = await api('/api/runs/' + previous + '/compare/' + current);
+    if (!stillCurrent()) return;
     $('compare-content').textContent = JSON.stringify(result, null, 2);
   } catch (error) {
+    if (!stillCurrent()) return;
     $('compare-content').textContent = 'Comparison unavailable.';
     notice(error.message, true);
   } finally {
-    $('compare').disabled = running || !$('compare-run').value;
+    if (stillCurrent()) $('compare').disabled = running || !$('compare-run').value;
   }
 });
-$('refresh').addEventListener('click', () => loadHistory().catch((error) => notice(error.message, true)));
+$('refresh').addEventListener('click', () => (running && selectedRun ? selectRun(selectedRun) : loadHistory()).catch((error) => notice(error.message, true)));
 $('cancel').addEventListener('click', async () => {
-  try { const result = await api('/api/runs/' + selectedRun + '/cancel', {}); notice(result.note); $('cancel').disabled = true; }
-  catch (error) { notice(error.message, true); }
+  const id = selectedRun, epoch = selectionEpoch;
+  if (!id || !running || $('cancel').disabled) return;
+  $('cancel').disabled = true;
+  try {
+    const result = await api('/api/runs/' + id + '/cancel', {});
+    if (id === selectedRun && epoch === selectionEpoch && running) notice(result.note);
+  } catch (error) {
+    if (id !== selectedRun || epoch !== selectionEpoch || !running) return;
+    $('cancel').disabled = false;
+    notice(error.message + ' Stop is not confirmed.', true);
+  }
 });
 async function download(extension) {
+  const runId = selectedRun;
+  if (!runId || running) return;
   try {
-    const response = await api('/api/runs/' + selectedRun + '/export.' + extension, undefined, true);
+    const response = await api('/api/runs/' + runId + '/export.' + extension, undefined, true);
     const url = URL.createObjectURL(await response.blob()); const link = document.createElement('a');
-    link.href = url; link.download = 'hackgpt-' + selectedRun + '.' + extension; link.click();
+    link.href = url; link.download = 'hackgpt-' + runId + '.' + extension; link.click();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   } catch (error) { notice(error.message, true); }
 }
 $('export-json').addEventListener('click', () => download('json'));
 $('export-md').addEventListener('click', () => download('md'));
 $('export-bundle').addEventListener('click', () => download('bundle.zip'));
+// This event only selects an existing local report; it grants no execution authority.
+if (document.addEventListener) document.addEventListener('hackgpt:review-report', async (event) => {
+  const id = event.detail && event.detail.id;
+  if (typeof id !== 'string' || !/^[a-f0-9]{32}$/.test(id)) return;
+  if (running || starting || testingModel) {
+    notice('Finish or stop the active operation before switching to the linked report.', true);
+    return;
+  }
+  await selectRun(id);
+  if (selectedRun === id && $('verdict').focus) $('verdict').focus();
+});
 if (token) unlock();
