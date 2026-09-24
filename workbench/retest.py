@@ -13,6 +13,9 @@ import re
 from typing import Any
 
 _ADAPTER_SOURCE = re.compile(r"^adapter/([a-z0-9][a-z0-9._/-]{0,95})/([^/\s]{1,64})$")
+_FIXED_METHOD_BY_ADAPTER = {
+    ("native-web-headers", "1"): "HEAD",
+}
 
 
 def _tool_for_rule(rule: str) -> str | None:
@@ -61,9 +64,13 @@ def _check_adapter(check: dict[str, Any]) -> dict[str, str] | None:
 def _check_method(check: dict[str, Any]) -> str | None:
     evidence = check.get("evidence")
     method = evidence.get("method") if isinstance(evidence, dict) else None
-    if not isinstance(method, str) or not method.strip():
+    if isinstance(method, str) and method.strip():
+        return method.strip().upper()
+
+    adapter = _check_adapter(check)
+    if adapter is None:
         return None
-    return method.strip().upper()
+    return _FIXED_METHOD_BY_ADAPTER.get((adapter["id"], adapter["version"]))
 
 
 def _observation_result(
