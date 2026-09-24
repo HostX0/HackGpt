@@ -159,7 +159,7 @@
 
   function aiStatus(value) {
     const status = recordedText(value);
-    return ['not_requested', 'running', 'completed', 'unavailable'].includes(status) ? status : 'unknown';
+    return ['not_requested', 'running', 'completed', 'unavailable', 'cancelled'].includes(status) ? status : 'unknown';
   }
 
   function processingPolicy(value) {
