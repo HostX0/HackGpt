@@ -147,6 +147,29 @@ class ReleaseEvidenceTests(unittest.TestCase):
         self.assertNotIn("id-token: write", text.split("  attest-package:\n", 1)[0])
         self.assertNotIn("attestations: write", text.split("  attest-package:\n", 1)[0])
 
+    def test_release_attestation_verification_binds_exact_package_and_bundles(self):
+        workflow = (
+            self.root.parent / ".github" / "workflows" / "workbench-release-package.yml"
+        )
+        if not workflow.is_file():
+            self.skipTest(
+                "repository workflow is intentionally absent from the portable Workbench archive"
+            )
+        text = workflow.read_text(encoding="utf-8")
+        output_ref = "needs.build-package.outputs.package_basename"
+        self.assertIn("package_basename: ${{ steps.package.outputs.package_basename }}", text)
+        self.assertNotIn("outputs.package-basename", text)
+        self.assertGreaterEqual(text.count(output_ref), 4)
+        self.assertIn('PACKAGE="_release/${{ needs.build-package.outputs.package_basename }}.tar.gz"', text)
+        self.assertEqual(text.count("gh attestation verify \"$PACKAGE\""), 2)
+        self.assertIn("--bundle _release/provenance.sigstore.json", text)
+        self.assertIn("--bundle _release/sbom-attestation.sigstore.json", text)
+        self.assertIn("--predicate-type https://slsa.dev/provenance/v1", text)
+        self.assertIn("--predicate-type https://cyclonedx.org/bom", text)
+        self.assertEqual(text.count('--source-digest "$GITHUB_SHA"'), 2)
+        self.assertIn("_release/provenance-verification.txt", text)
+        self.assertIn("_release/sbom-attestation-verification.txt", text)
+
 
 if __name__ == "__main__":
     unittest.main()
