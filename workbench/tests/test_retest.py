@@ -186,6 +186,50 @@ class RetestTests(unittest.TestCase):
             {"id": "native-web-headers", "version": "1"},
         )
 
+    def test_versioned_web_adapter_contract_supplies_fixed_head_method(self):
+        prior = finding(
+            "x",
+            rule="web/missing-content-security-policy",
+            source="adapter/native-web-headers/1",
+            evidence={"method": "HEAD"},
+        )
+        current = report(
+            "b",
+            checks=[
+                {
+                    "tool": "native-web-headers",
+                    "status": "completed",
+                    "adapter": {"id": "native-web-headers", "version": "1"},
+                }
+            ],
+        )
+        item = compare_reports(report("a", findings=[prior]), current)["items"][0]
+        self.assertEqual(item["state"], "not_reproduced")
+        self.assertEqual(item["recheck"]["coverage"]["status"], "completed")
+        self.assertEqual(item["recheck"]["coverage"]["observed_methods"], ["HEAD"])
+
+    def test_unknown_adapter_version_never_infers_method_contract(self):
+        prior = finding(
+            "x",
+            rule="web/missing-content-security-policy",
+            source="adapter/native-web-headers/9",
+            evidence={"method": "HEAD"},
+        )
+        current = report(
+            "b",
+            checks=[
+                {
+                    "tool": "native-web-headers",
+                    "status": "completed",
+                    "adapter": {"id": "native-web-headers", "version": "9"},
+                }
+            ],
+        )
+        item = compare_reports(report("a", findings=[prior]), current)["items"][0]
+        self.assertEqual(item["state"], "not_retested")
+        self.assertEqual(item["recheck"]["coverage"]["status"], "method_unknown")
+        self.assertEqual(item["recheck"]["coverage"]["observed_methods"], [])
+
     def test_adapter_version_change_is_not_retested(self):
         prior = finding(
             "x",
