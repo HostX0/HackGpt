@@ -36,9 +36,7 @@ class RetestIdentityIntegrityTests(unittest.TestCase):
 
     def test_empty_fingerprint_fails_closed(self):
         with self.assertRaisesRegex(ValueError, "missing a comparison fingerprint"):
-            compare_reports(
-                report("before", [finding("   ", "f-1")]), report("after")
-            )
+            compare_reports(report("before", [finding("   ", "f-1")]), report("after"))
 
     def test_non_object_finding_fails_closed(self):
         with self.assertRaisesRegex(ValueError, "must be an object"):
