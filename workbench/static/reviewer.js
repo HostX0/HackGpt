@@ -1,6 +1,8 @@
 'use strict';
 (function installReviewerEvidenceDrilldown() {
   const baseRender = globalThis.render;
+  const baseLoadHistory = typeof globalThis.loadHistory === 'function' ? globalThis.loadHistory : null;
+  let selectedDurabilityState = 'legacy';
   if (typeof baseRender !== 'function') throw new Error('Evidence Workbench renderer unavailable');
 
   function recordedText(value) {
@@ -10,6 +12,96 @@
   function humanLabel(value) {
     const text = recordedText(value);
     return text ? text.replaceAll('_', ' ') : 'not recorded';
+  }
+
+  function runStatus(value) {
+    const status = recordedText(value);
+    return ['running', 'completed', 'partial', 'cancelled', 'timed_out', 'error', 'interrupted'].includes(status) ? status : 'unknown';
+  }
+
+  function durabilityState(report) {
+    if (report && report.status === 'running') return 'pending';
+    const durability = report && report.durability;
+    if (!durability || typeof durability !== 'object' || Array.isArray(durability)) return 'legacy';
+    if (durability.status === 'durable') return 'durable';
+    if (durability.status === 'not_durable') return 'memory_only';
+    return 'unknown';
+  }
+
+  function runHistoryText(run) {
+    const item = run && typeof run === 'object' && !Array.isArray(run) ? run : {};
+    return 'Status ' + runStatus(item.status).toUpperCase() +
+      ' · Verdict ' + humanLabel(item.verdict) +
+      ' · Mode ' + humanLabel(item.mode);
+  }
+
+  function historySnapshot() {
+    return typeof historyRuns !== 'undefined' && Array.isArray(historyRuns) ? historyRuns : [];
+  }
+
+  function currentSelectedRun() {
+    return typeof selectedRun === 'string' ? selectedRun : null;
+  }
+
+  function enforceReviewDurabilityActions() {
+    if (typeof document.getElementById !== 'function') return;
+    if (!['memory_only', 'unknown'].includes(selectedDurabilityState)) return;
+    ['export-json', 'export-md', 'export-bundle', 'compare'].forEach((id) => {
+      const control = document.getElementById(id);
+      if (control) control.disabled = true;
+    });
+    const compareRun = document.getElementById('compare-run');
+    if (compareRun) compareRun.disabled = true;
+  }
+
+  function enhanceRunLifecycleReview(report) {
+    selectedDurabilityState = durabilityState(report);
+    if (typeof document.getElementById !== 'function') return;
+    const status = document.getElementById('run-status');
+    const labels = {
+      pending: 'persistence pending',
+      durable: 'durable final report',
+      memory_only: 'MEMORY-ONLY FINAL RESULT',
+      unknown: 'durability unknown',
+      legacy: 'legacy durability metadata',
+    };
+    if (status && labels[selectedDurabilityState]) {
+      status.textContent += ' · ' + labels[selectedDurabilityState];
+    }
+    const integrity = document.getElementById('integrity');
+    if (integrity && selectedDurabilityState === 'memory_only') {
+      integrity.textContent += ' Terminal persistence is memory-only; export and retest remain disabled until a durable report exists.';
+    } else if (integrity && selectedDurabilityState === 'unknown') {
+      integrity.textContent += ' Durability metadata is unrecognized; export and retest remain disabled.';
+    }
+    enforceReviewDurabilityActions();
+  }
+
+  function enhanceHistoryReview() {
+    if (typeof document.querySelectorAll !== 'function') return;
+    const runs = historySnapshot();
+    const buttons = Array.from(document.querySelectorAll('#history-list .history-item'));
+    buttons.forEach((button, index) => {
+      if (!runs[index] || !button.children || !button.children[1]) return;
+      button.children[1].textContent = runHistoryText(runs[index]);
+    });
+  }
+
+  function enhanceRetestHistoryReview() {
+    if (typeof document.getElementById !== 'function') return;
+    const select = document.getElementById('compare-run');
+    if (!select || !select.children) return;
+    const current = currentSelectedRun();
+    const runs = historySnapshot().filter((run) => run && run.id !== current);
+    runs.forEach((run, index) => {
+      const option = select.children[index + 1];
+      if (!option) return;
+      const started = recordedText(run.started_at);
+      const time = started ? new Date(started).toLocaleString() : 'time not recorded';
+      option.textContent = time + ' · ' + (recordedText(run.target) || 'target not recorded') +
+        ' · ' + runStatus(run.status).toUpperCase() +
+        ' · ' + humanLabel(run.verdict);
+    });
   }
 
   function confidenceLabel(value) {
@@ -225,10 +317,22 @@
   globalThis.reviewerEvidenceFacts = reviewerEvidenceFacts;
   globalThis.reviewerCoverageText = coverageReviewText;
   globalThis.reviewerAiText = aiReviewText;
+  globalThis.reviewerRunHistoryText = runHistoryText;
+  globalThis.reviewerDurabilityState = durabilityState;
   globalThis.render = function renderWithReviewerEvidence(report) {
     baseRender(report);
     enhanceReviewerEvidence(report);
     enhanceCoverageReview(report);
     enhanceAiReview(report);
+    enhanceRunLifecycleReview(report);
   };
+  if (baseLoadHistory) {
+    globalThis.loadHistory = async function loadHistoryWithReviewerLifecycle() {
+      const result = await baseLoadHistory();
+      enhanceHistoryReview();
+      enhanceRetestHistoryReview();
+      enforceReviewDurabilityActions();
+      return result;
+    };
+  }
 })();

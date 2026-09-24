@@ -207,6 +207,11 @@ try {
   assert(Number(await evaluate("document.getElementById('count-verified').textContent")) >= 1, 'owned synthetic verification did not render a verified lab finding');
   assert((await evaluate("document.getElementById('verdict').textContent")).includes('verified in synthetic lab only'), 'UI did not preserve synthetic-only verdict wording');
   assert(await evaluate("document.getElementById('history-list').textContent.includes('lab')"), 'finalized run did not appear in browser history UI');
+  assert(await evaluate("document.getElementById('history-list').textContent.includes('Status COMPLETED')"), 'run history did not expose terminal execution state separately from verdict');
+  assert(await evaluate("document.getElementById('history-list').textContent.includes('Mode verify')"), 'run history did not expose recorded assessment mode');
+  assert(await evaluate("document.getElementById('run-status').textContent.includes('durable final report')"), 'selected finalized run did not expose durable persistence state');
+  assert(await evaluate("globalThis.reviewerDurabilityState({status:'completed', durability:{status:'not_durable'}}) === 'memory_only'"), 'memory-only durability did not fail closed in reviewer classification');
+  assert(await evaluate("globalThis.reviewerRunHistoryText({status:'interrupted', verdict:'inconclusive', mode:'verify'}).includes('Status INTERRUPTED')"), 'interrupted history state was not reviewable');
   // Exercise the existing approved metadata adapter -> report path on an owned directory.
   const projectDir = join(workRoot, 'owned-project');
   await mkdir(projectDir);
@@ -247,6 +252,9 @@ try {
     viewport_widths: viewportWidths,
     keyboard_reached: keyboardTargets,
     unnamed_focusable_controls: 0,
+    history_lifecycle_visible: true,
+    durable_review_visible: true,
+    memory_only_classification_tested: true,
     approved_project_adapter_completed: true,
     linked_report_reviewed: true,
     linked_report_focus_verified: true,
