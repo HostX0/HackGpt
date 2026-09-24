@@ -25,7 +25,9 @@ def _tool_for_rule(rule: str) -> str | None:
     return None
 
 
-def _finding_adapter(finding: dict[str, Any], tool: str | None) -> dict[str, str] | None:
+def _finding_adapter(
+    finding: dict[str, Any], tool: str | None
+) -> dict[str, str] | None:
     source = finding.get("source")
     if not tool or not isinstance(source, str):
         return None
@@ -149,7 +151,9 @@ def _tool_observation(
 
     candidates = observations
     if expected_adapter is not None:
-        candidates = [item for item in candidates if item["adapter"] == expected_adapter]
+        candidates = [
+            item for item in candidates if item["adapter"] == expected_adapter
+        ]
         if not candidates:
             status = "version_changed" if observed_adapters else "identity_unknown"
             reason = (
@@ -315,7 +319,11 @@ def compare_reports(
                         "remediation_guidance_present": False,
                         "remediation_applied": "not_applicable",
                         "comparable_scope": comparable_scope,
-                        "coverage": _tool_observation(current, _tool_for_rule(str(finding.get("rule", ""))), finding),
+                        "coverage": _tool_observation(
+                            current,
+                            _tool_for_rule(str(finding.get("rule", ""))),
+                            finding,
+                        ),
                     },
                 }
             )
@@ -329,9 +337,7 @@ def compare_reports(
             "same_target": same_target,
             "same_environment": same_environment,
             "same_mode": _optional_equal(previous, current, "mode"),
-            "same_engine_version": _optional_equal(
-                previous, current, "engine_version"
-            ),
+            "same_engine_version": _optional_equal(previous, current, "engine_version"),
             "previous_engine_version": previous.get("engine_version"),
             "current_engine_version": current.get("engine_version"),
         },
