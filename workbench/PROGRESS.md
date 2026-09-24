@@ -12,6 +12,10 @@ PR #2 was merged to fork `main` at `2cf544d46f9d6c1b4383230ff7d0aa004a8cb56d` on
 
 PR #4 (`fix/retest-comparability`) was reviewed on exact source `a7e061f9a6bc2905d20e361d1a724ac4399fe524` and then merged with expected-head protection to fork `main` at `2032bce9228cdb404e2b2b6b3c8d8053ea515eec`. Its exact-head Evidence Workbench, Workbench Startup, Release Package, Basic CI, and Enterprise CI workflows all completed successfully before merge. The merged retest contract remains conservative: duplicate/missing finding identity fails closed; missing target/environment identity cannot become comparable absence; a run cannot be compared with itself; adapter version/method/coverage drift remains `not_retested`; and `not_reproduced` is never presented as `fixed`.
 
+PR #5 (`feat/reviewer-evidence-drilldown`) was reviewed on exact source `e04c72453644b38440c6de4f1ff6f5f5db8aa1b3` after its Workbench, Startup, PR package, Basic CI, and Enterprise CI workflows all completed successfully. It was merged with expected-head protection to fork `main` at **`a72b6c80309c3e8039dfca0e0adbbd18dec8085e`**. The finding-review UI now exposes a structured summary of recorded source/rule/verification/context/hash facts while keeping raw evidence authoritative and unchanged. No model, target, scanner, route, or execution authority was added.
+
+Post-merge Evidence Workbench run `35974672394` on `a72b6c80309c3e8039dfca0e0adbbd18dec8085e` completed successfully, as did Workbench Startup run `35974672386`. Trusted Release Package run `35974672487` also completed successfully: deterministic build, exact-package smoke on Ubuntu/macOS/Windows, downloaded-package identity validation, signed build provenance, signed CycloneDX SBOM, preservation and verification of both attestation bundles, and final attested portable-release evidence upload all succeeded. This remains portable-source release evidence, not native installer signing or assessment-report signing. Basic and Enterprise post-merge runs were still executing when the next reliability slice began, so their aggregate state is not reused as a repository-wide green claim here.
+
 ## Trusted portable-release verification repaired on main
 
 The post-PR4 main release exposed a real shipping defect: trusted Release Package run `35964232068` failed while verifying signed release evidence. PR #3 (`fix/release-attestation-verification`) repaired the exact workflow rather than weakening attestation or skipping verification. The branch was reconciled non-force with current main, reviewed on source `69a843d3ef998fc980d91d08bbfe116c0815a077`, and merged with expected-head protection to fork `main` at **`5b6482bfa08d075078fd0dba0e28ba361ad66628`**.
@@ -43,11 +47,9 @@ Trusted main Release Package run **`35969183890`** on `5b6482bfa08d075078fd0dba0
 
 Main Evidence Workbench run `35969183904` also completed successfully for that merge revision. This verifies the trusted portable-source release path; it does **not** turn the archive into a native Windows/macOS/Linux signed installer, and it does not sign individual assessment reports.
 
-## PR #5: structured reviewer evidence drill-down
+## Merged PR #5: structured reviewer evidence drill-down
 
-Open PR #5 (`feat/reviewer-evidence-drilldown`) returns the sprint to Gate D/E product usability after the trusted release blocker was repaired. Base main is `5b6482bfa08d075078fd0dba0e28ba361ad66628`. The substantive feature commit is `dcbe43fef827e888335b16ab9b97721c470de892`; hosted-contract follow-up `d0658a1bc32da7c08fa8fa649f45ab48d373ae3a` adds the feature assertions to the JavaScript test file that the Workbench workflow actually executes. Source `254a20c0ef6aa3b826ce8827c8ee12826bdfed16` additionally adds three real workspace-server routing regressions for the new reviewer assets.
-
-The existing report data model, raw evidence, evidence digests, exports, adapters, execution authority, targets, model policy, and network behavior are unchanged. Each rendered finding now receives a structured reviewer panel **before** its existing raw evidence JSON. The panel shows only fields already recorded by the report:
+The reviewer evidence slice returned the sprint to Gate D/E product usability after the trusted release blocker was repaired. Its existing report data model, raw evidence, evidence digests, exports, adapters, execution authority, targets, model policy, and network behavior are unchanged. Each rendered finding now receives a structured reviewer panel **before** its existing raw evidence JSON. The panel shows only fields already recorded by the report:
 
 - finding source and rule;
 - verification state;
@@ -61,41 +63,32 @@ Missing source/rule/hash data is shown as `not recorded`; the UI does not infer 
 
 The feature is isolated in `workbench/static/reviewer.js` and `reviewer.css`, loaded after the existing core `app.js`. Recorded strings are assigned through `textContent`; no new `innerHTML`, model call, network request, scanner, target, filesystem access, or execution permission is introduced. The existing native `<details>/<summary>` finding disclosure remains the interaction surface rather than adding a custom disclosure widget.
 
-### Local feature validation
+### Source-bound validation before merge
 
-Environment: Linux, Node built-in test runner, exact authored reviewer assets at source `dcbe43fef827e888335b16ab9b97721c470de892`.
+For exact feature source `254a20c0ef6aa3b826ce8827c8ee12826bdfed16`, Evidence Workbench run `35971160039` completed successfully. Python 3.13.15 on Ubuntu 24.04 ran **408 tests: 406 passed, 2 explicitly skipped, 0 failed**; hosted frontend DOM/fetch-double contracts ran **34 passed / 0 failed / 0 skipped**; real Chromium E2E/accessibility, pinned Semgrep owned fixtures, assessment-data-free local Ollama compatibility, and fresh-checkout smoke on Ubuntu/macOS/Windows all succeeded. Workbench Startup `35971159743`, PR-context Release Package `35971159715`, Basic CI `35971159907`, and Enterprise CI `35971159745` also completed successfully for that source. Later documentation-only successors received fresh source-head validation before the expected-head merge; historical green was not transferred automatically.
 
-- `node --test workbench/tests/test_evidence_drilldown_ui.cjs`: **4 passed / 0 failed / 0 skipped**.
-- `node --check workbench/static/reviewer.js`: **success**.
+## PR #6: explicit runtime/test resource cleanup
 
-The standalone regressions cover asset ordering, normalized provenance/method/scope/hash presentation, synthetic-proof safety context with raw evidence unchanged, and untrusted recorded strings remaining text rather than markup. A full local checkout was unavailable in the development container because `github.com` resolution failed; that environment limitation is not reported as a GitHub permission denial and is not substituted for hosted evidence.
+Post-PR5 main Workbench run `35974672394` passed its complete matrix, but the Python 3.13 job exposed two non-failing `ResourceWarning` diagnostics worth fixing rather than suppressing: an unclosed direct SQLite connection in the adapter-lifecycle tamper regression, and an unclosed socket surfaced after Ollama HTTP error-path tests. The warnings were concrete cleanup evidence, not assertion failures or a reason to weaken warning visibility.
 
-### Hosted exact-source validation
+Branch `fix/runtime-resource-cleanup` was created from exact main `a72b6c80309c3e8039dfca0e0adbbd18dec8085e`. The implementation head before this ledger update is **`ed39cc2775c0102393ad1fb2a9de1ab27c9ad0d9`** and GitHub generated PR checkout **`3c4a4c0bccb44615251df44cc12e924fe9254338`**. Changes are deliberately narrow:
 
-Initial feature sources exposed and then closed two useful validation gaps: first, the standalone JavaScript reviewer test was not in the hosted DOM/fetch-double command; second, successful static source review alone did not prove the real workspace entry point served the new assets. The current source `254a20c0ef6aa3b826ce8827c8ee12826bdfed16` therefore includes the reviewer assertions in `test_reviewer_ui.cjs` and three `test_reviewer_static_assets.py` regressions through the actual workspace server.
+- `test_adapter_lifecycle.py` wraps the test-only direct `sqlite3.connect()` with `contextlib.closing`, so transaction context and resource ownership are both explicit;
+- `LocalRuntime.request()` now explicitly closes every obtained `HTTPResponse` in `finally`, including redirect/auth/not-found/busy/service-error paths that can reject before reading a body;
+- connection close remains guaranteed even when `response.close()` itself raises `OSError`;
+- a focused three-case regression covers a successful catalog response, a rejected HTTP status, and response-close failure while preserving the public error state.
 
-For exact source **`254a20c0ef6aa3b826ce8827c8ee12826bdfed16`**, GitHub generated PR checkout **`791703c1164ca8f74fde7961bbff82bc33c3ad20`** against base main `5b6482bfa08d075078fd0dba0e28ba361ad66628`. Evidence Workbench run **`35971160039`** completed **successfully**:
+No provider, route, model fallback, target, scanner, tool authority, report schema, consent rule, or network destination was added. Ollama remains fixed to loopback transport from the production client.
 
-- Python 3.11 / 3.12 / 3.13 native lanes: success;
-- Python 3.13.15 on Ubuntu 24.04: **408 tests run, 406 passed, 2 explicitly skipped, 0 failed**;
-- hosted frontend DOM/fetch-double contracts: **34 passed / 0 failed / 0 skipped**;
-- the reviewer tests cover normalized recorded facts, synthetic-proof context with raw evidence unchanged, and untrusted report strings remaining text rather than markup;
-- the real workspace-server regressions prove `reviewer.js` and `reviewer.css` are served through the production static route, the pre-existing adapter asset route remains compatible, and an unreviewed static path remains unavailable;
-- real Chromium browser-to-loopback E2E/accessibility: success, including the existing viewport, accessible-name, keyboard journey, owned synthetic assessment, approved project-adapter/link-report journey and zero runtime exceptions;
-- pinned Semgrep CE owned-fixture validation: success;
-- real assessment-data-free local Ollama compatibility probe: success;
-- fresh-checkout smoke on Ubuntu, macOS, and Windows: success;
-- fail-closed Workbench validation summary: success.
+### Exact PR #6 hosted evidence before this ledger successor
 
-For the same source, Workbench Startup run **`35971159743`** completed successfully. PR-context Release Package run **`35971159715`** completed successfully for deterministic build and exact package smoke; trusted signing remains intentionally gated off in pull-request context and is not called successful signing.
+Evidence Workbench run **`35975926148`** on source `ed39cc2775c0102393ad1fb2a9de1ab27c9ad0d9` completed successfully. Its Python 3.13.15 job `107556264187` checked out generated PR merge revision `3c4a4c0bccb44615251df44cc12e924fe9254338` and ran **411 tests: 409 passed, 2 explicitly skipped, 0 failed**. The three new cleanup regressions all passed. The hosted JavaScript contracts remained **34 passed / 0 failed / 0 skipped**. Python 3.11/3.12/3.13, real Chromium E2E/accessibility, pinned Semgrep owned-fixture validation, real assessment-data-free local Ollama compatibility, and fresh-install smoke on Ubuntu/macOS/Windows all succeeded; the fail-closed Workbench aggregate completed successfully.
 
-Basic CI run **`35971159907`** completed **successfully**, including dependency installation, Flake8, deterministic installation/readiness/import checks, and Docker build without publication. Enterprise run **`35971159745`** completed **successfully**: Python 3.8 `legacy-core`, Python 3.9/3.10/3.11 full unit/integration lanes, fail-closed Black and Flake8, and Docker Build (no publication) all succeeded. MyPy/Pylint retain their existing advisory semantics; Security Advisory Reports remain advisory; Compliance/Performance jobs are explicitly non-validating. Their workflow success is not a clean-security, certification, or benchmark claim.
+Crucially, the exact new Python 3.13 log contains neither of the prior application `ResourceWarning` diagnostics: the cloud-policy discovery regression completes without the prior unclosed-SQLite warning, and the mixed-public-DNS regression completes without the prior unclosed-socket warning. Unrelated GitHub Actions runner deprecation messages for Node/action internals remain visible and are not suppressed or reclassified as application cleanup failures.
 
-The source-bound current-head shipping matrix is therefore green across Workbench, Startup, PR package validation, Basic CI and Enterprise CI. A newer documentation successor created from this ledger must still receive fresh source-head validation before merge; historical green is not transferred automatically.
+Workbench Startup run **`35975926163`** completed successfully. PR-context Release Package run **`35975926125`** completed successfully for deterministic build and exact-package smoke; trusted signing remains intentionally gated off in pull-request context and is not called successful signing. At this checkpoint Basic run `35975926214` and Enterprise run `35975926105` were still in progress: Enterprise Python 3.8 `legacy-core` and fail-closed Black/Flake8 had already succeeded, while the full-runtime dependency/test lanes were still executing; Basic was still installing its full Python dependency set. Their pending state is not treated as failure or success.
 
-### Non-failing observations for follow-up
-
-The Python 3.13 Workbench log also emitted two `ResourceWarning` diagnostics while all assertions passed: one reported an unclosed SQLite connection during the cloud-policy API test group, and one reported an unclosed socket during the mixed-public-DNS policy test. They did not fail the current workflow and are not reclassified as shipping failures, but they are concrete reliability/test-hygiene candidates for a later bounded repair rather than signals to suppress warnings.
+This ledger commit is a newer documentation successor, so its own exact source head must receive fresh required validation before PR #6 can merge. The successful `ed39cc...` evidence remains source-bound to that implementation head.
 
 ## Research applied to reviewer evidence UX
 
@@ -108,9 +101,18 @@ Current primary/comparable documentation was reviewed for this product slice; no
 
 This research is architecture/UX evidence only. It does not make HackGPT's verification states equivalent to ZAP or DefectDojo states, and no third-party parser/runtime dependency was added.
 
+## Research applied to resource ownership
+
+The PR #6 cleanup follows current Python 3.13 standard-library ownership semantics rather than hiding warnings. No external code or dependency was copied.
+
+- **Python 3.13 `sqlite3` documentation** — https://docs.python.org/3.13/library/sqlite3.html . The `Connection` context manager commits or rolls back transactions but does not close the connection; Python 3.13 emits `ResourceWarning` when a connection is deleted without an explicit `close()`. Applied lesson: the tamper test now expresses transaction/resource ownership separately with `contextlib.closing`.
+- **Python 3.13 `http.client` documentation** — https://docs.python.org/3.13/library/http.client.html . `HTTPResponse` is a closeable response stream and `HTTPConnection.close()` closes the connection. Applied lesson: the bounded Ollama transport closes both the response and connection explicitly across successful and early rejected-status paths instead of relying on connection teardown or garbage collection to release the response object.
+
+The cleanup does not claim those docs prove every socket/resource path in the application is leak-free; the exact regression and warning-free hosted path are the bounded evidence for this slice.
+
 ## Preserved reliability, AI, privacy, and execution boundaries
 
-The original Workbench and later contributions remain intact: integrity-checked reports, explicit failed/skipped/inconclusive coverage, exact request-digest approval, finite typed adapters, candidate-only imported observations, bounded public-web scope, durable execution receipts, cancellation/deadline paths, owned synthetic proof with a denied control, pinned Semgrep runner, delayed-response UI transaction guards, selection-bound exports/comparisons, linked-report navigation, startup diagnostics/locking, exact-once adapter lifecycle execution, terminal-persistence-failure handling, conservative retesting, and trusted package-attestation verification.
+The original Workbench and later contributions remain intact: integrity-checked reports, explicit failed/skipped/inconclusive coverage, exact request-digest approval, finite typed adapters, candidate-only imported observations, bounded public-web scope, durable execution receipts, cancellation/deadline paths, owned synthetic proof with a denied control, pinned Semgrep runner, delayed-response UI transaction guards, selection-bound exports/comparisons, linked-report navigation, startup diagnostics/locking, exact-once adapter lifecycle execution, terminal-persistence-failure handling, conservative retesting, structured reviewer evidence, and trusted package-attestation verification.
 
 AI remains optional and provider-neutral at the evidence/action/report boundary. Ollama is the implemented reference adapter, not a mandatory gateway. Deterministic no-AI remains available. Localhost transport does not attest local inference; external processing requires explicit engagement-specific approval and minimized disclosed fields. Model output never expands scope, grants tool authority, or upgrades candidate evidence to verification.
 
@@ -118,11 +120,10 @@ Autonomous tests use owned synthetic fixtures, denied controls, and redacted can
 
 ## Remaining validation and product work
 
-1. **Validate this ledger successor before merging PR #5.** Re-read the exact new source head/base and fresh Workbench/Startup/package/Basic/Enterprise conclusions. If a workflow fails, inspect its completed job log and repair rather than merging around it. If all required source-head checks succeed, review the final PR diff and merge with the expected head SHA.
-2. **Verify post-merge main separately.** A merged feature needs current main Workbench/browser/startup/package/Basic/Enterprise evidence; historical PR green is not main green.
+1. **Validate the PR #6 ledger successor.** Re-read the exact source head/base and fresh Workbench/Startup/package/Basic/Enterprise conclusions produced after this PROGRESS update. If a workflow fails, inspect its completed job log and repair rather than merging around it. If all required source-head checks succeed, review the final three-code/test-file plus ledger diff and merge with the expected head SHA.
+2. **Verify post-merge main separately.** A merged cleanup needs current main Workbench/browser/startup/package/Basic/Enterprise evidence; historical PR green is not main green. Trusted package signing should remain independently verified on main rather than inferred from PR package smoke.
 3. **Keep release claims bounded.** Trusted package provenance/SBOM generation and verification are proven on main, but the portable source package is not a native signed installer and advisory security/compliance/performance jobs are not certifications or benchmarks.
-4. **Repair concrete reliability warnings without suppressing them.** Reproduce the observed SQLite/socket `ResourceWarning` diagnostics, fix ownership/cleanup if they are real resource leaks, and add regressions before claiming them resolved.
-5. **Continue Gate D/E product work.** Prefer concrete reviewer/action/model/startup value demonstrated by live code and tests over cosmetic additions or expanding into an unrelated security platform.
+4. **Continue Gate D/E product work.** Prefer concrete reviewer/action/model/startup value demonstrated by live code and tests over cosmetic additions or expanding into an unrelated security platform. New resource warnings, if any, should be reproduced and fixed at ownership boundaries rather than suppressed.
 
 ## Verification discipline
 
