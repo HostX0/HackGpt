@@ -241,6 +241,22 @@ def _optional_equal(previous: dict[str, Any], current: dict[str, Any], key: str)
     return left == right
 
 
+def _scope_identity_equal(
+    previous: dict[str, Any], current: dict[str, Any], key: str
+) -> bool | None:
+    """Compare scope identity only when both reports recorded a nonempty string."""
+    left = previous.get(key)
+    right = current.get(key)
+    if (
+        not isinstance(left, str)
+        or not left.strip()
+        or not isinstance(right, str)
+        or not right.strip()
+    ):
+        return None
+    return left == right
+
+
 def _index_findings(report: dict[str, Any], label: str) -> dict[str, dict[str, Any]]:
     """Index findings only when every comparison identity is explicit and unambiguous."""
     indexed: dict[str, dict[str, Any]] = {}
@@ -269,16 +285,19 @@ def compare_reports(
     for report in (previous, current):
         if (
             not isinstance(report.get("id"), str)
+            or not report["id"].strip()
             or not isinstance(report.get("findings", []), list)
             or not isinstance(report.get("checks", []), list)
         ):
             raise ValueError("invalid report shape")
         if report.get("status") == "running":
             raise ValueError("running reports cannot be compared")
+    if previous["id"] == current["id"]:
+        raise ValueError("reports must be distinct assessment runs")
 
-    same_target = previous.get("target") == current.get("target")
-    same_environment = previous.get("environment") == current.get("environment")
-    comparable_scope = same_target and same_environment
+    same_target = _scope_identity_equal(previous, current, "target")
+    same_environment = _scope_identity_equal(previous, current, "environment")
+    comparable_scope = same_target is True and same_environment is True
     old = _index_findings(previous, "previous")
     new = _index_findings(current, "current")
 
@@ -295,7 +314,9 @@ def compare_reports(
             reason = "Comparable check completed with matching execution identity, but the prior fingerprint was not observed. This is not an automatic fixed verdict."
         else:
             state = "not_retested"
-            if not comparable_scope:
+            if same_target is None or same_environment is None:
+                reason = "Target or environment identity was not recorded; comparable successful coverage was not established."
+            elif not comparable_scope:
                 reason = "Target or environment changed; comparable successful coverage was not established."
             elif coverage["status"] != "completed":
                 reason = coverage["reason"] or (
@@ -363,5 +384,5 @@ def compare_reports(
         "counts": counts,
         "items": items,
         "conclusion": "comparison_only",
-        "note": "Absent findings are never labeled fixed solely by absence. A not-reproduced state requires the same target/environment plus completed comparable execution identity and method. Remediation guidance is hash-linked for review, but whether it was applied remains unknown unless separate evidence establishes that fact.",
+        "note": "Absent findings are never labeled fixed solely by absence. A not-reproduced state requires the same recorded target/environment plus completed comparable execution identity and method. Remediation guidance is hash-linked for review, but whether it was applied remains unknown unless separate evidence establishes that fact.",
     }
