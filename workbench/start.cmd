@@ -1,6 +1,9 @@
 @echo off
 setlocal
 rem Run the existing workbench; never install packages or use the legacy installer.
+rem Modern Python install-manager launch aliases may automatically install a runtime
+rem when none is present. Disable that behavior for this dependency-free launcher.
+set "PYTHON_MANAGER_AUTOMATIC_INSTALL=0"
 rem Prefer the Python command already selected on PATH (venv/setup-python/current
 rem Windows installs). Keep the Python Launcher as a compatibility fallback.
 where python >nul 2>nul
