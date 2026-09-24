@@ -38,7 +38,9 @@ def step_script(text, name):
     return "\n".join(lines) + "\n"
 
 
-@unittest.skipUnless(WORKFLOW.is_file(), "portable package excludes repository workflows")
+@unittest.skipUnless(
+    WORKFLOW.is_file(), "portable package excludes repository workflows"
+)
 class ReleaseWorkflowTests(unittest.TestCase):
     def setUp(self):
         self.text = WORKFLOW.read_text(encoding="utf-8")
@@ -92,7 +94,13 @@ class ReleaseWorkflowTests(unittest.TestCase):
         self.assertIn("_release/sbom-attestation-verification.txt", upload)
 
     def replay(
-        self, *, package=BASENAME, missing=False, tampered=False, fail="", preflight=True
+        self,
+        *,
+        package=BASENAME,
+        missing=False,
+        tampered=False,
+        fail="",
+        preflight=True,
     ):
         if os.name == "nt" or not shutil.which("bash") or not shutil.which("sha256sum"):
             self.skipTest(
@@ -117,11 +125,7 @@ class ReleaseWorkflowTests(unittest.TestCase):
                 (root / name).write_text("{}", encoding="utf-8")
             executable = root / "gh"
             executable.write_text(
-                "#!"
-                + sys.executable
-                + "\n"
-                + textwrap.dedent(
-                    """\
+                "#!" + sys.executable + "\n" + textwrap.dedent("""\
                     import json, os, sys
                     from pathlib import Path
                     args = sys.argv[1:]
@@ -134,8 +138,7 @@ class ReleaseWorkflowTests(unittest.TestCase):
                         print("synthetic verifier rejection")
                         sys.exit(17)
                     print("synthetic command success; NOT cryptographic verification")
-                    """
-                ),
+                    """),
                 encoding="utf-8",
             )
             executable.chmod(0o700)
