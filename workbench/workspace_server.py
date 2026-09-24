@@ -66,13 +66,19 @@ class WorkbenchHandler(Handler):
         return value
 
     def do_GET(self):
-        if self.path == "/adapter.js":
+        reviewed_assets = {
+            "/adapter.js": ("adapter.js", "text/javascript; charset=utf-8"),
+            "/reviewer.js": ("reviewer.js", "text/javascript; charset=utf-8"),
+            "/reviewer.css": ("reviewer.css", "text/css; charset=utf-8"),
+        }
+        if self.path in reviewed_assets:
             if not self.guard(False):
                 return
+            filename, kind = reviewed_assets[self.path]
             return self.reply(
                 200,
-                (Path(__file__).parent / "static" / "adapter.js").read_bytes(),
-                "text/javascript; charset=utf-8",
+                (Path(__file__).parent / "static" / filename).read_bytes(),
+                kind,
             )
         if self.path == "/api/adapters":
             if not self.guard(True):
