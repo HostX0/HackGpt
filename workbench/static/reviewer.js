@@ -157,11 +157,78 @@
     if (output) output.textContent = coverageReviewText(report);
   }
 
+  function aiStatus(value) {
+    const status = recordedText(value);
+    return ['not_requested', 'running', 'completed', 'unavailable', 'cancelled'].includes(status) ? status : 'unknown';
+  }
+
+  function processingPolicy(value) {
+    const policy = recordedText(value);
+    return ['local_only', 'cloud_allowed'].includes(policy) ? policy : 'unknown';
+  }
+
+  function executionLocation(value) {
+    const location = recordedText(value);
+    return ['local_reported', 'cloud_reported'].includes(location) ? location : 'unknown';
+  }
+
+  function recordedCount(value) {
+    return Number.isInteger(value) && value >= 0 ? String(value) : 'not reported';
+  }
+
+  function aiReviewText(report) {
+    const ai = report && report.ai && typeof report.ai === 'object' && !Array.isArray(report.ai) ? report.ai : {};
+    const usage = ai.usage && typeof ai.usage === 'object' && !Array.isArray(ai.usage) ? ai.usage : {};
+    const status = aiStatus(ai.status);
+    const requested = status !== 'not_requested';
+    const provider = recordedText(ai.provider) || recordedText(usage.provider) || (requested ? 'not recorded' : 'not used');
+    const model = recordedText(ai.model) || recordedText(usage.model) || (requested ? 'not recorded' : 'not used');
+    const policy = processingPolicy(recordedText(ai.processing_policy) || usage.processing_policy);
+    const approvalValue = typeof ai.cloud_processing_approved === 'boolean' ? ai.cloud_processing_approved : usage.cloud_processing_approved;
+    const cloudApproval = typeof approvalValue === 'boolean' ? (approvalValue ? 'yes' : 'no') : 'not recorded';
+    const location = executionLocation(usage.execution_location);
+    const lines = [
+      'AI/model review',
+      'Status: ' + humanLabel(status).toUpperCase(),
+      'Provider: ' + provider,
+      'Model: ' + model,
+      'Processing policy: ' + humanLabel(policy),
+      'Cloud processing approved: ' + cloudApproval,
+      'Reported execution location: ' + humanLabel(location),
+      'Reviewer boundary: AI interpretation is not evidence and never changes verification, scope, tool authority or approval. Processing approval does not prove where inference actually ran; reported location is daemon metadata, not an egress attestation.',
+    ];
+    if (status === 'not_requested') {
+      lines.push('Inference: not requested; native checks remain deterministic and no alternate provider is substituted.');
+    } else {
+      lines.push(
+        'Inference attempts: ' + recordedCount(usage.inference_attempts),
+        'Responses received: ' + recordedCount(usage.responses_received),
+        'Prompt tokens reported: ' + recordedCount(usage.prompt_tokens_reported),
+        'Output tokens reported: ' + recordedCount(usage.output_tokens_reported),
+        'Billing cost: not estimated by the workbench.'
+      );
+    }
+    const errorType = recordedText(ai.error_type);
+    if (errorType) lines.push('Recorded error type: ' + errorType);
+    const disclosure = recordedText(ai.data_disclosure);
+    if (disclosure) lines.push('Recorded data disclosure: ' + disclosure);
+    lines.push('', 'Raw AI record (authoritative):', JSON.stringify(ai, null, 2));
+    return lines.join('\n');
+  }
+
+  function enhanceAiReview(report) {
+    if (typeof document.getElementById !== 'function') return;
+    const output = document.getElementById('ai-content');
+    if (output) output.textContent = aiReviewText(report);
+  }
+
   globalThis.reviewerEvidenceFacts = reviewerEvidenceFacts;
   globalThis.reviewerCoverageText = coverageReviewText;
+  globalThis.reviewerAiText = aiReviewText;
   globalThis.render = function renderWithReviewerEvidence(report) {
     baseRender(report);
     enhanceReviewerEvidence(report);
     enhanceCoverageReview(report);
+    enhanceAiReview(report);
   };
 })();
