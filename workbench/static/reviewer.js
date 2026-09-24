@@ -89,9 +89,79 @@
     });
   }
 
+  function checkStatus(value) {
+    const status = recordedText(value);
+    return ['completed', 'inconclusive', 'skipped', 'error'].includes(status) ? status : 'unknown';
+  }
+
+  function coverageDetail(check) {
+    const item = check && typeof check === 'object' && !Array.isArray(check) ? check : {};
+    const details = [];
+    const result = recordedText(item.result);
+    const reason = recordedText(item.reason);
+    if (result) details.push('result ' + humanLabel(result));
+    if (reason) details.push('reason ' + reason);
+    const coverage = item.coverage && typeof item.coverage === 'object' && !Array.isArray(item.coverage) ? item.coverage : null;
+    if (coverage) {
+      const tested = coverage.objects_tested;
+      const total = coverage.objects_total;
+      const validTested = Number.isInteger(tested) && tested >= 0;
+      const validTotal = Number.isInteger(total) && total >= 0;
+      if (validTested && validTotal) details.push('coverage ' + tested + '/' + total);
+      else if (validTested) details.push('objects tested ' + tested);
+      else if (validTotal) details.push('objects total ' + total);
+      if (Array.isArray(coverage.notes)) {
+        const notes = coverage.notes.map(recordedText).filter(Boolean);
+        if (notes.length) details.push('notes ' + notes.join(' | '));
+      }
+    }
+    return details;
+  }
+
+  function coverageReviewText(report) {
+    const checks = report && Array.isArray(report.checks) ? report.checks : [];
+    const limitations = report && Array.isArray(report.limitations) ? report.limitations : [];
+    const counts = {completed: 0, inconclusive: 0, skipped: 0, error: 0, unknown: 0};
+    checks.forEach((check) => { counts[checkStatus(check && check.status)] += 1; });
+    const lines = [
+      'Coverage review',
+      checks.length + ' checks · ' + counts.completed + ' completed · ' + counts.inconclusive + ' inconclusive · ' + counts.skipped + ' skipped · ' + counts.error + ' error · ' + counts.unknown + ' unknown',
+      'Reviewer boundary: completed means the check executed; it does not mean the target is safe. Skipped, inconclusive, error and unknown states remain visible coverage gaps.',
+    ];
+    if (checks.length) {
+      lines.push('', 'Checks:');
+      checks.forEach((check, index) => {
+        const item = check && typeof check === 'object' && !Array.isArray(check) ? check : {};
+        const tool = recordedText(item.tool) || 'not recorded';
+        const status = checkStatus(item.status);
+        const details = coverageDetail(item);
+        lines.push((index + 1) + '. ' + tool + ' — ' + status.toUpperCase() + (details.length ? ' · ' + details.join(' · ') : ''));
+      });
+    } else {
+      lines.push('', 'No checks are recorded for this report.');
+    }
+    if (limitations.length) {
+      lines.push('', 'Recorded limitations:');
+      limitations.forEach((limitation) => {
+        const text = recordedText(limitation);
+        if (text) lines.push('- ' + text);
+      });
+    }
+    lines.push('', 'Raw coverage record (authoritative):', JSON.stringify({checks, limitations}, null, 2));
+    return lines.join('\n');
+  }
+
+  function enhanceCoverageReview(report) {
+    if (typeof document.getElementById !== 'function') return;
+    const output = document.getElementById('coverage-content');
+    if (output) output.textContent = coverageReviewText(report);
+  }
+
   globalThis.reviewerEvidenceFacts = reviewerEvidenceFacts;
+  globalThis.reviewerCoverageText = coverageReviewText;
   globalThis.render = function renderWithReviewerEvidence(report) {
     baseRender(report);
     enhanceReviewerEvidence(report);
+    enhanceCoverageReview(report);
   };
 })();
