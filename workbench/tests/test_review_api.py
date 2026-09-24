@@ -98,9 +98,7 @@ class ReviewApiTests(unittest.TestCase):
 
     def test_compare_endpoint_rejects_self_comparison(self):
         current = self.make_report({})
-        status, _, raw = self.call(
-            f"/api/runs/{current['id']}/compare/{current['id']}"
-        )
+        status, _, raw = self.call(f"/api/runs/{current['id']}/compare/{current['id']}")
         self.assertEqual(status, 409)
         error = json.loads(raw)
         self.assertIn("distinct assessment runs", error["error"])
