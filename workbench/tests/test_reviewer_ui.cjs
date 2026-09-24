@@ -87,6 +87,43 @@ function reviewerHarness() {
   return {context, cards: () => cards};
 }
 
+function coverageHarness() {
+  const coverage = reviewerNode('pre');
+  let cards = [];
+  const document = {
+    createElement(tag) { return reviewerNode(tag); },
+    getElementById(id) { return id === 'coverage-content' ? coverage : null; },
+    querySelectorAll(selector) { return selector === '#findings .finding' ? cards : []; },
+  };
+  const context = vm.createContext({document, console});
+  context.render = (value) => {
+    cards = (value.findings || []).map((finding) => {
+      const card = reviewerNode('details');
+      card.className = 'finding';
+      const raw = reviewerNode('pre');
+      raw.textContent = JSON.stringify(finding.evidence, null, 2);
+      card.append(raw);
+      return card;
+    });
+    coverage.textContent = JSON.stringify({checks: value.checks || [], limitations: value.limitations || []}, null, 2);
+  };
+  vm.runInContext(reviewerScript, context);
+  return {context, coverage};
+}
+
+function coverageReport() {
+  return {
+    findings: [],
+    checks: [
+      {tool: 'http_baseline', status: 'completed', result: 'observed_only'},
+      {tool: 'native-web-headers', status: 'inconclusive', reason: 'Synthetic response was not comparable', coverage: {objects_tested: 2, objects_total: 3, notes: ['one route excluded']}},
+      {tool: 'controlled_verification', status: 'skipped', reason: 'No approved external verification adapter'},
+      {tool: 'scanner-x', status: 'error', reason: 'Synthetic parser failure'},
+    ],
+    limitations: ['Authentication coverage was not executed.', 'No findings is not a security guarantee.'],
+  };
+}
+
 function factMap(context, finding) {
   return Object.fromEntries(JSON.parse(JSON.stringify(context.reviewerEvidenceFacts(finding))));
 }
@@ -209,5 +246,46 @@ test('finding evidence drill-down treats recorded values as text', () => {
   h.context.render({findings: [{source: malicious, rule: 'safe/rule', verification: 'candidate', evidence: {}, evidence_sha256: 'd'.repeat(64)}]});
   const panel = h.cards()[0].querySelector('.reviewer-evidence');
   assert.match(JSON.stringify(panel), /<img src=x onerror=alert\(1\)>/);
+  assert.doesNotMatch(reviewerScript, /\.innerHTML\s*=/);
+});
+
+test('coverage review keeps every non-success state visible', () => {
+  const h = coverageHarness();
+  h.context.render(coverageReport());
+  const text = h.coverage.textContent;
+  assert.match(text, /4 checks · 1 completed · 1 inconclusive · 1 skipped · 1 error · 0 unknown/);
+  assert.match(text, /http_baseline — COMPLETED · result observed only/);
+  assert.match(text, /native-web-headers — INCONCLUSIVE/);
+  assert.match(text, /coverage 2\/3/);
+  assert.match(text, /notes one route excluded/);
+  assert.match(text, /controlled_verification — SKIPPED/);
+  assert.match(text, /scanner-x — ERROR/);
+  assert.match(text, /completed means the check executed; it does not mean the target is safe/);
+});
+
+test('coverage review fails closed for missing or unknown status', () => {
+  const h = coverageHarness();
+  const text = h.context.reviewerCoverageText({checks: [{tool: 'alpha'}, {tool: 'beta', status: 'mystery'}], limitations: []});
+  assert.match(text, /2 checks · 0 completed · 0 inconclusive · 0 skipped · 0 error · 2 unknown/);
+  assert.match(text, /alpha — UNKNOWN/);
+  assert.match(text, /beta — UNKNOWN/);
+  assert.doesNotMatch(text, /alpha — COMPLETED/);
+});
+
+test('coverage review preserves the raw coverage record verbatim at the end', () => {
+  const h = coverageHarness();
+  const value = coverageReport();
+  const expected = JSON.stringify({checks: value.checks, limitations: value.limitations}, null, 2);
+  const text = h.context.reviewerCoverageText(value);
+  assert.ok(text.endsWith(expected));
+  assert.match(text, /Recorded limitations:/);
+  assert.match(text, /Authentication coverage was not executed\./);
+});
+
+test('coverage review renders recorded strings as text and never uses innerHTML', () => {
+  const h = coverageHarness();
+  const malicious = '<img src=x onerror=alert(1)>';
+  h.context.render({findings: [], checks: [{tool: malicious, status: 'skipped', reason: malicious}], limitations: [malicious]});
+  assert.match(h.coverage.textContent, /<img src=x onerror=alert\(1\)>/);
   assert.doesNotMatch(reviewerScript, /\.innerHTML\s*=/);
 });
