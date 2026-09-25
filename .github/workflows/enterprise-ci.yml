@@ -7,16 +7,17 @@ on:
   pull_request:
     branches: [ main, develop ]
   schedule:
-    - cron: '0 2 * * 1' # Weekly security scan
+    - cron: '0 2 * * 1'
 
 env:
   PYTHON_VERSION: '3.9'
+  QUALITY_PYTHON_VERSION: '3.11'
   NODE_VERSION: '18'
+  BLACK_VERSION: '26.5.1'
 
 jobs:
-  # Security Scanning
   security-scan:
-    name: 🔒 Security Analysis
+    name: 🔒 Security Advisory Reports
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v4
@@ -28,13 +29,17 @@ jobs:
 
     - name: Install security tools
       run: |
-        pip install bandit semgrep
+        pip install bandit safety semgrep
 
-    - name: Run Bandit Security Scan
+    - name: Generate Bandit report
       run: |
         bandit -r . -f json -o bandit-report.json || true
 
-    - name: Run Semgrep Scan
+    - name: Generate Safety report
+      run: |
+        safety check --json --output safety-report.json || true
+
+    - name: Generate Semgrep report
       run: |
         semgrep --config=auto --json --output=semgrep-report.json . || true
 
@@ -44,9 +49,9 @@ jobs:
         name: security-reports
         path: |
           bandit-report.json
+          safety-report.json
           semgrep-report.json
 
-  # Code Quality
   code-quality:
     name: 📊 Code Quality Analysis
     runs-on: ubuntu-latest
@@ -56,15 +61,65 @@ jobs:
     - name: Set up Python
       uses: actions/setup-python@v5
       with:
-        python-version: ${{ env.PYTHON_VERSION }}
+        python-version: ${{ env.QUALITY_PYTHON_VERSION }}
 
     - name: Install quality tools
+      shell: bash
       run: |
-        pip install black flake8 mypy pylint pytest-cov
-        pip install -r requirements.txt
+        set -euo pipefail
+        mkdir -p .ci/black
+        python --version 2>&1 | tee .ci/black/python-version.txt
+        pip install "black==${BLACK_VERSION}" flake8 mypy pylint
+        black --version | tee .ci/black/black-version.txt
 
-    - name: Run Black formatter check
-      run: black --check --diff .
+    - name: Run Black formatter check and capture diagnostics
+      id: black_check
+      shell: bash
+      run: |
+        set +e
+        mkdir -p .ci/black
+        black --check --diff --no-color . 2>&1 | tee .ci/black/black.txt
+        status=${PIPESTATUS[0]}
+        printf '%s\n' "$status" > .ci/black/exit-code.txt
+        printf 'status=%s\n' "$status" >> "$GITHUB_OUTPUT"
+        exit 0
+
+    - name: Upload Black diagnostics
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: black-diagnostics
+        path: .ci/black/
+        if-no-files-found: error
+
+    - name: Build Black-formatted repair candidate
+      if: steps.black_check.outputs.status != '0'
+      shell: bash
+      run: |
+        set -euo pipefail
+        git ls-files -z '*.py' | xargs -0 black --no-color
+        git diff --name-only --diff-filter=M -- '*.py' | LC_ALL=C sort > .ci/black/formatted-files.txt
+        test -s .ci/black/formatted-files.txt
+        tar -czf .ci/black/formatted-python.tar.gz -T .ci/black/formatted-files.txt
+
+    - name: Upload Black-formatted repair candidate
+      if: steps.black_check.outputs.status != '0'
+      uses: actions/upload-artifact@v4
+      with:
+        name: black-formatted-candidate
+        path: |
+          .ci/black/formatted-files.txt
+          .ci/black/formatted-python.tar.gz
+        if-no-files-found: error
+
+    - name: Enforce Black formatter check
+      shell: bash
+      run: |
+        status="$(cat .ci/black/exit-code.txt)"
+        if [ "$status" -ne 0 ]; then
+          echo "Black formatting failed; download the black-diagnostics and black-formatted-candidate artifacts for the exact diff and formatted files."
+          exit "$status"
+        fi
 
     - name: Run Flake8 linting
       run: flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
@@ -81,13 +136,25 @@ jobs:
         name: quality-reports
         path: pylint-report.json
 
-  # Testing
   test-suite:
-    name: 🧪 Test Suite
+    name: 🧪 Test Suite (${{ matrix.python-version }}, ${{ matrix.dependency-scope }})
     runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix:
-        python-version: ['3.8', '3.9', '3.10', '3.11']
+        include:
+          - python-version: '3.8'
+            requirements-file: requirements-ci-py38.txt
+            dependency-scope: legacy-core
+          - python-version: '3.9'
+            requirements-file: requirements.txt
+            dependency-scope: full
+          - python-version: '3.10'
+            requirements-file: requirements.txt
+            dependency-scope: full
+          - python-version: '3.11'
+            requirements-file: requirements.txt
+            dependency-scope: full
     steps:
     - uses: actions/checkout@v4
 
@@ -96,22 +163,23 @@ jobs:
       with:
         python-version: ${{ matrix.python-version }}
 
-    - name: Install dependencies
+    - name: Install native build prerequisites
       run: |
-        pip install -r requirements-dev.txt
+        sudo apt-get update
+        sudo apt-get install -y nmap nikto gobuster libldap2-dev libsasl2-dev portaudio19-dev python3-dev
+
+    - name: Install dependencies (${{ matrix.dependency-scope }})
+      run: |
+        pip install -r "${{ matrix.requirements-file }}"
+        pip install pytest pytest-cov pytest-xdist
 
     - name: Run unit tests
       run: |
-        pytest tests/ -v --cov=. --cov-report=xml --tb=short
+        pytest tests/unit/ --cov=. --cov-report=xml --cov-report=html -v
 
-    - name: Run installation tests
+    - name: Run integration tests
       run: |
-        python test_installation.py
-
-    - name: Run import tests
-      run: |
-        python -c "from hackgpt import HackGPT, AIEngine, ToolManager; print('Import successful')"
-        python -c "import hackgpt_v2; print('hackgpt_v2 import successful')"
+        pytest tests/integration/ -v
 
     - name: Upload coverage to Codecov
       uses: codecov/codecov-action@v4
@@ -120,9 +188,8 @@ jobs:
         flags: unittests
         name: codecov-umbrella
 
-  # Docker Build
   docker-build:
-    name: 🐳 Docker Build & Push
+    name: 🐳 Docker Build (no publication)
     runs-on: ubuntu-latest
     needs: [security-scan, code-quality, test-suite]
     steps:
@@ -130,13 +197,6 @@ jobs:
 
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@v3
-
-    - name: Login to DockerHub
-      uses: docker/login-action@v3
-      with:
-        username: ${{ secrets.DOCKERHUB_USERNAME }}
-        password: ${{ secrets.DOCKERHUB_TOKEN }}
-      if: github.event_name != 'pull_request'
 
     - name: Extract metadata
       id: meta
@@ -149,19 +209,18 @@ jobs:
           type=semver,pattern={{version}}
           type=semver,pattern={{major}}.{{minor}}
 
-    - name: Build and push Docker image
+    - name: Build Docker image without publishing
       uses: docker/build-push-action@v6
       with:
         context: .
-        push: ${{ github.event_name != 'pull_request' }}
+        push: false
         tags: ${{ steps.meta.outputs.tags }}
         labels: ${{ steps.meta.outputs.labels }}
         cache-from: type=gha
         cache-to: type=gha,mode=max
 
-  # Performance Testing
   performance-test:
-    name: ⚡ Performance Testing
+    name: ⚡ Performance Coverage Gap (non-validating)
     runs-on: ubuntu-latest
     needs: [docker-build]
     steps:
@@ -176,51 +235,28 @@ jobs:
       run: |
         pip install locust memory-profiler
 
-    - name: Run performance tests
+    - name: Record unimplemented performance validation
       run: |
-        # Add performance test commands here
-        echo "Performance testing would run here"
+        echo "Performance testing is not implemented in this legacy workflow."
+        echo "This job records a coverage gap and must not be treated as a passing benchmark."
 
-    - name: Generate performance report
-      run: |
-        echo "Performance report generation would run here"
-
-  # Enterprise Compliance Check
   compliance-check:
-    name: 📋 Compliance Validation
+    name: 📋 Compliance Coverage Gap (non-validating)
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v4
 
-    - name: OWASP Compliance Check
+    - name: Record unimplemented compliance validation
       run: |
-        echo "OWASP compliance validation"
-        # Add OWASP compliance checks
+        echo "Automated OWASP/NIST compliance validation is not implemented."
+        echo "This job is informational and must not be treated as certification."
 
-    - name: NIST Framework Check
-      run: |
-        echo "NIST framework compliance"
-        # Add NIST compliance checks
-
-    - name: Generate compliance report
-      run: |
-        echo "Compliance report generation"
-
-  # Notification
   notify:
     name: 📢 Notifications
     runs-on: ubuntu-latest
     needs: [security-scan, code-quality, test-suite, docker-build, performance-test, compliance-check]
     if: always()
     steps:
-    - name: Notify success
-      if: ${{ needs.security-scan.result == 'success' && needs.code-quality.result == 'success' && needs.test-suite.result == 'success' }}
+    - name: Summarize validation state
       run: |
-        echo "✅ HackGPT Enterprise CI/CD completed successfully!"
-        echo "🚀 Ready for enterprise deployment"
-
-    - name: Notify failure
-      if: ${{ failure() }}
-      run: |
-        echo "❌ HackGPT Enterprise CI/CD failed"
-        echo "🔍 Check logs for issues"
+        echo "HackGPT CI completed. Review every required job result and workbench/PROGRESS.md."

@@ -7,6 +7,11 @@ on:
   pull_request:
     types: [opened]
 
+permissions:
+  contents: read
+  issues: write
+  pull-requests: write
+
 jobs:
   welcome:
     name: 👋 Welcome Message
@@ -20,7 +25,8 @@ jobs:
           const welcomeMessage = `
           👋 **Welcome to HackGPT Enterprise!**
 
-          Thank you for opening your first issue! We're excited to have you as part of our cybersecurity community.
+          Thank you for opening an issue. Please keep reproduction details free of
+          credentials, private customer data, and unapproved target information.
 
           ## 🚀 What happens next?
           - Our team will review your issue within 24-48 hours
@@ -41,23 +47,23 @@ jobs:
 
           Thank you for helping make cybersecurity more accessible through AI! 🛡️
           `;
-
-          github.rest.issues.createComment({
+          await github.rest.issues.createComment({
             issue_number: context.issue.number,
             owner: context.repo.owner,
             repo: context.repo.repo,
             body: welcomeMessage
           });
 
-    - name: Welcome new contributor
+    - name: Welcome pull-request contributor
       if: github.event_name == 'pull_request'
       uses: actions/github-script@v7
       with:
         script: |
           const welcomeMessage = `
-          🎉 **Thank you for your first contribution to HackGPT Enterprise!**
+          🎉 **Thank you for contributing to HackGPT Enterprise!**
 
-          We're thrilled to have you contributing to the future of AI-powered cybersecurity!
+          Automated checks are review evidence, not a guarantee of acceptance or
+          security completeness. Please keep secrets, credentials, and customer data out of the PR.
 
           ## 📋 Review Process
           - Our team will review your PR within 24-48 hours
@@ -74,119 +80,68 @@ jobs:
           - Join [WhatsApp Business Channel](https://whatsapp.com/channel/0029Vaoa1GfKLaHlL0Kc8k1q)
           - Email: yashabalam707@gmail.com
 
-          ## 🌟 Ways to Get More Involved
-          - 🐛 Help with bug fixes
-          - ✨ Contribute new features
-          - 📚 Improve documentation
-          - 🔒 Report security issues
-          - 💰 [Sponsor the project](DONATE.md)
-
           **Welcome to the HackGPT Enterprise family! 🚀**
 
           *Made with ❤️ by [Yashab Alam](https://github.com/yashab-cyber)*
           `;
-
-          github.rest.issues.createComment({
+          await github.rest.issues.createComment({
             issue_number: context.issue.number,
             owner: context.repo.owner,
             repo: context.repo.repo,
             body: welcomeMessage
           });
 
-  add-labels:
-    name: 🏷️ Auto-label Issues
+  label-activity:
+    name: 🏷️ Label Activity
     runs-on: ubuntu-latest
-    if: github.event_name == 'issues'
     steps:
-    - name: Add labels to new issues
+    - name: Apply existing repository labels only
       uses: actions/github-script@v7
       with:
         script: |
-          const title = context.payload.issue.title.toLowerCase();
-          const body = (context.payload.issue.body || '').toLowerCase();
-          const labels = [];
+          const isIssue = context.eventName === 'issues';
+          const subject = isIssue ? context.payload.issue : context.payload.pull_request;
+          const title = (subject.title || '').toLowerCase();
+          const body = (subject.body || '').toLowerCase();
+          const desired = isIssue ? ['needs-triage'] : ['needs-review'];
 
-          // Auto-assign labels based on content
-          if (title.includes('bug') || body.includes('error') || body.includes('exception')) {
-            labels.push('bug');
+          if (title.includes('bug') || title.includes('fix') || body.includes('error')) {
+            desired.push(isIssue ? 'bug' : 'bug-fix');
+          }
+          if (title.includes('feature') || title.includes('feat') || body.includes('feature request')) {
+            desired.push('enhancement');
+          }
+          if (title.includes('doc') || body.includes('documentation')) {
+            desired.push('documentation');
+          }
+          if (title.includes('security') || body.includes('vulnerability')) {
+            desired.push('security');
           }
 
-          if (title.includes('feature') || title.includes('enhancement') || body.includes('feature request')) {
-            labels.push('enhancement');
-          }
+          const repoLabels = await github.paginate(
+            github.rest.issues.listLabelsForRepo,
+            { owner: context.repo.owner, repo: context.repo.repo, per_page: 100 }
+          );
+          const existing = new Set(repoLabels.map(label => label.name));
+          const labels = [...new Set(desired)].filter(label => existing.has(label));
 
-          if (title.includes('security') || body.includes('vulnerability') || body.includes('security')) {
-            labels.push('security');
-          }
-
-          if (title.includes('doc') || title.includes('documentation') || body.includes('documentation')) {
-            labels.push('documentation');
-          }
-
-          if (title.includes('sponsorship') || title.includes('investment') || title.includes('partnership')) {
-            labels.push('partnership');
-          }
-
-          // Always add needs-triage for new issues
-          labels.push('needs-triage');
-
-          if (labels.length > 0) {
-            github.rest.issues.addLabels({
+          if (labels.length) {
+            await github.rest.issues.addLabels({
               issue_number: context.issue.number,
               owner: context.repo.owner,
               repo: context.repo.repo,
-              labels: labels
+              labels
             });
           }
 
-  assign-reviewers:
-    name: 👥 Assign Reviewers
-    runs-on: ubuntu-latest
-    if: github.event_name == 'pull_request'
-    steps:
-    - name: Auto-assign reviewers
-      uses: actions/github-script@v7
-      with:
-        script: |
-          // Assign main maintainer as reviewer
-          github.rest.pulls.requestReviewers({
-            owner: context.repo.owner,
-            repo: context.repo.repo,
-            pull_number: context.issue.number,
-            reviewers: ['yashab-cyber']
-          });
-
-          // Add appropriate labels
-          const title = context.payload.pull_request.title.toLowerCase();
-          const labels = ['needs-review'];
-
-          if (title.includes('fix') || title.includes('bug')) {
-            labels.push('bug-fix');
-          }
-
-          if (title.includes('feat') || title.includes('feature')) {
-            labels.push('enhancement');
-          }
-
-          if (title.includes('doc')) {
-            labels.push('documentation');
-          }
-
-          github.rest.issues.addLabels({
-            issue_number: context.issue.number,
-            owner: context.repo.owner,
-            repo: context.repo.repo,
-            labels: labels
-          });
-
   notify-team:
-    name: 📢 Notify Team
+    name: 📢 Repository Activity
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
-    - name: Send notification
+    - name: Record activity
       run: |
-        echo "New activity in HackGPT Enterprise repository:"
-        echo "Event: ${{ github.event_name }}"
+        echo "Repository event: ${{ github.event_name }}"
         echo "Actor: ${{ github.actor }}"
         echo "Repository: ${{ github.repository }}"
-        # Add webhook notification to team channels here
