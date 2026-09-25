@@ -17,6 +17,41 @@ This document logs the release updates, bug fixes, and feature integrations for 
 
 ---
 
+## 🚀 Version 2026.09.26
+
+*Release Date: September 26, 2026*
+
+We are proud to present **HackGPT Enterprise Version 2026.09.26**! This release marks a significant milestone with the integration of the **Evidence Workbench**, cross-platform reliability hardening, reviewable AI and adapter execution lifecycles, and hardened CI test matrices contributed by **Abdulazeez A. Noaman** ([@HostX0](https://github.com/HostX0)) via Pull Request [#21](https://github.com/yashab-cyber/HackGpt/pull/21).
+
+### 🌟 What's New in Version 2026.09.26
+
+#### 1. Evidence Workbench & Local Assessment Studio (`workbench/`)
+* **Local Evidence-First Assessment Studio**: Full-featured local studio and workbench server for reviewable, privacy-preserving security assessments.
+* **Privacy-Minimizing Scanner Parsers & Adapters**: Deterministic output parsers for Semgrep, Nuclei, Trivy, and repository metadata scanners that sanitize raw targets, redact credentials, and drop sensitive row data.
+* **Bounded Access-Control Matrix**: Strict access-control evaluator ensuring safe testing boundaries and scope enforcement.
+* **Coverage-Aware Retest Engine**: Automated verification linking remediation advice directly to previous test evidence and diffs without falsifying test results.
+* **Evidence Safety Bundles**: Secure evidence export and review bundles with cryptographic integrity checks.
+
+#### 2. Reviewable Adapter Lifecycle & Execution Receipts
+* **Durable Adapter Approval & Planning Lifecycle**: Pre-execution planning, explicit operator approval gates, and durable execution receipts.
+* **Cooperative Cancellation & Wall-Clock Deadlines**: Cancellable network transports, shared deadlines, and interrupted run recovery with running checkpoints.
+* **Bounded Native Execution Registry**: Closed execution registry with isolated environment runners and resource cleanup.
+
+#### 3. Cross-Platform Reliability & Launcher Hardening
+* **Multi-Platform Launchers**: Native launch scripts for Linux, macOS (`workbench/start.command`), and Windows (`workbench/start.cmd`, `workbench/start.py`).
+* **Container vs Host Installer Context**: Hardened `install.sh` supporting `HACKGPT_INSTALL_CONTEXT` (`host` vs `container`) to prevent side effects during Docker builds.
+* **Backward-Compatible Legacy Entrypoints**: Retained `hackgpt.py` and `hackgpt_v2.py` alongside `advance_hackgpt.py` to preserve legacy tooling and automation workflows.
+
+#### 4. Hardened CI/CD & Automated Testing Matrix
+* **Multi-Tier CI Matrix**: Added bounded Python 3.8 CI profile (`requirements-ci-py38.txt`) for legacy core contracts alongside full Python 3.9-3.11 test matrices.
+* **Fail-Closed Black Code Quality Pipeline**: Uploads exact format diffs and automated candidate repair archives upon style divergence.
+* **Expanded Verification**: 90+ core unit tests, comprehensive contract suites (`test_docker_contract.py`, `test_enterprise_ci_contract.py`, `test_requirements_compat.py`), and workbench E2E tests.
+
+#### 5. Community & Contributor Recognition
+* **Special Thanks**: Full credit and gratitude to **Abdulazeez A. Noaman** ([@HostX0](https://github.com/HostX0)) for designing, implementing, and contributing Pull Request [#21](https://github.com/yashab-cyber/HackGpt/pull/21).
+
+---
+
 ## 🚀 Version 2026.09.19
 
 *Release Date: September 19, 2026*

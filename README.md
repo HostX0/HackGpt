@@ -14,7 +14,7 @@
   <p>
     <img src="https://img.shields.io/badge/Architecture-Microservices-red.svg" alt="Microservices">
     <img src="https://img.shields.io/badge/Cloud-Docker%20%7C%20Kubernetes-lightblue.svg" alt="Cloud Native">
-    <img src="https://img.shields.io/badge/Version-2026.09.19-success.svg" alt="Version 2026.09.19">
+    <img src="https://img.shields.io/badge/Version-2026.09.26-success.svg" alt="Version 2026.09.26">
     <img src="https://img.shields.io/badge/Status-Production%20Ready-brightgreen.svg" alt="Production Ready">
     <a href="https://discord.gg/eXPjM3Hxwb"><img src="https://img.shields.io/badge/Discord-Join%20Server-5865F2?style=flat&logo=discord&logoColor=white" alt="Discord Server"></a>
   </p>

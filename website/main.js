@@ -297,7 +297,7 @@ def ping_host(user_supplied_ip):
         }
 
         if (lowerCmd === 'about') {
-            writeLine('<strong>HackGPT Enterprise Framework v2026.09.19</strong>');
+            writeLine('<strong>HackGPT Enterprise Framework v2026.09.26</strong>');
             writeLine('Created by Yashab Alam. HackGPT is an AI-driven penetration testing platform combining multi-provider LLMs, safe exploitation engines, and machine learning zero-day log clustering.');
             return;
         }
@@ -344,7 +344,7 @@ def ping_host(user_supplied_ip):
         }
 
         if (lowerCmd === 'version') {
-            writeLine('HackGPT Enterprise v2026.09.19 (Python 3.14 / Node 18 runtime)', 't-green');
+            writeLine('HackGPT Enterprise v2026.09.26 (Python 3.14 / Node 18 runtime)', 't-green');
             return;
         }
 

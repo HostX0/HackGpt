@@ -46,7 +46,9 @@ Thank you to all the amazing people who have contributed to making HackGPT Enter
 ### 🔧 Major Contributors
 *Developers who have made significant code contributions to the project.*
 
-*📝 Your name could be here! Check out [CONTRIBUTING.md](.github/CONTRIBUTING.md) to get started.*
+- **Abdulazeez A. Noaman** - [@HostX0](https://github.com/HostX0)
+  - 💡 **Contributions**: Author of PR [#21](https://github.com/yashab-cyber/HackGpt/pull/21) — introduced the Evidence Workbench, deterministic adapter lifecycle & execution receipts (Semgrep, Nuclei, Trivy), cross-platform reliability contracts, and hardened CI test matrices.
+
 
 ### 🐛 Bug Hunters
 *Contributors who have helped identify and fix bugs.*
