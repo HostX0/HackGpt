@@ -286,15 +286,72 @@ test('unconfirmed active run stays locked until explicit status refresh succeeds
   assert.equal(h.requests.filter((r) => r.body !== undefined).length, 0);
 });
 
+test('accepted stop request stays pending across running renders and suppresses duplicates', async () => {
+  const id = 'a'.repeat(32); let stops = 0;
+  const h = harness(async (path) => {
+    if (path.endsWith('/cancel')) { stops += 1; return {note: 'Cancellation requested'}; }
+    return {runs: []};
+  });
+  const active = {...report(id), status: 'running', integrity: null};
+  h.run(`selectedRun='${id}'; render(${JSON.stringify(active)})`);
+  await h.trigger('cancel');
+  assert.equal(stops, 1);
+  assert.equal(h.nodes.cancel.disabled, true);
+  assert.match(h.nodes.notice.textContent, /Stop requested; waiting for terminal confirmation/);
+  await h.trigger('cancel');
+  assert.equal(stops, 1);
+  h.run(`render(${JSON.stringify(active)})`);
+  assert.equal(h.nodes.cancel.disabled, true);
+  assert.match(h.nodes.notice.textContent, /Stop requested; waiting for terminal confirmation/);
+});
+
+test('terminal report resolves a pending stop without inventing a cancelled outcome', async () => {
+  const id = 'a'.repeat(32);
+  const h = harness(async () => ({note: 'Cancellation requested'}));
+  h.run(`selectedRun='${id}'; render(${JSON.stringify({...report(id), status: 'running', integrity: null})})`);
+  await h.trigger('cancel');
+  h.run(`render(${JSON.stringify(report(id))})`);
+  assert.equal(h.nodes.cancel.disabled, true);
+  assert.match(h.nodes.notice.textContent, /Stop request resolved/);
+  assert.match(h.nodes.notice.textContent, /completed/i);
+  assert.doesNotMatch(h.nodes.notice.textContent, /cancelled/i);
+});
+
+test('failed stop request clears pending state and restores Stop for the same running run', async () => {
+  const id = 'a'.repeat(32);
+  const h = harness(async () => ({__error: {error: 'Cancellation service unavailable'}}));
+  h.run(`selectedRun='${id}'; render(${JSON.stringify({...report(id), status: 'running', integrity: null})})`);
+  await h.trigger('cancel');
+  assert.equal(h.nodes.cancel.disabled, false);
+  assert.match(h.nodes.notice.textContent, /Stop is not confirmed/);
+  assert.equal(h.run('stopRequestedRun'), null);
+});
+
+test('accepted stop remains non-repeatable when a status poll becomes unconfirmed', async () => {
+  const id = 'a'.repeat(32); let stops = 0;
+  const h = harness(async (path) => {
+    if (path.endsWith('/cancel')) { stops += 1; return {note: 'Cancellation requested'}; }
+    throw new Error('Status unavailable');
+  });
+  h.run(`selectedRun='${id}'; render(${JSON.stringify({...report(id), status: 'running', integrity: null})})`);
+  await h.trigger('cancel');
+  await h.run(`poll('${id}')`);
+  assert.equal(h.nodes.cancel.disabled, true);
+  assert.match(h.nodes.notice.textContent, /Stop was requested; terminal state is unconfirmed/);
+  await h.trigger('cancel');
+  assert.equal(stops, 1);
+});
+
 
 test('late stop response cannot overwrite the next selected report', async () => {
-  const gate = deferred(); const id = 'a'.repeat(32); const h = harness(async () => gate.promise);
-  h.run(`selectedRun='${id}'; running=true`);
+  const gate = deferred(); const id = 'a'.repeat(32); const nextId = 'b'.repeat(32); const h = harness(async () => gate.promise);
+  h.run(`selectedRun='${id}'; render(${JSON.stringify({...report(id), status: 'running', integrity: null})})`);
   const pending = h.trigger('cancel');
-  h.run(`selectedRun='${'b'.repeat(32)}'; running=false`);
+  h.run(`selectionEpoch += 1; selectedRun='${nextId}'; render(${JSON.stringify({...report(nextId), status: 'running', integrity: null})})`);
   h.nodes.notice.textContent = 'Selected next report';
   gate.resolve({note: 'Cancellation requested'}); await pending;
   assert.equal(h.nodes.notice.textContent, 'Selected next report');
+  assert.equal(h.nodes.cancel.disabled, false);
 });
 
 }

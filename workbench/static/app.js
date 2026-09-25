@@ -11,6 +11,8 @@ let testingModel = false;
 let modelCheckEpoch = 0;
 let discoveryEpoch = 0;
 let historyRuns = [];
+let stopRequestedRun = null;
+const stopPendingMessage = 'Stop requested; waiting for terminal confirmation.';
 const fragment = new URLSearchParams(location.hash.slice(1));
 if (fragment.has('token')) {
   token = fragment.get('token');
@@ -20,6 +22,10 @@ if (fragment.has('token')) {
 function notice(text, error = false) {
   $('notice').textContent = text;
   $('notice').className = text ? (error ? 'notice error' : 'notice') : '';
+}
+function stopPending(id = selectedRun) { return !!id && stopRequestedRun === id; }
+function announcePendingStop() {
+  if (stopPending() && running && $('notice').textContent !== stopPendingMessage) notice(stopPendingMessage);
 }
 async function api(path, body, raw = false) {
   const response = await fetch(path, {method: body === undefined ? 'GET' : 'POST', headers: {'Authorization': 'Bearer ' + token, ...(body === undefined ? {} : {'Content-Type': 'application/json'})}, ...(body === undefined ? {} : {body: JSON.stringify(body)})});
@@ -235,6 +241,7 @@ async function selectRun(id) {
   comparisonEpoch += 1;
   ['export-json', 'export-md', 'export-bundle', 'compare'].forEach((name) => { $(name).disabled = true; });
   $('compare-run').disabled = true;
+  $('cancel').disabled = true;
   $('run-status').textContent = 'Loading selected report...';
   $('verdict').textContent = 'Waiting for the selected evidence';
   $('findings').replaceChildren();
@@ -252,8 +259,9 @@ async function poll(id) {
     else await loadHistory();
   } catch (error) {
     if (id !== selectedRun || epoch !== selectionEpoch) return;
-    running = true; $('start').disabled = true; $('cancel').disabled = false; $('refresh').disabled = false;
-    notice(error.message + ' Outcome unconfirmed. Use Refresh to check status before assuming the run has stopped.', true);
+    running = true; $('start').disabled = true; $('cancel').disabled = stopPending(id); $('refresh').disabled = false;
+    const stopState = stopPending(id) ? ' Stop was requested; terminal state is unconfirmed.' : ' Use Refresh to check status before assuming the run has stopped.';
+    notice(error.message + ' Outcome unconfirmed.' + stopState, true);
   }
 }
 function updateRetestOptions() {
@@ -271,8 +279,10 @@ function updateRetestOptions() {
   $('compare').disabled = select.disabled || !select.value;
 }
 function render(report) {
+  const wasStopPending = stopPending(report.id);
   running = report.status === 'running';
-  $('start').disabled = running; $('cancel').disabled = !running;
+  if (wasStopPending && !running) stopRequestedRun = null;
+  $('start').disabled = running; $('cancel').disabled = !running || stopPending(report.id);
   $('refresh').disabled = running;
   $('detect').disabled = running;
   $('check-model').disabled = running || !$('use-ai').checked;
@@ -307,6 +317,8 @@ function render(report) {
   $('ai-content').textContent = JSON.stringify(report.ai, null, 2);
   $('integrity').textContent = report.integrity ? 'Finalized report SHA-256 (unsigned): ' + report.integrity.report_sha256 : 'Report in progress. Integrity digest will be calculated at completion.';
   updateRetestOptions();
+  if (wasStopPending && !running) notice('Stop request resolved. Terminal state: ' + human(report.status).toUpperCase() + '.');
+  else announcePendingStop();
   if (report.persistence_error) notice(report.persistence_error, true);
 }
 async function loadHistory() {
@@ -351,12 +363,16 @@ $('compare').addEventListener('click', async () => {
 $('refresh').addEventListener('click', () => (running && selectedRun ? selectRun(selectedRun) : loadHistory()).catch((error) => notice(error.message, true)));
 $('cancel').addEventListener('click', async () => {
   const id = selectedRun, epoch = selectionEpoch;
-  if (!id || !running || $('cancel').disabled) return;
+  if (!id || !running || $('cancel').disabled || stopPending(id)) return;
+  stopRequestedRun = id;
   $('cancel').disabled = true;
+  notice('Requesting stop; waiting for service acknowledgement.');
   try {
-    const result = await api('/api/runs/' + id + '/cancel', {});
-    if (id === selectedRun && epoch === selectionEpoch && running) notice(result.note);
+    await api('/api/runs/' + id + '/cancel', {});
+    if (id !== selectedRun || epoch !== selectionEpoch || !running || !stopPending(id)) return;
+    announcePendingStop();
   } catch (error) {
+    if (stopRequestedRun === id) stopRequestedRun = null;
     if (id !== selectedRun || epoch !== selectionEpoch || !running) return;
     $('cancel').disabled = false;
     notice(error.message + ' Stop is not confirmed.', true);
