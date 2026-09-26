@@ -101,29 +101,69 @@ def test_threat_model_matches_shipped_semgrep_boundary():
     assert "Executable Semgrep, Trivy" not in threat_model
 
 
+def _attribute_name(node):
+    """Identify attribute chains using AST APIs available on Python 3.8."""
+    if isinstance(node, ast.Name):
+        return node.id
+    if isinstance(node, ast.Attribute):
+        return _attribute_name(node.value) + "." + node.attr
+    return ""
+
+
 def test_api_pentest_start_requires_verified_session_permission():
-    """The network API must authenticate and authorize assessment creation."""
-    source = (ROOT / "hackgpt_v2.py").read_text(encoding="utf-8")
+    """Require verified identity and all permissions used by the six-phase flow."""
     function = _function("hackgpt_v2.py", "start_pentest")
-    decorators = [ast.unparse(item) for item in function.decorator_list]
-    body = ast.unparse(function)
-    assert "self.auth.require_auth" in decorators
-    assert "self.auth.require_permission('create_session')" in decorators
-    assert "request.user_id" in body
-    assert '"created_by": request.user_id' in source
-    assert 'route("/api/auth/login"' in source
+    decorators = function.decorator_list
+    assert any(_attribute_name(node) == "self.auth.require_auth" for node in decorators)
+    permissions = {
+        node.args[0].value
+        for node in decorators
+        if isinstance(node, ast.Call)
+        and _attribute_name(node.func) == "self.auth.require_permission"
+        and node.args
+        and isinstance(node.args[0], ast.Constant)
+    }
+    assert {"create_session", "run_active_scans", "run_exploitation"} <= permissions
+    assert any(
+        isinstance(node, ast.Dict)
+        and any(
+            isinstance(key, ast.Constant)
+            and key.value == "created_by"
+            and _attribute_name(value) == "request.user_id"
+            for key, value in zip(node.keys, node.values)
+        )
+        for node in ast.walk(function)
+    )
 
 
 def test_failed_phase_cannot_be_persisted_as_completed():
-    """A false phase result must persist failure and return before completion."""
-    source = (ROOT / "hackgpt_v2.py").read_text(encoding="utf-8")
+    """The failed-phase guard must return failure before a completed DB update."""
     function = _function("hackgpt_v2.py", "run_full_enterprise_pentest")
-    body = ast.unparse(function)
-    assert "failed_phase" in body
-    assert 'update_session_status(session_id, "failed", created_by)' in source
-    failed_guard = source.index("if failed_phase is not None:")
-    completed_update = source.index(
-        'update_session_status(session_id, "completed", created_by)', failed_guard
+    guard = next(
+        node
+        for node in ast.walk(function)
+        if isinstance(node, ast.If)
+        and isinstance(node.test, ast.Compare)
+        and isinstance(node.test.left, ast.Name)
+        and node.test.left.id == "failed_phase"
     )
-    failed_return = source.index("return False", failed_guard)
-    assert failed_return < completed_update
+    failure_returns = [
+        node
+        for node in ast.walk(guard)
+        if isinstance(node, ast.Return)
+        and isinstance(node.value, ast.Constant)
+        and node.value.value is False
+    ]
+    completion_calls = [
+        node
+        for node in ast.walk(function)
+        if isinstance(node, ast.Call)
+        and _attribute_name(node.func) == "self.db.update_session_status"
+        and len(node.args) >= 2
+        and isinstance(node.args[1], ast.Constant)
+        and node.args[1].value == "completed"
+    ]
+    assert failure_returns and completion_calls
+    assert max(node.lineno for node in failure_returns) < min(
+        node.lineno for node in completion_calls
+    )

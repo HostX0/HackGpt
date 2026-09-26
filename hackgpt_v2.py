@@ -626,22 +626,22 @@ class EnterpriseHackGPT:
                 self.console.print("[red]Could not create database session[/red]")
                 return
 
-        # Initialize enterprise pentesting phases
-        phases = EnterprisePentestingPhases(
-            session_id=session_id,
-            ai_engine=self.ai_engine,
-            tool_manager=self.tool_manager,
-            target_info=target_info,
-            db=self.db,
-            cache=self.cache,
-            processor=self.processor,
-            exploitation=self.exploitation,
-            zero_day_detector=self.zero_day_detector,
-            compliance=self.compliance,
-            report_generator=self.report_generator,
-        )
-
         try:
+            # Initialize enterprise pentesting phases
+            phases = EnterprisePentestingPhases(
+                session_id=session_id,
+                ai_engine=self.ai_engine,
+                tool_manager=self.tool_manager,
+                target_info=target_info,
+                db=self.db,
+                cache=self.cache,
+                processor=self.processor,
+                exploitation=self.exploitation,
+                zero_day_detector=self.zero_day_detector,
+                compliance=self.compliance,
+                report_generator=self.report_generator,
+            )
+
             with Progress(
                 SpinnerColumn(),
                 TextColumn("[progress.description]{task.description}"),
@@ -682,7 +682,10 @@ class EnterpriseHackGPT:
                     result = phase_method()
                     progress.update(task, completed=100)
 
-                    if not result.get("success", True):
+                    if (
+                        not isinstance(result, dict)
+                        or result.get("success") is not True
+                    ):
                         failed_phase = phase_name
                         self.console.print(f"[red]Phase failed: {phase_name}[/red]")
                         break
@@ -885,26 +888,26 @@ class EnterpriseHackGPT:
         else:
             self.console.print("[red]✗ Failed to deploy HackGPT Enterprise Stack[/red]")
 
-    def start_api_server(self):
-        """Start HackGPT API server"""
-        if not flask:
-            self.console.print("[red]Flask not available for API server[/red]")
-            return
-        if not self.auth:
-            self.console.print(
-                "[red]Authentication is required before starting the API server[/red]"
-            )
-            return
+    def create_api_app(self):
+        """Build authenticated HTTPS-only API routes without starting a listener."""
+        if not flask or not self.auth:
+            raise RuntimeError("Flask and enterprise authentication are required")
 
         from flask import Flask, request, jsonify
-        from flask_cors import CORS
 
         app = Flask(__name__)
-        CORS(app)
         app.secret_key = config.SECRET_KEY
+        app.config["MAX_CONTENT_LENGTH"] = 16 * 1024
+
+        @app.before_request
+        def require_secure_transport():
+            """Reject cleartext before parsing login data or verifying a token."""
+            if request.endpoint != "health_check" and not request.is_secure:
+                return jsonify({"error": "HTTPS is required"}), 400
 
         @app.route("/api/health", methods=["GET"])
         def health_check():
+            """Return non-sensitive liveness metadata."""
             return jsonify(
                 {
                     "status": "healthy",
@@ -916,11 +919,19 @@ class EnterpriseHackGPT:
         @app.route("/api/auth/login", methods=["POST"])
         def login():
             """Authenticate an API caller and return the existing short-lived JWT."""
-            data = request.get_json(silent=True) or {}
+            data = request.get_json(silent=True)
+            if not isinstance(data, dict):
+                return jsonify({"error": "A JSON object is required"}), 400
             username = data.get("username")
             password = data.get("password")
             method = data.get("method", "local")
-            if not isinstance(username, str) or not isinstance(password, str):
+            if (
+                not isinstance(username, str)
+                or not 0 < len(username) <= 256
+                or not isinstance(password, str)
+                or not 0 < len(password) <= 4096
+                or not isinstance(method, str)
+            ):
                 return jsonify({"error": "Username and password are required"}), 400
             result = self.auth.authenticate_user(
                 username,
@@ -944,10 +955,14 @@ class EnterpriseHackGPT:
         @app.route("/api/pentest/start", methods=["POST"])
         @self.auth.require_auth
         @self.auth.require_permission("create_session")
+        @self.auth.require_permission("run_active_scans")
+        @self.auth.require_permission("run_exploitation")
         def start_pentest():
             """Start an authorized assessment for the authenticated caller."""
             try:
-                data = request.get_json(silent=True) or {}
+                data = request.get_json(silent=True)
+                if not isinstance(data, dict):
+                    return jsonify({"error": "A JSON object is required"}), 400
                 target = data.get("target")
                 scope = data.get("scope")
                 auth_key = data.get("auth_key")
@@ -1013,10 +1028,33 @@ class EnterpriseHackGPT:
                 ]
             )
 
-        self.console.print(
-            "[cyan]Starting HackGPT API Server on http://0.0.0.0:8000[/cyan]"
+        return app
+
+    def start_api_server(self):
+        """Start a TLS listener only when both configured certificate files load."""
+        import ssl
+
+        cert = os.getenv("HACKGPT_API_TLS_CERT")
+        key = os.getenv("HACKGPT_API_TLS_KEY")
+        if not cert or not key:
+            self.console.print(
+                "[red]Configure HACKGPT_API_TLS_CERT and HACKGPT_API_TLS_KEY before starting the API[/red]"
+            )
+            return False
+        try:
+            context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+            context.minimum_version = ssl.TLSVersion.TLSv1_2
+            context.load_cert_chain(certfile=cert, keyfile=key)
+            app = self.create_api_app()
+        except (OSError, ssl.SSLError, RuntimeError):
+            self.logger.exception("HTTPS API startup configuration failed")
+            return False
+        host = os.getenv("HACKGPT_API_BIND", "127.0.0.1")
+        self.console.print("[cyan]Starting authenticated HTTPS API on port 8000[/cyan]")
+        app.run(
+            host=host, port=8000, ssl_context=context, debug=False, use_reloader=False
         )
-        app.run(host="0.0.0.0", port=8000, debug=config.DEBUG)
+        return True
 
     def run(self):
         """Main application loop"""
