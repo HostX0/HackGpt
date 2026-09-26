@@ -281,6 +281,29 @@ class ReviewRuntimeTests(unittest.TestCase):
         self.assertEqual(captured["created_by"], "verified-user")
         self.namespace["EnterprisePentestingPhases"].assert_not_called()
 
+    def test_sessions_serialize_the_real_database_model(self):
+        """A populated real SQLite session must serialize its actual model ID."""
+        from database.manager import DatabaseManager
+
+        database = DatabaseManager("sqlite:///:memory:")
+        self.addCleanup(database.engine.dispose)
+        self.assertTrue(database.create_tables())
+        self.owner.db = database
+        session_id = database.create_pentest_session(
+            target="fixture.invalid",
+            scope="offline fixture",
+            created_by="verified-user",
+            auth_key="synthetic-reference",
+        )
+        response = self.client.get(
+            "/api/sessions",
+            base_url="https://localhost",
+            headers={"Authorization": "Bearer " + self.token()},
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.get_json()[0]["session_id"], session_id)
+        self.assertEqual(response.get_json()[0]["target"], "fixture.invalid")
+
     def test_json_arrays_do_not_crash_handlers(self):
         """Reject JSON arrays with a client error rather than a server exception."""
         for path in ("/api/auth/login", "/api/pentest/start"):

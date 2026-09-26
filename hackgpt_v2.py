@@ -1016,7 +1016,7 @@ class EnterpriseHackGPT:
             return jsonify(
                 [
                     {
-                        "session_id": s.session_id,
+                        "session_id": s.id,
                         "target": s.target,
                         "status": s.status,
                         "created_at": s.created_at.isoformat(),
