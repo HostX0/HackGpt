@@ -11,7 +11,8 @@ def _function(path, name):
     return next(
         node
         for node in ast.walk(tree)
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name == name
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+        and node.name == name
     )
 
 
