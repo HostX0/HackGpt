@@ -607,17 +607,24 @@ class EnterpriseHackGPT:
             f"[green]Starting Enterprise Pentest: {target_info['target']}[/green]"
         )
 
-        # Create session in database
+        # Create session in database using the manager's supported contract.
+        created_by = target_info.get("created_by") or "system"
+        session_id = str(uuid.uuid4())
+        session_persisted = False
         if self.db:
-            session = self.db.create_pentest_session(
-                target=target_info["target"],
-                scope=target_info["scope"],
-                assessment_type=target_info["assessment_type"],
-                compliance_framework=target_info["compliance_framework"],
-            )
-            session_id = session.session_id
-        else:
-            session_id = str(uuid.uuid4())
+            try:
+                session_id = self.db.create_pentest_session(
+                    target=target_info["target"],
+                    scope=target_info["scope"],
+                    created_by=created_by,
+                    auth_key=target_info["auth_key"],
+                    assessment_type=target_info["assessment_type"],
+                )
+                session_persisted = True
+            except Exception as exc:
+                self.logger.error(f"Could not create pentest session: {exc}")
+                self.console.print("[red]Could not create database session[/red]")
+                return
 
         # Initialize enterprise pentesting phases
         phases = EnterprisePentestingPhases(
@@ -683,26 +690,21 @@ class EnterpriseHackGPT:
                 "[bold green]Enterprise Pentest Completed Successfully![/bold green]"
             )
 
-            if self.db:
-                session.status = "completed"
-                session.completed_at = datetime.utcnow()
-                self.db.update_session(session)
+            if self.db and session_persisted:
+                self.db.update_session_status(session_id, "completed", created_by)
 
             # Show summary
             self.show_pentest_summary(session_id, phases.results)
 
         except KeyboardInterrupt:
             self.console.print("[yellow]Pentest interrupted by user[/yellow]")
-            if self.db and session:
-                session.status = "cancelled"
-                self.db.update_session(session)
+            if self.db and session_persisted:
+                self.db.update_session_status(session_id, "cancelled", created_by)
         except Exception as e:
             self.logger.error(f"Error during pentest: {e}")
             self.console.print(f"[red]Error during pentest: {e}[/red]")
-            if self.db and session:
-                session.status = "failed"
-                session.error_message = str(e)
-                self.db.update_session(session)
+            if self.db and session_persisted:
+                self.db.update_session_status(session_id, "failed", created_by)
 
     def show_pentest_summary(self, session_id: str, results: Dict):
         """Show pentest summary"""
@@ -996,240 +998,3 @@ class EnterpriseHackGPT:
                     self.voice_command_mode()
                 elif choice == "15":
                     self.launch_web_dashboard()
-
-            except KeyboardInterrupt:
-                self.console.print("\n[yellow]Use option 0 to exit properly[/yellow]")
-            except Exception as e:
-                self.logger.error(f"Application error: {e}")
-                self.console.print(f"[red]Error: {e}[/red]")
-
-    def shutdown(self):
-        """Graceful shutdown of all services"""
-        self.console.print("[cyan]Shutting down services...[/cyan]")
-
-        try:
-            if self.processor:
-                self.processor.stop()
-            if self.service_registry:
-                self.service_registry.stop()
-            if self.realtime_dashboard:
-                self.realtime_dashboard.running = False
-
-            self.console.print("[green]All services shut down successfully[/green]")
-        except Exception as e:
-            self.logger.error(f"Error during shutdown: {e}")
-
-
-# Placeholder classes for missing components
-class EnterpriseToolManager:
-    """Enterprise tool manager with advanced features"""
-
-    def __init__(self):
-        self.console = Console()
-        self.installed_tools = set()
-        self.tool_versions = {}
-
-    def ensure_tools(self, tools):
-        """Ensure tools are installed"""
-        missing = [t for t in tools if not self.check_tool(t)]
-        if missing:
-            self.console.print(f"[yellow]Missing tools: {', '.join(missing)}[/yellow]")
-            for tool in missing:
-                self.install_tool(tool)
-        return True
-
-    def check_tool(self, tool_name):
-        """Check if tool is available"""
-        try:
-            result = subprocess.run(["which", tool_name], capture_output=True)
-            return result.returncode == 0
-        except:
-            return False
-
-    def install_tool(self, tool_name):
-        """Install a tool"""
-        try:
-            subprocess.run(["apt", "install", "-y", tool_name], check=True)
-            self.installed_tools.add(tool_name)
-            return True
-        except:
-            return False
-
-
-class EnterprisePentestingPhases:
-    """Enterprise pentesting phases with advanced features"""
-
-    def __init__(
-        self,
-        session_id,
-        ai_engine,
-        tool_manager,
-        target_info,
-        db,
-        cache,
-        processor,
-        exploitation,
-        zero_day_detector,
-        compliance,
-        report_generator,
-    ):
-        self.session_id = session_id
-        self.ai_engine = ai_engine
-        self.tool_manager = tool_manager
-        self.target_info = target_info
-        self.db = db
-        self.cache = cache
-        self.processor = processor
-        self.exploitation = exploitation
-        self.zero_day_detector = zero_day_detector
-        self.compliance = compliance
-        self.report_generator = report_generator
-        self.results = {}
-
-    def phase1_reconnaissance(self):
-        """Phase 1: Intelligence Gathering & Reconnaissance"""
-        console.print(
-            Panel(
-                "[bold blue]Phase 1: Intelligence Gathering & Reconnaissance[/bold blue]"
-            )
-        )
-        result = {"success": True, "vulnerabilities": [], "risk_score": 1.0}
-        self.results["phase1_reconnaissance"] = result
-        return result
-
-    def phase2_scanning_enumeration(self):
-        """Phase 2: Advanced Scanning & Enumeration"""
-        console.print(
-            Panel("[bold blue]Phase 2: Advanced Scanning & Enumeration[/bold blue]")
-        )
-        result = {"success": True, "vulnerabilities": [], "risk_score": 3.0}
-        self.results["phase2_scanning_enumeration"] = result
-        return result
-
-    def phase3_vulnerability_assessment(self):
-        """Phase 3: Vulnerability Assessment"""
-        console.print(Panel("[bold blue]Phase 3: Vulnerability Assessment[/bold blue]"))
-        result = {"success": True, "vulnerabilities": [], "risk_score": 5.0}
-        self.results["phase3_vulnerability_assessment"] = result
-        return result
-
-    def phase4_exploitation(self):
-        """Phase 4: Exploitation & Post-Exploitation"""
-        console.print(
-            Panel("[bold red]Phase 4: Exploitation & Post-Exploitation[/bold red]")
-        )
-        result = {"success": True, "vulnerabilities": [], "risk_score": 8.0}
-        self.results["phase4_exploitation"] = result
-        return result
-
-    def phase5_reporting(self):
-        """Phase 5: Enterprise Reporting & Analytics"""
-        console.print(
-            Panel("[bold blue]Phase 5: Enterprise Reporting & Analytics[/bold blue]")
-        )
-        result = {"success": True, "vulnerabilities": [], "risk_score": 0.0}
-        self.results["phase5_reporting"] = result
-        return result
-
-    def phase6_retesting(self):
-        """Phase 6: Verification & Retesting"""
-        console.print(Panel("[bold blue]Phase 6: Verification & Retesting[/bold blue]"))
-        result = {"success": True, "vulnerabilities": [], "risk_score": 0.0}
-        self.results["phase6_retesting"] = result
-        return result
-
-
-class EnterpriseVoiceInterface:
-    """Enterprise voice interface"""
-
-    def __init__(self):
-        self.console = Console()
-
-    def listen_for_command(self):
-        return None
-
-    def speak(self, text):
-        pass
-
-
-class EnterpriseWebDashboard:
-    """Enterprise web dashboard"""
-
-    def __init__(self, hackgpt_instance):
-        self.hackgpt = hackgpt_instance
-
-    def run(self):
-        pass
-
-
-class BasicReportGenerator:
-    """Basic report generator fallback"""
-
-    def __init__(self):
-        pass
-
-    def generate_report(self, session_id, results):
-        return {"report": "Basic report generated"}
-
-
-def main():
-    """Entry point for HackGPT Enterprise"""
-    parser = argparse.ArgumentParser(
-        description="HackGPT Enterprise - AI-Powered Penetration Testing Platform"
-    )
-    parser.add_argument("--target", help="Target IP or domain")
-    parser.add_argument("--scope", help="Scope description")
-    parser.add_argument("--auth-key", help="Authorization key")
-    parser.add_argument(
-        "--assessment-type",
-        choices=["black-box", "white-box", "gray-box"],
-        default="black-box",
-    )
-    parser.add_argument(
-        "--compliance", choices=["OWASP", "NIST", "ISO27001", "SOC2"], default="OWASP"
-    )
-    parser.add_argument("--api", action="store_true", help="Start API server only")
-    parser.add_argument("--web", action="store_true", help="Start web dashboard only")
-    parser.add_argument(
-        "--realtime", action="store_true", help="Start real-time dashboard only"
-    )
-    parser.add_argument(
-        "--config", default="config.ini", help="Configuration file path"
-    )
-
-    args = parser.parse_args()
-
-    # Update config file path if specified
-    if args.config != "config.ini":
-        global config
-        config = Config(args.config)
-
-    # Initialize HackGPT Enterprise
-    hackgpt = EnterpriseHackGPT()
-
-    if args.api:
-        hackgpt.start_api_server()
-    elif args.web:
-        hackgpt.launch_web_dashboard()
-    elif args.realtime:
-        hackgpt.start_realtime_dashboard()
-    elif all([args.target, args.scope, args.auth_key]):
-        # Direct execution mode
-        target_info = {
-            "target": args.target,
-            "scope": args.scope,
-            "assessment_type": args.assessment_type,
-            "compliance_framework": args.compliance,
-            "auth_key": args.auth_key,
-            "parallel_execution": True,
-            "ai_enhanced": True,
-        }
-        hackgpt.show_banner()
-        hackgpt.run_full_enterprise_pentest(target_info)
-    else:
-        # Interactive mode
-        hackgpt.run()
-
-
-if __name__ == "__main__":
-    main()

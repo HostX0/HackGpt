@@ -81,6 +81,25 @@ class RecoveryTests(unittest.TestCase):
         self.assertIsNone(store.get(running["id"]))
         self.assertEqual(store.recover_interrupted(), 0)
 
+    def test_tampered_running_checkpoint_field_is_never_promoted(self):
+        store = Store(self.directory.name)
+        running = Assessment(scope()).report
+        store.save_active(running)
+        with closing(sqlite3.connect(store.path)) as connection:
+            data = json.loads(
+                connection.execute(
+                    "SELECT content FROM active_runs WHERE id = ?", (running["id"],)
+                ).fetchone()[0]
+            )
+            data["target"] = "https://tampered.invalid"
+            connection.execute(
+                "UPDATE active_runs SET content = ? WHERE id = ?",
+                (json.dumps(data), running["id"]),
+            )
+            connection.commit()
+        self.assertEqual(store.recover_interrupted(), 0)
+        self.assertIsNone(store.get(running["id"]))
+
     def test_running_only_checkpoint_contract(self):
         store = Store(self.directory.name)
         final = Assessment(
@@ -98,3 +117,5 @@ class RecoveryTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+[executed on device: ai-server (fd4dd42d-2948-4b96-92c0-c81ff9e576ee)]

@@ -386,7 +386,7 @@ class ComplianceFrameworkMapper:
             'compliance_score': compliance_score,
             'total_findings': len(findings),
             'mapped_findings': len(findings) - len(unmapped_findings),
-            'unmapped_findings': len(unmapped_findings),
+            'unmapped_findings_count': len(unmapped_findings),
             'control_coverage': {
                 'total_controls': total_controls,
                 'addressed_controls': addressed_controls,

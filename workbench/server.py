@@ -57,13 +57,17 @@ class Store:
             or not isinstance(report.get("id"), str)
         ):
             raise ValueError("Only running report snapshots may be checkpointed")
-        raw = json.dumps(report)
+        snapshot = copy.deepcopy(report)
+        seal(snapshot)
+        if not verify_integrity(snapshot):
+            raise ValueError("Running report snapshot failed integrity validation")
+        raw = json.dumps(snapshot)
         if len(raw.encode()) > 2_000_000:
             raise ValueError("Running report snapshot is too large")
         with closing(sqlite3.connect(self.path, timeout=5)) as connection:
             connection.execute(
                 "INSERT OR REPLACE INTO active_runs VALUES (?, ?, ?)",
-                (report["id"], report["started_at"], raw),
+                (snapshot["id"], snapshot["started_at"], raw),
             )
             connection.commit()
 
@@ -100,10 +104,8 @@ class Store:
                         or report.get("status") != "running"
                     ):
                         raise ValueError("invalid active snapshot")
-                    candidate = copy.deepcopy(report)
-                    seal(candidate)
-                    if not verify_integrity(candidate):
-                        raise ValueError("active snapshot integrity chain mismatch")
+                    if not verify_integrity(report):
+                        raise ValueError("active snapshot integrity check failed")
                     report["status"] = "interrupted"
                     report["verdict"] = "inconclusive"
                     report["finished_at"] = now()
