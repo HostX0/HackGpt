@@ -57,6 +57,7 @@ class RealRegistryLifecycleTests(unittest.TestCase):
             self.assertNotIn(b"DO_NOT_READ=this-value", raw)
 
     def test_native_web_cancelled_reader_persists_cancelled_lifecycle(self):
+        """Persist a cancelled terminal lifecycle when the web reader is cancelled."""
         with tempfile.TemporaryDirectory() as temp:
             database = Path(temp) / "state" / "reports.sqlite3"
             lifecycle = AdapterLifecycle(database, ExecutionRegistry())
@@ -69,6 +70,7 @@ class RealRegistryLifecycleTests(unittest.TestCase):
             lifecycle.approve(planned["id"], planned["plan_sha256"])
 
             def cancelled_reader(_target):
+                """Raise the engine cancellation signal from a synthetic reader."""
                 raise Cancelled()
 
             with self.assertRaises(InterruptedError):

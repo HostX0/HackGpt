@@ -285,6 +285,7 @@ class ExecutionRegistry:
     def _web(
         self, request: dict[str, Any], *, cancel=None, web_reader=None
     ) -> dict[str, Any]:
+        """Run the bounded web adapter and normalize engine cancellation semantics."""
         adapter = self._web_adapter(request)
         if cancel is not None and cancel.is_set():
             raise InterruptedError("adapter execution cancelled before start")

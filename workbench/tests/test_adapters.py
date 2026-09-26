@@ -200,6 +200,7 @@ class AdapterParserTests(unittest.TestCase):
         self.assertEqual(result["findings"], [])
 
     def test_semgrep_requires_login_fingerprint_uses_occurrence_location(self):
+        """Use location identity when Semgrep provides no usable fingerprint."""
         raw = json.dumps(
             {
                 "results": [
@@ -237,6 +238,7 @@ class AdapterParserTests(unittest.TestCase):
         self.assertNotIn("requires login", ids)
 
     def test_trivy_same_vulnerability_in_two_targets_has_distinct_identity(self):
+        """Keep identical Trivy findings distinct across scanner targets."""
         vulnerability = {
             "VulnerabilityID": "CVE-TEST",
             "PkgName": "demo",
@@ -267,6 +269,7 @@ class AdapterParserTests(unittest.TestCase):
         self.assertEqual(len(set(ids)), 2)
 
     def test_nuclei_same_template_on_two_paths_has_distinct_identity(self):
+        """Keep Nuclei occurrences distinct across matched paths."""
         base = {
             "template-id": "tech-detect",
             "template-url": "https://templates.invalid/tech",

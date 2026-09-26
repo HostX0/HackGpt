@@ -51,6 +51,7 @@ class Store:
             pass
 
     def save_active(self, report):
+        """Persist a sealed integrity-checked snapshot of a running assessment."""
         if (
             not isinstance(report, dict)
             or report.get("status") != "running"
@@ -104,7 +105,15 @@ class Store:
                         or report.get("status") != "running"
                     ):
                         raise ValueError("invalid active snapshot")
-                    if not verify_integrity(report):
+                    legacy_unsealed = not isinstance(report.get("integrity"), dict)
+                    if legacy_unsealed:
+                        structural_copy = copy.deepcopy(report)
+                        seal(structural_copy)
+                        if not verify_integrity(structural_copy):
+                            raise ValueError(
+                                "legacy active snapshot structure is invalid"
+                            )
+                    elif not verify_integrity(report):
                         raise ValueError("active snapshot integrity check failed")
                     report["status"] = "interrupted"
                     report["verdict"] = "inconclusive"
@@ -119,7 +128,10 @@ class Store:
                         "at": now(),
                         "kind": "interrupted",
                         "message": "Recovered after an unclean workbench stop; completion is not assumed.",
-                        "details": {"recovered_after_restart": True},
+                        "details": {
+                            "recovered_after_restart": True,
+                            "legacy_unsealed_checkpoint": legacy_unsealed,
+                        },
                         "previous_sha256": previous,
                     }
                     event["sha256"] = digest(event)
@@ -127,12 +139,24 @@ class Store:
                     report.setdefault("limitations", []).append(
                         "This run was interrupted before durable finalization and was recovered from a running checkpoint."
                     )
-                    report["durability"] = {
-                        "status": "durable",
-                        "storage": "sqlite",
-                        "terminal_publication": "restart_recovery_transaction",
-                        "checkpoint_gap_observed": False,
-                    }
+                    if legacy_unsealed:
+                        report["limitations"].append(
+                            "This checkpoint predates running-checkpoint integrity sealing. Its content is preserved for inspection only and is not trusted as durable review evidence."
+                        )
+                        report["durability"] = {
+                            "status": "not_durable",
+                            "storage": "legacy_checkpoint_quarantine",
+                            "terminal_publication": "restart_recovery_quarantine",
+                            "checkpoint_gap_observed": True,
+                            "reason": "legacy_checkpoint_missing_integrity",
+                        }
+                    else:
+                        report["durability"] = {
+                            "status": "durable",
+                            "storage": "sqlite",
+                            "terminal_publication": "restart_recovery_transaction",
+                            "checkpoint_gap_observed": False,
+                        }
                     seal(report)
                     if not verify_integrity(report):
                         raise ValueError("recovered report failed integrity validation")
