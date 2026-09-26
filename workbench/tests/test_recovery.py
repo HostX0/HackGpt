@@ -117,5 +117,3 @@ class RecoveryTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-
-[executed on device: ai-server (fd4dd42d-2948-4b96-92c0-c81ff9e576ee)]
